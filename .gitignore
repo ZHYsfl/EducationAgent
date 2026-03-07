@@ -209,3 +209,5 @@ __marimo__/
 .env
 
 Qwen3___5-0___8B/
+
+.gitignore
