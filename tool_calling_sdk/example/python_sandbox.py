@@ -1,11 +1,21 @@
 # concrete tool action : python_sandbox_tool, python_figure_sandbox_tool
 # provide python sandbox environment for agent to execute python code
 # provide python figure sandbox environment for agent to execute python figure code
+import sys
+from pathlib import Path
+
 from matplotlib.figure import Figure
-from tool_calling import Agent, Tool, LLMConfig
 from dotenv import load_dotenv
 load_dotenv(override=True)
 import os
+import asyncio
+
+CURRENT_DIR = Path(__file__).resolve().parent
+SDK_DIR = CURRENT_DIR.parent
+if str(SDK_DIR) not in sys.path:
+    sys.path.insert(0, str(SDK_DIR))
+
+from async_tool_calling import Agent, Tool, LLMConfig
 
 # python sandbox tool environment
 def python_sandbox_tool(py_code : str, g='globals()') -> str: # python sandbox tool action
@@ -75,6 +85,8 @@ def python_figure_sandbox_tool(py_code: str, fname: str, g='globals()') -> str: 
     """
     print("正在调用python_figure_sandbox_tool工具运行Python绘图代码...")
     import matplotlib
+    # 使用非交互式后端，避免 GUI 线程问题
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import seaborn as sns
     import pandas as pd
@@ -187,14 +199,17 @@ python_figure_sandbox_tool = Tool(
     }
 )
 
-if __name__ == "__main__":
+async def main():
     agent = Agent(LLMConfig(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
-        model="deepseek-chat",
-        base_url="https://api.deepseek.com"
+        model=os.getenv("MODEL"),
+        base_url=os.getenv("BASE_URL")
     ))
     agent.add_tool(python_sandbox_tool)
     agent.add_tool(python_figure_sandbox_tool)
     observations = [{"role": "user", "content": "请绘制一个折线图，横坐标为x，纵坐标为y，x从0到10，y为x的平方"}]
-    observations_final = agent.chat(observations)
+    observations_final = await agent.chat(observations)
     print(observations_final)
+
+if __name__ == "__main__":
+    asyncio.run(main())
