@@ -2,18 +2,26 @@
 # 在 Agent 运行过程中提供临时记忆存储
 # 每次运行开始时笔记本为空，运行期间支持增删改查
 
-from tool_calling import Agent, Tool, LLMConfig
+import sys
+from pathlib import Path
+
+CURRENT_DIR = Path(__file__).resolve().parent
+SDK_DIR = CURRENT_DIR.parent
+if str(SDK_DIR) not in sys.path:
+    sys.path.insert(0, str(SDK_DIR))
+
+from async_tool_calling import Agent, Tool, LLMConfig
 from dotenv import load_dotenv
 load_dotenv(override=True)
 import os
-import json
 from datetime import datetime
+import asyncio
 
 # =============================================================================
 # Notebook - 动态记事本
 # =============================================================================
 
-def create_notebook_tools(agent: Agent = None):
+async def create_notebook_tools(agent: Agent = None):
     """
     工厂函数：创建一个独立的记事本实例
     
@@ -129,11 +137,11 @@ def create_notebook_tools(agent: Agent = None):
 # 创建 Tool 对象
 # =============================================================================
 
-def build_notebook_tools(agent: Agent = None) -> list[Tool]:
+async def build_notebook_tools(agent: Agent = None) -> list[Tool]:
     """
     构建笔记本系列工具并返回 Tool 对象列表
     """
-    funcs = create_notebook_tools(agent)
+    funcs = await create_notebook_tools(agent)
     
     tools = [
         Tool(
@@ -266,7 +274,7 @@ def build_notebook_tools(agent: Agent = None) -> list[Tool]:
 # 迷宫环境 - Agent 只能看到局部信息
 # =============================================================================
 
-def create_maze_environment():
+async def create_maze_environment():
     """
     创建一个迷宫环境，Agent 只能通过 look 和 move 工具与之交互
     不能直接看到完整地图，必须探索
@@ -365,9 +373,9 @@ def create_maze_environment():
     return look, move, state
 
 
-def build_maze_tools() -> list[Tool]:
+async def build_maze_tools() -> list[Tool]:
     """构建迷宫探索工具"""
-    look, move, state = create_maze_environment()
+    look, move, state = await create_maze_environment()
     
     tools = [
         Tool(
@@ -404,21 +412,21 @@ def build_maze_tools() -> list[Tool]:
 # 测试
 # =============================================================================
 
-if __name__ == "__main__":
+async def main():
     # 创建 Agent
     agent = Agent(LLMConfig(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
-        model="deepseek-chat",
-        base_url="https://api.deepseek.com"
+        model=os.getenv("MODEL"),
+        base_url=os.getenv("BASE_URL")
     ))
     
     # 添加笔记本工具（用于记录探索过程）
-    notebook_tools = build_notebook_tools(agent)
+    notebook_tools = await build_notebook_tools(agent)
     for tool in notebook_tools:
         agent.add_tool(tool)
     
     # 添加迷宫探索工具
-    maze_tools = build_maze_tools()
+    maze_tools = await build_maze_tools()
     for tool in maze_tools:
         agent.add_tool(tool)
     
@@ -439,7 +447,7 @@ if __name__ == "__main__":
 开始探索吧！先用 look 看看周围环境。"""
     }]
     
-    observations_final = agent.chat(observations)
+    observations_final = await agent.chat(observations)
     
     print("\n" + "="*60)
     print("📊 探索结果:")
@@ -449,3 +457,6 @@ if __name__ == "__main__":
         content = obs.get('content', '')
         if content:
             print(f"\n[{role}]: {content[:1000]}{'...' if len(str(content)) > 1000 else ''}")
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -2,17 +2,27 @@
 # 让 Agent 拥有创造工具的能力，动态扩展自己的action空间
 # Agent 可以通过这个工具连接到任意 Environment
 
-from tool_calling import Agent, Tool, LLMConfig
 from dotenv import load_dotenv
 load_dotenv(override=True)
 import os
 import json
+import asyncio
+
+import sys
+from pathlib import Path
+
+CURRENT_DIR = Path(__file__).resolve().parent
+SDK_DIR = CURRENT_DIR.parent
+if str(SDK_DIR) not in sys.path:
+    sys.path.insert(0, str(SDK_DIR))
+
+from async_tool_calling import Agent, Tool, LLMConfig
 
 # =============================================================================
 # Tool Creator - 创造工具的工具
 # =============================================================================
 
-def create_tool_creator(agent: Agent):
+async def create_tool_creator(agent: Agent):
     """
     工厂函数：创建一个绑定到特定 agent 的 tool_creator 工具
     通过闭包捕获 agent 引用，让 tool_creator 能够动态添加工具
@@ -138,11 +148,11 @@ def create_tool_creator(agent: Agent):
 # 创建 Tool 对象
 # =============================================================================
 
-def build_tool_creator_tools(agent: Agent) -> list[Tool]:
+async def build_tool_creator_tools(agent: Agent) -> list[Tool]:
     """
     构建 tool_creator 系列工具并返回 Tool 对象列表
     """
-    tool_creator, list_created_tools, delete_tool, registry = create_tool_creator(agent)
+    tool_creator, list_created_tools, delete_tool, registry = await create_tool_creator(agent)
     
     # 示例代码，用于 description
     example_code = '''def get_stock_price(symbol: str) -> str:
@@ -235,16 +245,16 @@ def build_tool_creator_tools(agent: Agent) -> list[Tool]:
 # 测试
 # =============================================================================
 
-if __name__ == "__main__":
+async def main():
     # 创建 Agent
     agent = Agent(LLMConfig(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
-        model="deepseek-chat",
-        base_url="https://api.deepseek.com"
+        model=os.getenv("MODEL"),
+        base_url=os.getenv("BASE_URL")
     ))
     
     # 添加 tool_creator 系列工具
-    tool_creator_tools = build_tool_creator_tools(agent)
+    tool_creator_tools = await build_tool_creator_tools(agent)
     for tool in tool_creator_tools:
         agent.add_tool(tool)
     
@@ -261,8 +271,11 @@ if __name__ == "__main__":
 2. 然后调用这个新工具计算结果"""
     }]
     
-    observations_final = agent.chat(observations)
+    observations_final = await agent.chat(observations)
     
     print(observations_final)
     print(f"\n🔧 最终工具数量: {len(agent.tools)}")
     print(f"📋 最终可用工具: {[t.name for t in agent.tools]}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
