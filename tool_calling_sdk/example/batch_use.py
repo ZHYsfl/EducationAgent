@@ -31,7 +31,6 @@ tool = Tool(
     }
 )
 
-
 async def main():
     agent = Agent(LLMConfig(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
