@@ -210,4 +210,17 @@ __marimo__/
 
 Qwen3___5-0___8B/
 
-.gitignore
+# Large model files
+*.onnx
+*.bin
+*.safetensors
+qwen_omni/
+
+# Go binaries
+*.exe
+
+# Cursor project files
+.cursor/
+
+# Specstory
+.specstory/
