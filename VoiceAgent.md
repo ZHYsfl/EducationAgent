@@ -28,7 +28,7 @@ ASR每识别完一个1s音频块产出文字后，Small LLM判断是否为有意
 
 Large LLM切换到正式回答模式后，开始流式生成token。由于Large LLM是思考模型（如Qwen3），输出中可能包含`<think>...</think>`内部推理块。系统通过流式thinkFilter实时过滤：`<think>`标签内的推理内容被丢弃（不发TTS、不显示前端、不计入对话历史），只有`</think>`之后的可见内容才进入正常处理流程（送TTS、显示前端、存入对话历史）。过滤器支持标签跨token边界切分的鲁棒处理。
 
-系统维护一个token计数器（totalTokens），**计数所有token包括`<think>`内部的token**。这是因为`<think>`内部的token也是模型真实的推理耗时，TokenBudget的目的是衡量模型已经花了多少时间思考，而非产出了多少可见文字。在前TokenBudget（默认50）个token内，如果模型已经产出了`</think>`之后的可见内容并且凑成了完整句子，立即送TTS播放。如果到了TokenBudget还没产出可说的内容（模型还在`<think>`里深度推理，或者在做tool calling），系统插入第一句填充语（如"好的，让我想一下"）送TTS播放。之后每隔FillerInterval（默认100）个token，如果仍然没有产出可见句子，继续插入填充语（如"还在查，稍等一下"），确保长时间深度推理时用户始终知道系统在工作。一旦模型产出了第一个可见句子，后续填充语停止，正式回答直接逐句送TTS。
+系统维护一个token计数器（totalTokens），**计数所有token包括`<think>`内部的token**。这是因为`<think>`内部的token也是模型真实的推理耗时，TokenBudget的目的是衡量模型已经花了多少时间思考，而非产出了多少可见文字。在前TokenBudget（默认50）个token内，如果模型已经产出了`</think>`之后的可见内容并且凑成了完整句子，立即送TTS播放。如果到了TokenBudget还没产出可说的内容（模型还在`<think>`里深度推理，或者在做tool calling），系统从填充语列表中按序插入不重复的填充语送TTS播放（如"好的，让我想一下"→"还在想，稍等一下"→"马上就好"），每隔FillerInterval（默认100）个token插入一句，最多MaxFillers（默认3）句后停止，避免重复显得机械。一旦模型产出了第一个可见句子，后续填充语也停止，正式回答直接逐句送TTS。
 
 注意：draft thinking阶段（边听边想）不过滤`<think>`内容，因为thinker的内部推理正是我们要保留和传递给下一轮thinker的有价值上下文。这些draft内容只作为临时上下文注入下一次LLM调用，不会写入永久对话历史。过滤只在最终回答的输出流上生效。
 
