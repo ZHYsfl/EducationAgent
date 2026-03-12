@@ -23,6 +23,7 @@ type Config struct {
 	TTSURL string
 
 	TokenBudget   int
+	FillerInterval int
 	FillerPhrase1 string
 	FillerPhrase2 string
 
@@ -36,6 +37,7 @@ func LoadConfig() *Config {
 
 	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "9000"))
 	tokenBudget, _ := strconv.Atoi(getEnv("TOKEN_BUDGET", "50"))
+	fillerInterval, _ := strconv.Atoi(getEnv("FILLER_INTERVAL", "100"))
 
 	return &Config{
 		ServerPort:      port,
@@ -48,6 +50,7 @@ func LoadConfig() *Config {
 		LargeLLMModel:   getEnv("LARGE_LLM_MODEL", "large-llm"),
 		TTSURL:          getEnv("TTS_URL", "http://localhost:50000"),
 		TokenBudget:     tokenBudget,
+		FillerInterval:  fillerInterval,
 		FillerPhrase1:   getEnv("FILLER_PHRASE_1", "好的，让我想一下"),
 		FillerPhrase2:   getEnv("FILLER_PHRASE_2", "还在查，稍等一下"),
 		SystemPrompt:      getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),

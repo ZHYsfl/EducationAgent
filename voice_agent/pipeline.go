@@ -28,9 +28,9 @@ type Pipeline struct {
 	audioCh  chan []byte   // audio data from session → pipeline
 	vadEndCh chan struct{} // signal: user stopped speaking
 
-	// For interrupt preservation
-	generatedTokens strings.Builder
-	tokensMu        sync.Mutex
+	// For interrupt preservation: tracks ALL tokens including <think> content
+	rawGeneratedTokens strings.Builder
+	tokensMu           sync.Mutex
 
 	// Draft thinking
 	draftCancel   context.CancelFunc
@@ -85,16 +85,26 @@ func (p *Pipeline) OnVADEnd() {
 }
 
 // OnInterrupt is called when user starts speaking during PROCESSING/SPEAKING.
-// Saves partial LLM output to history before the pipeline context is cancelled.
+// Saves partial LLM output (including <think> reasoning) to history before
+// the pipeline context is cancelled, so the model can resume from where it
+// left off in the next turn.
 func (p *Pipeline) OnInterrupt() {
 	p.tokensMu.Lock()
-	partial := p.generatedTokens.String()
-	p.generatedTokens.Reset()
+	raw := p.rawGeneratedTokens.String()
+	p.rawGeneratedTokens.Reset()
 	p.tokensMu.Unlock()
 
-	if partial != "" {
-		p.history.AddInterruptedAssistant(partial)
-		log.Printf("Interrupt: preserved %d chars of partial response", len(partial))
+	if raw != "" {
+		// Close unclosed <think> tag so the model sees well-formed history.
+		// Strip any partial </think> suffix (e.g. "</thi") before appending.
+		if strings.Contains(raw, "<think>") && !strings.Contains(raw, "</think>") {
+			if partial := longestSuffixPrefix(raw, "</think>"); partial != "" {
+				raw = raw[:len(raw)-len(partial)]
+			}
+			raw += "</think>"
+		}
+		p.history.AddInterruptedAssistant(raw)
+		log.Printf("Interrupt: preserved %d chars (including thinking)", len(raw))
 	}
 
 	p.cancelDraft()
@@ -112,7 +122,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 	p.vadEndCh = make(chan struct{}, 1)
 
 	p.tokensMu.Lock()
-	p.generatedTokens.Reset()
+	p.rawGeneratedTokens.Reset()
 	p.tokensMu.Unlock()
 
 	p.resetDraftOutput()
@@ -355,10 +365,22 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	totalTokens := 0 // ALL tokens (including <think>) for budget accounting
 	var sentenceBuf strings.Builder
 	var allTokens strings.Builder
-	fillerSent := false
 	firstSentenceSent := false
+	nextFillerAt := p.config.TokenBudget // first filler fires at TokenBudget
+	fillerCount := 0
 
 	var tf thinkFilter
+
+	// Interrupt-safe send: never blocks if ttsWorker already exited.
+	sendSentence := func(s string) bool {
+		p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
+		select {
+		case sentenceCh <- s:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
 
 	for token := range tokenCh {
 		if ctx.Err() != nil {
@@ -367,14 +389,15 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		totalTokens++
 
+		// Track ALL raw tokens (including <think>) for interrupt preservation
+		p.tokensMu.Lock()
+		p.rawGeneratedTokens.WriteString(token)
+		p.tokensMu.Unlock()
+
 		// Strip <think>...</think> blocks — only pass visible content through
 		visible := tf.Feed(token)
 
 		if visible != "" {
-			p.tokensMu.Lock()
-			p.generatedTokens.WriteString(visible)
-			p.tokensMu.Unlock()
-
 			allTokens.WriteString(visible)
 			p.session.SendJSON(WSMessage{Type: "response", Text: visible})
 		}
@@ -387,8 +410,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 				if isSentenceEnd(visible) && sentenceBuf.Len() > 0 {
 					sentence := sentenceBuf.String()
 					sentenceBuf.Reset()
-					p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
-					sentenceCh <- sentence
+					if !sendSentence(sentence) {
+						break
+					}
 					firstSentenceSent = true
 					if p.session.GetState() == StateProcessing {
 						p.session.SetState(StateSpeaking)
@@ -398,11 +422,17 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			continue
 		}
 
-		// Past token budget: if no sentence produced yet, inject filler
-		if !firstSentenceSent && !fillerSent {
-			p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
-			sentenceCh <- p.config.FillerPhrase1
-			fillerSent = true
+		// Periodic filler while model is still thinking and no visible sentence produced
+		if !firstSentenceSent && totalTokens >= nextFillerAt {
+			filler := p.config.FillerPhrase1
+			if fillerCount > 0 {
+				filler = p.config.FillerPhrase2
+			}
+			if !sendSentence(filler) {
+				break
+			}
+			fillerCount++
+			nextFillerAt = totalTokens + p.config.FillerInterval
 			if p.session.GetState() == StateProcessing {
 				p.session.SetState(StateSpeaking)
 			}
@@ -413,24 +443,20 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			if isSentenceEnd(visible) {
 				sentence := sentenceBuf.String()
 				sentenceBuf.Reset()
-				p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
-				sentenceCh <- sentence
+				if !sendSentence(sentence) {
+					break
+				}
 				firstSentenceSent = true
 			}
 		}
 	}
 
-	// Flush any buffered partial content from the filter
 	if flushed := tf.Flush(); flushed != "" {
 		allTokens.WriteString(flushed)
-		p.tokensMu.Lock()
-		p.generatedTokens.WriteString(flushed)
-		p.tokensMu.Unlock()
 		sentenceBuf.WriteString(flushed)
 	}
-
 	if sentenceBuf.Len() > 0 {
-		sentenceCh <- sentenceBuf.String()
+		sendSentence(sentenceBuf.String())
 	}
 	close(sentenceCh)
 
