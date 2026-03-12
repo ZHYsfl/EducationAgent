@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	SampleRate     = 16000 // 采样率 16kHz，与麦克风采集一致
-	BytesPerSample = 2     // 每采样 2 字节（Int16）
-	BlockDuration  = 1     // 每块 1 秒
+	SampleRate     = 16000                                       // 采样率 16kHz，与麦克风采集一致
+	BytesPerSample = 2                                           // 每采样 2 字节（Int16）
+	BlockDuration  = 1                                           // 每块 1 秒
 	BlockSize      = SampleRate * BytesPerSample * BlockDuration // 32000 字节 = 1 秒
 )
 
