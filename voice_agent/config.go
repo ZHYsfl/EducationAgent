@@ -22,10 +22,10 @@ type Config struct {
 
 	TTSURL string
 
-	TokenBudget   int
+	TokenBudget    int
 	FillerInterval int
-	FillerPhrase1 string
-	FillerPhrase2 string
+	FillerPhrases  []string
+	MaxFillers     int
 
 	SystemPrompt string
 
@@ -51,8 +51,12 @@ func LoadConfig() *Config {
 		TTSURL:          getEnv("TTS_URL", "http://localhost:50000"),
 		TokenBudget:     tokenBudget,
 		FillerInterval:  fillerInterval,
-		FillerPhrase1:   getEnv("FILLER_PHRASE_1", "好的，让我想一下"),
-		FillerPhrase2:   getEnv("FILLER_PHRASE_2", "还在查，稍等一下"),
+		FillerPhrases: []string{
+			getEnv("FILLER_PHRASE_1", "好的，让我想一下"),
+			getEnv("FILLER_PHRASE_2", "还在想，稍等一下"),
+			getEnv("FILLER_PHRASE_3", "马上就好"),
+		},
+		MaxFillers:        3,
 		SystemPrompt:      getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),
 		AdaptiveSizesFile: getEnv("ADAPTIVE_SIZES_FILE", "adaptive_sizes.json"),
 	}

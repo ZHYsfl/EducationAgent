@@ -358,7 +358,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		p.ttsWorker(ctx, sentenceCh)
 	}()
 
-	// Stream tokens from Large LLM (with accumulated thought if available)
+	// Stream tokens from Large LLM (with accumulated thought if available).
 	messages := p.history.ToOpenAIWithThought(previousThought)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
@@ -422,13 +422,14 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			continue
 		}
 
-		// Periodic filler while model is still thinking and no visible sentence produced
-		if !firstSentenceSent && totalTokens >= nextFillerAt {
-			filler := p.config.FillerPhrase1
-			if fillerCount > 0 {
-				filler = p.config.FillerPhrase2
+		// Periodic filler while model is still thinking and no visible sentence produced.
+		// Each filler is a different phrase; stop after MaxFillers to avoid sounding robotic.
+		if !firstSentenceSent && fillerCount < p.config.MaxFillers && totalTokens >= nextFillerAt {
+			idx := fillerCount
+			if idx >= len(p.config.FillerPhrases) {
+				idx = len(p.config.FillerPhrases) - 1
 			}
-			if !sendSentence(filler) {
+			if !sendSentence(p.config.FillerPhrases[idx]) {
 				break
 			}
 			fillerCount++
