@@ -352,40 +352,47 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	messages := p.history.ToOpenAIWithThought(previousThought)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
-	tokenCount := 0
+	totalTokens := 0 // ALL tokens (including <think>) for budget accounting
 	var sentenceBuf strings.Builder
 	var allTokens strings.Builder
 	fillerSent := false
 	firstSentenceSent := false
+
+	var tf thinkFilter
 
 	for token := range tokenCh {
 		if ctx.Err() != nil {
 			break
 		}
 
-		// Track all generated tokens for interrupt preservation
-		p.tokensMu.Lock()
-		p.generatedTokens.WriteString(token)
-		p.tokensMu.Unlock()
+		totalTokens++
 
-		allTokens.WriteString(token)
-		tokenCount++
+		// Strip <think>...</think> blocks — only pass visible content through
+		visible := tf.Feed(token)
 
-		// Send response text to browser incrementally
-		p.session.SendJSON(WSMessage{Type: "response", Text: token})
+		if visible != "" {
+			p.tokensMu.Lock()
+			p.generatedTokens.WriteString(visible)
+			p.tokensMu.Unlock()
 
-		// 边想边说: first N tokens are the thinking window
-		if tokenCount <= p.config.TokenBudget {
-			sentenceBuf.WriteString(token)
-			// Even during thinking window, check for early sentences
-			if isSentenceEnd(token) && sentenceBuf.Len() > 0 {
-				sentence := sentenceBuf.String()
-				sentenceBuf.Reset()
-				p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
-				sentenceCh <- sentence
-				firstSentenceSent = true
-				if p.session.GetState() == StateProcessing {
-					p.session.SetState(StateSpeaking)
+			allTokens.WriteString(visible)
+			p.session.SendJSON(WSMessage{Type: "response", Text: visible})
+		}
+
+		// Budget window counts ALL tokens: gives the model time to think
+		// internally, but if the budget runs out with nothing spoken, inject filler.
+		if totalTokens <= p.config.TokenBudget {
+			if visible != "" {
+				sentenceBuf.WriteString(visible)
+				if isSentenceEnd(visible) && sentenceBuf.Len() > 0 {
+					sentence := sentenceBuf.String()
+					sentenceBuf.Reset()
+					p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
+					sentenceCh <- sentence
+					firstSentenceSent = true
+					if p.session.GetState() == StateProcessing {
+						p.session.SetState(StateSpeaking)
+					}
 				}
 			}
 			continue
@@ -401,17 +408,27 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			}
 		}
 
-		sentenceBuf.WriteString(token)
-		if isSentenceEnd(token) {
-			sentence := sentenceBuf.String()
-			sentenceBuf.Reset()
-			p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
-			sentenceCh <- sentence
-			firstSentenceSent = true
+		if visible != "" {
+			sentenceBuf.WriteString(visible)
+			if isSentenceEnd(visible) {
+				sentence := sentenceBuf.String()
+				sentenceBuf.Reset()
+				p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
+				sentenceCh <- sentence
+				firstSentenceSent = true
+			}
 		}
 	}
 
-	// Flush remaining text
+	// Flush any buffered partial content from the filter
+	if flushed := tf.Flush(); flushed != "" {
+		allTokens.WriteString(flushed)
+		p.tokensMu.Lock()
+		p.generatedTokens.WriteString(flushed)
+		p.tokensMu.Unlock()
+		sentenceBuf.WriteString(flushed)
+	}
+
 	if sentenceBuf.Len() > 0 {
 		sentenceCh <- sentenceBuf.String()
 	}
