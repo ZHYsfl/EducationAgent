@@ -116,12 +116,12 @@ func (c *ASRClient) EndSession(ctx context.Context) {
 // RecognizeStream is a high-level helper: opens a session, streams audio
 // from audioCh, and returns recognized text chunks via the returned channel.
 // Close audioCh to signal end of speech.
-func (c *ASRClient) RecognizeStream(ctx context.Context, audioCh <-chan []byte) (<-chan ASRResult, error) {
+func (c *ASRClient) RecognizeStream(ctx context.Context, audioCh <-chan []byte, resultBufSize int) (<-chan ASRResult, error) {
 	if err := c.StartSession(ctx); err != nil {
 		return nil, err
 	}
 
-	resultCh := make(chan ASRResult, 20)
+	resultCh := make(chan ASRResult, resultBufSize)
 
 	// Writer: forward audio to ASR server
 	go func() {
