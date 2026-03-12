@@ -63,11 +63,12 @@ type writeItem struct {
 }
 
 func NewSession(conn *websocket.Conn, config *Config) *Session {
+	sizes := LoadChannelSizes(config.AdaptiveSizesFile, DefaultChannelSizes())
 	s := &Session{
 		conn:    conn,
 		config:  config,
 		state:   StateIdle,
-		writeCh: make(chan writeItem, 256),
+		writeCh: make(chan writeItem, sizes.WriteCh),
 		done:    make(chan struct{}),
 	}
 	s.pipeline = NewPipeline(s, config)
@@ -126,6 +127,9 @@ func (s *Session) SendJSON(msg WSMessage) {
 	if err != nil {
 		return
 	}
+	if s.pipeline != nil {
+		s.pipeline.adaptive.RecordLen("write_ch", len(s.writeCh))
+	}
 	select {
 	case s.writeCh <- writeItem{msgType: websocket.TextMessage, data: data}:
 	case <-s.done:
@@ -133,6 +137,9 @@ func (s *Session) SendJSON(msg WSMessage) {
 }
 
 func (s *Session) SendAudio(data []byte) {
+	if s.pipeline != nil {
+		s.pipeline.adaptive.RecordLen("write_ch", len(s.writeCh))
+	}
 	select {
 	case s.writeCh <- writeItem{msgType: websocket.BinaryMessage, data: data}:
 	case <-s.done:

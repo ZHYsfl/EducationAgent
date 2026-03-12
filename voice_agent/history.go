@@ -63,10 +63,24 @@ func (h *ConversationHistory) ToOpenAI() []openai.ChatCompletionMessageParamUnio
 	return msgs
 }
 
-// ToOpenAIWithDraft returns messages with an additional user message appended
-// (used for draft thinking during listening).
-func (h *ConversationHistory) ToOpenAIWithDraft(draftUserText string) []openai.ChatCompletionMessageParamUnion {
+// ToOpenAIWithDraftAndThought builds messages for draft thinking rounds:
+// history + partial user text + previous thinker output (if any).
+func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previousThought string) []openai.ChatCompletionMessageParamUnion {
 	msgs := h.ToOpenAI()
 	msgs = append(msgs, openai.UserMessage(draftUserText))
+	if previousThought != "" {
+		msgs = append(msgs, openai.AssistantMessage("[内部草稿，可能不完整或片面，仅供继续推理，不可直接复述] "+previousThought+" [思考中...]"))
+	}
+	return msgs
+}
+
+// ToOpenAIWithThought builds messages for final processing:
+// history (which already includes the user message via AddUser) + accumulated
+// thinker output as an assistant prefix (if any).
+func (h *ConversationHistory) ToOpenAIWithThought(previousThought string) []openai.ChatCompletionMessageParamUnion {
+	msgs := h.ToOpenAI()
+	if previousThought != "" {
+		msgs = append(msgs, openai.AssistantMessage("[内部草稿，可能不完整或片面，仅供继续推理，不可直接复述] "+previousThought+" [基于部分输入的预思考，请结合完整输入继续]"))
+	}
 	return msgs
 }

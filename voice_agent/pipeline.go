@@ -21,7 +21,8 @@ type Pipeline struct {
 	largeLLM  *toolcalling.Agent
 	ttsClient *TTSClient
 
-	history *ConversationHistory
+	history  *ConversationHistory
+	adaptive *AdaptiveController
 
 	audioBuf *AudioBuffer
 	audioCh  chan []byte   // audio data from session → pipeline
@@ -31,12 +32,15 @@ type Pipeline struct {
 	generatedTokens strings.Builder
 	tokensMu        sync.Mutex
 
-	// Draft thinking cancel
-	draftCancel context.CancelFunc
-	draftMu     sync.Mutex
+	// Draft thinking
+	draftCancel   context.CancelFunc
+	draftMu       sync.Mutex
+	draftOutput   strings.Builder // accumulated thinker output across rounds
+	draftOutputMu sync.Mutex
 }
 
 func NewPipeline(session *Session, config *Config) *Pipeline {
+	sizes := LoadChannelSizes(config.AdaptiveSizesFile, DefaultChannelSizes())
 	return &Pipeline{
 		session:   session,
 		config:    config,
@@ -54,16 +58,18 @@ func NewPipeline(session *Session, config *Config) *Pipeline {
 		ttsClient: NewTTSClient(config.TTSURL),
 		history:   NewConversationHistory(config.SystemPrompt),
 		audioBuf:  NewAudioBuffer(),
+		adaptive:  NewAdaptiveController(sizes),
 	}
 }
 
 // OnAudioData is called by the session when audio arrives during LISTENING.
 func (p *Pipeline) OnAudioData(data []byte) {
 	if p.audioCh != nil {
+		p.adaptive.RecordLen("audio_ch", len(p.audioCh))
 		select {
 		case p.audioCh <- data:
 		default:
-			// Drop frame if channel full (backpressure)
+			p.adaptive.RecordBlock("audio_ch")
 		}
 	}
 }
@@ -102,26 +108,30 @@ func (p *Pipeline) OnInterrupt() {
 // check for interrupt intent, and optionally do draft thinking.
 func (p *Pipeline) StartListening(ctx context.Context) {
 	p.audioBuf.Reset()
-	p.audioCh = make(chan []byte, 200)
+	p.audioCh = make(chan []byte, p.adaptive.Get("audio_ch"))
 	p.vadEndCh = make(chan struct{}, 1)
 
 	p.tokensMu.Lock()
 	p.generatedTokens.Reset()
 	p.tokensMu.Unlock()
 
-	// Channel for sending 1s audio blocks to ASR
-	asrAudioCh := make(chan []byte, 20)
+	p.resetDraftOutput()
 
-	// Start ASR streaming session
-	asrResultCh, err := p.asrClient.RecognizeStream(ctx, asrAudioCh)
+	asrAudioCh := make(chan []byte, p.adaptive.Get("asr_audio_ch"))
+
+	asrResultCh, err := p.asrClient.RecognizeStream(ctx, asrAudioCh, p.adaptive.Get("asr_result_ch"))
 	if err != nil {
 		log.Printf("ASR start failed: %v", err)
 		p.session.SetState(StateIdle)
 		return
 	}
 
-	var asrTexts []string
+	var partialTexts []string
+	var finalText string
 	vadEnded := false
+	draftStarted := false
+	asrSinceDraft := 0
+	draftInterval := 1
 
 	for {
 		select {
@@ -134,6 +144,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 				if !ok {
 					break
 				}
+				p.adaptive.RecordLen("asr_audio_ch", len(asrAudioCh))
 				select {
 				case asrAudioCh <- block:
 				case <-ctx.Done():
@@ -144,9 +155,11 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 
 		case result, ok := <-asrResultCh:
 			if !ok {
-				// ASR channel closed
-				if len(asrTexts) > 0 {
-					fullText := strings.Join(asrTexts, "")
+				fullText := finalText
+				if fullText == "" {
+					fullText = strings.Join(partialTexts, "")
+				}
+				if fullText != "" {
 					p.startProcessing(ctx, fullText)
 				} else {
 					p.session.SetState(StateIdle)
@@ -154,26 +167,39 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 				return
 			}
 
-			asrTexts = append(asrTexts, result.Text)
-			fullText := strings.Join(asrTexts, "")
-
-			// Send transcript to browser
-			p.session.SendJSON(WSMessage{Type: "transcript", Text: fullText})
-
-			// Small LLM: check if this is a real interrupt
-			if isInterrupt(ctx, p.smallLLM, fullText) {
-				close(asrAudioCh) // end ASR session
-				p.cancelDraft()
-				p.startProcessing(ctx, fullText)
-				return
+			if result.Mode == "2pass-offline" {
+				finalText = result.Text
+				p.session.SendJSON(WSMessage{Type: "transcript_final", Text: finalText})
+			} else {
+				partialTexts = append(partialTexts, result.Text)
+				partialText := strings.Join(partialTexts, "")
+				p.session.SendJSON(WSMessage{Type: "transcript", Text: partialText})
 			}
 
-			// 边听边想: draft thinking with accumulated text
-			p.startDraftThinking(ctx, fullText)
+			// Draft thinking uses partial text (low latency)
+			currentText := strings.Join(partialTexts, "")
+			if currentText == "" {
+				break
+			}
+
+			if !draftStarted {
+				if isInterrupt(ctx, p.smallLLM, currentText) {
+					draftStarted = true
+					asrSinceDraft = 0
+					draftInterval = 2
+					p.startDraftThinking(ctx, currentText)
+				}
+			} else {
+				asrSinceDraft++
+				if asrSinceDraft >= draftInterval {
+					asrSinceDraft = 0
+					draftInterval++
+					p.startDraftThinking(ctx, currentText)
+				}
+			}
 
 		case <-p.vadEndCh:
 			vadEnded = true
-			// Send remaining audio to ASR
 			if remaining := p.audioBuf.Flush(); len(remaining) > 0 {
 				select {
 				case asrAudioCh <- remaining:
@@ -182,15 +208,21 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 			}
 			close(asrAudioCh)
 
-			// Wait briefly for final ASR results
-			p.drainASRResults(ctx, asrResultCh, &asrTexts, 2*time.Second)
+			// Wait for final ASR results (including 2pass-offline)
+			p.drainASRResults(ctx, asrResultCh, &partialTexts, &finalText, 2*time.Second)
 
 			p.cancelDraft()
 
-			fullText := strings.Join(asrTexts, "")
+			fullText := finalText
+			if fullText == "" {
+				fullText = strings.Join(partialTexts, "")
+			}
 			if fullText == "" {
 				p.session.SetState(StateIdle)
 				return
+			}
+			if finalText != "" {
+				p.session.SendJSON(WSMessage{Type: "transcript_final", Text: finalText})
 			}
 			p.startProcessing(ctx, fullText)
 			return
@@ -205,7 +237,8 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 }
 
 // drainASRResults reads remaining ASR results until timeout or channel close.
-func (p *Pipeline) drainASRResults(ctx context.Context, ch <-chan ASRResult, texts *[]string, timeout time.Duration) {
+// 2pass-offline results update finalText; others append to partialTexts.
+func (p *Pipeline) drainASRResults(ctx context.Context, ch <-chan ASRResult, partialTexts *[]string, finalText *string, timeout time.Duration) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -215,8 +248,13 @@ func (p *Pipeline) drainASRResults(ctx context.Context, ch <-chan ASRResult, tex
 			if !ok {
 				return
 			}
-			if result.Text != "" {
-				*texts = append(*texts, result.Text)
+			if result.Text == "" {
+				continue
+			}
+			if result.Mode == "2pass-offline" {
+				*finalText = result.Text
+			} else {
+				*partialTexts = append(*partialTexts, result.Text)
 			}
 			if result.IsFinal {
 				return
@@ -234,21 +272,20 @@ func (p *Pipeline) drainASRResults(ctx context.Context, ch <-chan ASRResult, tex
 // ---------------------------------------------------------------------------
 
 func (p *Pipeline) startDraftThinking(ctx context.Context, partialText string) {
+	previousThought := p.getDraftOutput()
 	p.cancelDraft()
+	p.resetDraftOutput()
 
 	p.draftMu.Lock()
 	draftCtx, cancel := context.WithCancel(ctx)
 	p.draftCancel = cancel
 	p.draftMu.Unlock()
 
-	// Fire-and-forget: warm up vLLM prefix cache with partial user text.
-	// We discard the output — the benefit is that when the real request
-	// arrives, vLLM reuses the cached prefix KV.
 	go func() {
-		messages := p.history.ToOpenAIWithDraft(partialText)
+		messages := p.history.ToOpenAIWithDraftAndThought(partialText, previousThought)
 		tokenCh := p.largeLLM.StreamChat(draftCtx, messages)
-		for range tokenCh {
-			// discard draft tokens
+		for token := range tokenCh {
+			p.appendDraftOutput(token)
 		}
 	}()
 }
@@ -262,21 +299,47 @@ func (p *Pipeline) cancelDraft() {
 	p.draftMu.Unlock()
 }
 
+func (p *Pipeline) getDraftOutput() string {
+	p.draftOutputMu.Lock()
+	defer p.draftOutputMu.Unlock()
+	return p.draftOutput.String()
+}
+
+func (p *Pipeline) appendDraftOutput(token string) {
+	p.draftOutputMu.Lock()
+	p.draftOutput.WriteString(token)
+	p.draftOutputMu.Unlock()
+}
+
+func (p *Pipeline) resetDraftOutput() {
+	p.draftOutputMu.Lock()
+	p.draftOutput.Reset()
+	p.draftOutputMu.Unlock()
+}
+
 // ---------------------------------------------------------------------------
 // PROCESSING → SPEAKING phase
 // ---------------------------------------------------------------------------
 
 func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.SetState(StateProcessing)
+
+	// Grab accumulated thinker output before clearing
+	previousThought := p.getDraftOutput()
+	p.resetDraftOutput()
+
 	p.history.AddUser(userText)
 
 	log.Printf("Processing user input: %s", truncate(userText, 100))
+	if previousThought != "" {
+		log.Printf("With %d chars of pre-thinking", len(previousThought))
+	}
 
 	// Send user text to browser for display
 	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
 
 	// TTS sentence queue — decouples LLM generation from TTS synthesis
-	sentenceCh := make(chan string, 20)
+	sentenceCh := make(chan string, p.adaptive.Get("sentence_ch"))
 
 	var ttsWg sync.WaitGroup
 	ttsWg.Add(1)
@@ -285,8 +348,8 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		p.ttsWorker(ctx, sentenceCh)
 	}()
 
-	// Stream tokens from Large LLM
-	messages := p.history.ToOpenAI()
+	// Stream tokens from Large LLM (with accumulated thought if available)
+	messages := p.history.ToOpenAIWithThought(previousThought)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
 	tokenCount := 0
@@ -318,6 +381,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			if isSentenceEnd(token) && sentenceBuf.Len() > 0 {
 				sentence := sentenceBuf.String()
 				sentenceBuf.Reset()
+				p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
 				sentenceCh <- sentence
 				firstSentenceSent = true
 				if p.session.GetState() == StateProcessing {
@@ -329,6 +393,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		// Past token budget: if no sentence produced yet, inject filler
 		if !firstSentenceSent && !fillerSent {
+			p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
 			sentenceCh <- p.config.FillerPhrase1
 			fillerSent = true
 			if p.session.GetState() == StateProcessing {
@@ -340,6 +405,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		if isSentenceEnd(token) {
 			sentence := sentenceBuf.String()
 			sentenceBuf.Reset()
+			p.adaptive.RecordLen("sentence_ch", len(sentenceCh))
 			sentenceCh <- sentence
 			firstSentenceSent = true
 		}
@@ -362,6 +428,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		}
 		p.session.SetState(StateIdle)
 	}
+
+	p.adaptive.Adjust()
+	p.adaptive.Save(p.config.AdaptiveSizesFile)
 }
 
 // ttsWorker reads sentences from the channel, synthesizes audio, and sends
@@ -381,7 +450,7 @@ func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
 
 			log.Printf("TTS: %s", truncate(sentence, 60))
 
-			audioCh, err := p.ttsClient.Synthesize(ctx, sentence)
+			audioCh, err := p.ttsClient.Synthesize(ctx, sentence, p.adaptive.Get("tts_chunk_ch"))
 			if err != nil {
 				log.Printf("tts synthesize: %v", err)
 				continue
@@ -404,8 +473,8 @@ func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
 // ---------------------------------------------------------------------------
 
 const interruptDetectionPrompt = `你是语音意图检测模型。给定一段ASR识别文本，判断其是否包含有意义的用户意图。
-interrupt — 文本含有实际语义：问题、指令、陈述、确认（好/对/可以）、否定（不要/停/别说了）、哪怕是未说完的半句话（"我想问"、"那个东西"）。
-do not interrupt — 文本仅为无语义噪声：语气词（嗯、啊、哦、呃、emm）、咳嗽/笑声的误识别、重复填充音（啊啊啊）、空白或乱码。
+interrupt — 文本含有实际语义：问题、指令、陈述、确认、否定、哪怕是未说完的半句话。
+do not interrupt — 文本仅为无语义噪声：语气词（嗯、啊、哦、呃、emm）、咳嗽/笑声的误识别、重复填充音、空白或乱码。
 只输出 interrupt 或 do not interrupt，不要输出任何其他内容。`
 
 func isInterrupt(ctx context.Context, agent *toolcalling.Agent, text string) bool {
@@ -418,8 +487,28 @@ func isInterrupt(ctx context.Context, agent *toolcalling.Agent, text string) boo
 		log.Printf("interrupt detection error: %v", err)
 		return true
 	}
-	return strings.Contains(strings.ToLower(resp), "interrupt") &&
-		!strings.Contains(strings.ToLower(resp), "do not interrupt")
+	label := strings.ToLower(strings.TrimSpace(resp))
+	label = strings.Trim(label, " \t\r\n\"'`.,!?;:()[]{}<>，。！？；：")
+
+	// Prefer exact label match first.
+	switch label {
+	case "interrupt":
+		return true
+	case "do not interrupt", "do-not-interrupt", "donotinterrupt":
+		return false
+	}
+
+	// Fallback for noisy outputs, e.g. "interrupt." / "do not interrupt\n".
+	if strings.Contains(label, "do not interrupt") || strings.Contains(label, "do-not-interrupt") {
+		return false
+	}
+	if strings.Contains(label, "interrupt") {
+		return true
+	}
+
+	// Conservative fallback: treat unknown output as interrupt.
+	log.Printf("interrupt detection unexpected output: %q", resp)
+	return true
 }
 
 // ---------------------------------------------------------------------------

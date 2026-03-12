@@ -26,8 +26,8 @@ func NewTTSClient(baseURL string) *TTSClient {
 
 // Synthesize sends text to CosyVoice2 and returns a channel that yields
 // WAV audio chunks. The channel is closed when synthesis is complete.
-func (c *TTSClient) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
-	ch := make(chan []byte, 20)
+func (c *TTSClient) Synthesize(ctx context.Context, text string, bufSize int) (<-chan []byte, error) {
+	ch := make(chan []byte, bufSize)
 
 	form := url.Values{}
 	form.Set("tts_text", text)

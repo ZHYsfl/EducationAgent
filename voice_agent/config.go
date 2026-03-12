@@ -27,6 +27,8 @@ type Config struct {
 	FillerPhrase2 string
 
 	SystemPrompt string
+
+	AdaptiveSizesFile string
 }
 
 func LoadConfig() *Config {
@@ -48,7 +50,8 @@ func LoadConfig() *Config {
 		TokenBudget:     tokenBudget,
 		FillerPhrase1:   getEnv("FILLER_PHRASE_1", "好的，让我想一下"),
 		FillerPhrase2:   getEnv("FILLER_PHRASE_2", "还在查，稍等一下"),
-		SystemPrompt:    getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),
+		SystemPrompt:      getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),
+		AdaptiveSizesFile: getEnv("ADAPTIVE_SIZES_FILE", "adaptive_sizes.json"),
 	}
 }
 

@@ -1,11 +1,13 @@
 // ---------------------------------------------------------------------------
 // DOM elements
 // ---------------------------------------------------------------------------
-const statusRing = document.getElementById("status-ring");
-const statusLabel = document.getElementById("status-label");
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
 const startBtn = document.getElementById("start-btn");
-const transcriptEl = document.getElementById("transcript-content");
-const responseEl = document.getElementById("response-content");
+const chatContainer = document.getElementById("chat-container");
+const chatEmpty = document.getElementById("chat-empty");
+const eventLogEl = document.getElementById("event-log");
+const logArrow = document.getElementById("log-arrow");
 
 // ---------------------------------------------------------------------------
 // State
@@ -15,16 +17,16 @@ let vad = null;
 let running = false;
 let isSpeaking = false;
 
-// Pre-speech buffer: keep last ~1s of audio frames before speech starts.
-// Each VAD frame ≈ 96ms at 16kHz (1536 samples), so ~11 frames ≈ 1s.
 const PRE_SPEECH_FRAMES = 11;
 let preSpeechBuffer = [];
 
-// Audio playback queue
 let audioQueue = [];
 let isPlaying = false;
 let currentSource = null;
 let audioContext = null;
+
+let currentUserBubble = null;
+let currentAIBubble = null;
 
 // ---------------------------------------------------------------------------
 // WebSocket
@@ -34,12 +36,12 @@ function connectWS() {
   ws = new WebSocket(`${proto}//${location.host}/ws`);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen = () => console.log("WS connected");
+  ws.onopen = () => logEvent("WS", "connected");
   ws.onclose = () => {
-    console.log("WS disconnected");
+    logEvent("WS", "disconnected");
     if (running) setTimeout(connectWS, 2000);
   };
-  ws.onerror = (e) => console.error("WS error:", e);
+  ws.onerror = (e) => logEvent("WS_ERROR", e.type);
 
   ws.onmessage = (event) => {
     if (event.data instanceof ArrayBuffer) {
@@ -69,26 +71,133 @@ function handleServerMessage(msg) {
   switch (msg.type) {
     case "status":
       setStatus(msg.state);
+      logEvent("STATUS", msg.state);
+      if (msg.state === "listening") {
+        startNewUserBubble();
+      }
+      if (msg.state === "processing") {
+        startNewAIBubble();
+      }
       break;
+
     case "transcript":
-      transcriptEl.textContent = msg.text;
+      updateCurrentUserBubble(msg.text);
+      logEvent("ASR_PARTIAL", truncateLog(msg.text, 60));
       break;
+
+    case "transcript_final":
+      replaceCurrentUserBubble(msg.text);
+      logEvent("ASR_FINAL", truncateLog(msg.text, 60));
+      break;
+
     case "response":
-      responseEl.textContent += msg.text;
+      appendCurrentAIBubble(msg.text);
       break;
   }
 }
 
 function setStatus(state) {
-  statusRing.className = state;
-  statusLabel.textContent = state.toUpperCase();
+  statusDot.className = "status-dot " + state;
+  statusText.textContent = state.toUpperCase();
 
-  // Clear response display when a new listening cycle starts
   if (state === "listening") {
-    transcriptEl.textContent = "";
-    responseEl.textContent = "";
     stopAudio();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Chat bubble management
+// ---------------------------------------------------------------------------
+function startNewUserBubble() {
+  chatEmpty.style.display = "none";
+  const block = createMsgBlock("user", "You");
+  chatContainer.appendChild(block.el);
+  currentUserBubble = block;
+  scrollChat();
+}
+
+function startNewAIBubble() {
+  const block = createMsgBlock("ai", "AI");
+  chatContainer.appendChild(block.el);
+  currentAIBubble = block;
+  scrollChat();
+}
+
+function updateCurrentUserBubble(text) {
+  if (!currentUserBubble) startNewUserBubble();
+  currentUserBubble.textEl.textContent = text;
+  scrollChat();
+}
+
+function replaceCurrentUserBubble(text) {
+  if (!currentUserBubble) startNewUserBubble();
+  currentUserBubble.textEl.textContent = text;
+  currentUserBubble.textEl.classList.add("finalizing");
+  setTimeout(() => currentUserBubble.textEl.classList.remove("finalizing"), 500);
+  scrollChat();
+}
+
+function appendCurrentAIBubble(text) {
+  if (!currentAIBubble) startNewAIBubble();
+  currentAIBubble.textEl.textContent += text;
+  scrollChat();
+}
+
+function createMsgBlock(role, label) {
+  const el = document.createElement("div");
+  el.className = "msg-block";
+
+  const bar = document.createElement("div");
+  bar.className = "msg-bar " + role;
+
+  const body = document.createElement("div");
+  body.className = "msg-body";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "msg-label";
+  labelEl.textContent = label;
+
+  const textEl = document.createElement("div");
+  textEl.className = "msg-text";
+
+  body.appendChild(labelEl);
+  body.appendChild(textEl);
+  el.appendChild(bar);
+  el.appendChild(body);
+
+  return { el, textEl };
+}
+
+function scrollChat() {
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// Event log
+// ---------------------------------------------------------------------------
+function logEvent(type, detail) {
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8) + "." + String(now.getMilliseconds()).padStart(3, "0");
+
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.innerHTML = `<span class="ts">[${ts}]</span> <span class="evt">${type}</span> ${escapeHtml(detail || "")}`;
+  eventLogEl.appendChild(line);
+  eventLogEl.scrollTop = eventLogEl.scrollHeight;
+}
+
+function toggleLog() {
+  eventLogEl.classList.toggle("open");
+  logArrow.classList.toggle("open");
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function truncateLog(s, max) {
+  if (s.length <= max) return s;
+  return s.slice(0, max) + "...";
 }
 
 // ---------------------------------------------------------------------------
@@ -101,13 +210,12 @@ async function startVAD() {
     positiveSpeechThreshold: 0.8,
     negativeSpeechThreshold: 0.3,
     minSpeechFrames: 3,
-    preSpeechPadFrames: 0, // we handle pre-speech ourselves
+    preSpeechPadFrames: 0,
 
     onSpeechStart: () => {
       isSpeaking = true;
       sendJSON({ type: "vad_start" });
-
-      // Flush pre-speech buffer (≈1s before speech)
+      logEvent("VAD", "speech_start");
       for (const frame of preSpeechBuffer) {
         sendAudio(float32ToInt16(frame));
       }
@@ -117,13 +225,13 @@ async function startVAD() {
     onSpeechEnd: (_audio) => {
       isSpeaking = false;
       sendJSON({ type: "vad_end" });
+      logEvent("VAD", "speech_end");
     },
 
     onFrameProcessed: (_probs, frame) => {
       if (isSpeaking) {
         sendAudio(float32ToInt16(frame));
       } else {
-        // Maintain rolling 1s buffer
         preSpeechBuffer.push(new Float32Array(frame));
         if (preSpeechBuffer.length > PRE_SPEECH_FRAMES) {
           preSpeechBuffer.shift();
@@ -170,7 +278,6 @@ async function playNext() {
     if (!audioContext || audioContext.state === "closed") {
       audioContext = new AudioContext({ sampleRate: 24000 });
     }
-    // Resume if suspended (autoplay policy)
     if (audioContext.state === "suspended") {
       await audioContext.resume();
     }
@@ -198,7 +305,7 @@ function stopAudio() {
 }
 
 // ---------------------------------------------------------------------------
-// Float32 → Int16 conversion
+// Float32 -> Int16 conversion
 // ---------------------------------------------------------------------------
 function float32ToInt16(float32Array) {
   const int16 = new Int16Array(float32Array.length);
@@ -221,13 +328,14 @@ async function toggleVoice() {
     stopAudio();
     if (ws) ws.close();
     setStatus("idle");
+    logEvent("SYSTEM", "stopped");
   } else {
     running = true;
     startBtn.textContent = "Stop";
     startBtn.classList.add("active");
     connectWS();
-    // Small delay to let WS connect before starting VAD
     setTimeout(() => startVAD(), 500);
     setStatus("idle");
+    logEvent("SYSTEM", "started");
   }
 }
