@@ -1,0 +1,1250 @@
+{"content": "哦？", "label": "interrupt", "reasoning": "'哦？' 是边界case，打断。"}
+{"content": "啊啊明白", "label": "interrupt", "reasoning": "'啊啊明白' 是语气词+实词，打断。"}
+{"content": "我要核实", "label": "interrupt", "reasoning": "'我要核实' 是半句话，含意图，打断。"}
+{"content": "可不可以确认一下", "label": "interrupt", "reasoning": "'可不可以确认一下' 是半句话，含意图，打断。"}
+{"content": "啊啊呵呵", "label": "do not interrupt", "reasoning": "'啊啊呵呵' 是语气词，无语义，不打断。"}
+{"content": "给我找附近的餐厅", "label": "interrupt", "reasoning": "'给我找附近的餐厅' 是完整句子，打断。"}
+{"content": "附近的药店怎么预约", "label": "interrupt", "reasoning": "'附近的药店怎么预约' 是完整句子，打断。"}
+{"content": "我要查询", "label": "interrupt", "reasoning": "'我要查询' 是半句话，含意图，打断。"}
+{"content": "最近的地铁站多少钱", "label": "interrupt", "reasoning": "'最近的地铁站多少钱' 是完整句子，打断。"}
+{"content": "嗯嗯明白", "label": "interrupt", "reasoning": "'嗯嗯明白' 是边界case，打断。"}
+{"content": "帮我查附近的餐厅", "label": "interrupt", "reasoning": "'帮我查附近的餐厅' 是完整句子，打断。"}
+{"content": "喟喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊好", "label": "interrupt", "reasoning": "'啊啊啊好' 是边界case，打断。"}
+{"content": "地点是否开放", "label": "interrupt", "reasoning": "'地点是否开放' 是完整句子，打断。"}
+{"content": "哇哇哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "分享", "label": "interrupt", "reasoning": "'分享' 是单字指令，打断。"}
+{"content": "名字有没有", "label": "interrupt", "reasoning": "'名字有没有' 是完整句子，打断。"}
+{"content": "可不可以问一下", "label": "interrupt", "reasoning": "'可不可以问一下' 是半句话，含意图，打断。"}
+{"content": "嗯嗯帮我", "label": "interrupt", "reasoning": "'嗯嗯帮我' 是语气词+实词，打断。"}
+{"content": "登出", "label": "interrupt", "reasoning": "'登出' 是单字指令，打断。"}
+{"content": "告诉我地铁时刻表", "label": "interrupt", "reasoning": "'告诉我地铁时刻表' 是完整句子，打断。"}
+{"content": "地址在哪里", "label": "interrupt", "reasoning": "'地址在哪里' 是完整句子，打断。"}
+{"content": "下一班车怎么样", "label": "interrupt", "reasoning": "'下一班车怎么样' 是完整句子，打断。"}
+{"content": "咒", "label": "do not interrupt", "reasoning": "'咒' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊这样啊", "label": "interrupt", "reasoning": "'啊这样啊' 是语气词+实词，打断。"}
+{"content": "咋shh", "label": "do not interrupt", "reasoning": "'咋shh' 是噪音/误识别，无语义，不打断。"}
+{"content": "重启", "label": "interrupt", "reasoning": "'重启' 是单字指令，打断。"}
+{"content": "有没有查询", "label": "interrupt", "reasoning": "'有没有查询' 是半句话，含意图，打断。"}
+{"content": "我想问一下", "label": "interrupt", "reasoning": "'我想问一下' 是半句话，含意图，打断。"}
+{"content": "嗯嗯哦", "label": "do not interrupt", "reasoning": "'嗯嗯哦' 是语气词，无语义，不打断。"}
+{"content": "啊好", "label": "interrupt", "reasoning": "'啊好' 是边界case，打断。"}
+{"content": "我打算了解一下", "label": "interrupt", "reasoning": "'我打算了解一下' 是半句话，含意图，打断。"}
+{"content": "咏咏咏咏咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏咏咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "我需要问你", "label": "interrupt", "reasoning": "'我需要问你' 是半句话，含意图，打断。"}
+{"content": "底底底", "label": "do not interrupt", "reasoning": "'底底底' 是噪音/误识别，无语义，不打断。"}
+{"content": "地点怎么用", "label": "interrupt", "reasoning": "'地点怎么用' 是完整句子，打断。"}
+{"content": "来", "label": "interrupt", "reasoning": "'来' 是单字指令，打断。"}
+{"content": "嗯帮我", "label": "interrupt", "reasoning": "'嗯帮我' 是语气词+实词，打断。"}
+{"content": "这个月的账单怎么用", "label": "interrupt", "reasoning": "'这个月的账单怎么用' 是完整句子，打断。"}
+{"content": "告诉我机票信息", "label": "interrupt", "reasoning": "'告诉我机票信息' 是完整句子，打断。"}
+{"content": "下周的计划怎么预约", "label": "interrupt", "reasoning": "'下周的计划怎么预约' 是完整句子，打断。"}
+{"content": "买", "label": "interrupt", "reasoning": "'买' 是单字指令，打断。"}
+{"content": "啊啃啊", "label": "do not interrupt", "reasoning": "'啊啃啊' 是语气词，无语义，不打断。"}
+{"content": "想问一下", "label": "interrupt", "reasoning": "'想问一下' 是半句话，含意图，打断。"}
+{"content": "呵呵哦哦", "label": "do not interrupt", "reasoning": "'呵呵哦哦' 是语气词，无语义，不打断。"}
+{"content": "地点怎么去", "label": "interrupt", "reasoning": "'地点怎么去' 是完整句子，打断。"}
+{"content": "我打算请教", "label": "interrupt", "reasoning": "'我打算请教' 是半句话，含意图，打断。"}
+{"content": "我需要查一下", "label": "interrupt", "reasoning": "'我需要查一下' 是半句话，含意图，打断。"}
+{"content": "附近的药店有没有", "label": "interrupt", "reasoning": "'附近的药店有没有' 是完整句子，打断。"}
+{"content": "咋問咋", "label": "do not interrupt", "reasoning": "'咋問咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯好", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯好' 是边界case，打断。"}
+{"content": "呵哈呵", "label": "do not interrupt", "reasoning": "'呵哈呵' 是语气词，无语义，不打断。"}
+{"content": "哟哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "喟喟喟喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "咋咋咋咋咋咋", "label": "do not interrupt", "reasoning": "'咋咋咋咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "咋咋問問", "label": "do not interrupt", "reasoning": "'咋咋問問' 是噪音/误识别，无语义，不打断。"}
+{"content": "最新的消息怎么预约", "label": "interrupt", "reasoning": "'最新的消息怎么预约' 是完整句子，打断。"}
+{"content": "咋咋hx", "label": "do not interrupt", "reasoning": "'咋咋hx' 是噪音/误识别，无语义，不打断。"}
+{"content": "日期怎么预约", "label": "interrupt", "reasoning": "'日期怎么预约' 是完整句子，打断。"}
+{"content": "我希望搜索", "label": "interrupt", "reasoning": "'我希望搜索' 是半句话，含意图，打断。"}
+{"content": "咋咋咋咋咋", "label": "do not interrupt", "reasoning": "'咋咋咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "ts咋", "label": "do not interrupt", "reasoning": "'ts咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "有没有询问", "label": "interrupt", "reasoning": "'有没有询问' 是半句话，含意图，打断。"}
+{"content": "我想问你", "label": "interrupt", "reasoning": "'我想问你' 是半句话，含意图，打断。"}
+{"content": "删", "label": "interrupt", "reasoning": "'删' 是单字指令，打断。"}
+{"content": "能不能请教", "label": "interrupt", "reasoning": "'能不能请教' 是半句话，含意图，打断。"}
+{"content": "嗯嗯好", "label": "interrupt", "reasoning": "'嗯嗯好' 是语气词+实词，打断。"}
+{"content": "問咋", "label": "do not interrupt", "reasoning": "'問咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯呵呵", "label": "do not interrupt", "reasoning": "'嗯呵呵' 是语气词，无语义，不打断。"}
+{"content": "嗯好吧", "label": "interrupt", "reasoning": "'嗯好吧' 是语气词+实词，打断。"}
+{"content": "唔", "label": "do not interrupt", "reasoning": "'唔' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "嗯我想了解", "label": "interrupt", "reasoning": "'嗯我想了解' 是语气词+实词，打断。"}
+{"content": "hx咋咋", "label": "do not interrupt", "reasoning": "'hx咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "现在几点了", "label": "interrupt", "reasoning": "'现在几点了' 是完整句子，打断。"}
+{"content": "哦哦啃", "label": "do not interrupt", "reasoning": "'哦哦啃' 是语气词，无语义，不打断。"}
+{"content": "啊哦", "label": "do not interrupt", "reasoning": "'啊哦' 是语气词，无语义，不打断。"}
+{"content": "地点有没有", "label": "interrupt", "reasoning": "'地点有没有' 是完整句子，打断。"}
+{"content": "嗯嗯呵", "label": "do not interrupt", "reasoning": "'嗯嗯呵' 是语气词，无语义，不打断。"}
+{"content": "我希望找一下", "label": "interrupt", "reasoning": "'我希望找一下' 是半句话，含意图，打断。"}
+{"content": "额啊", "label": "do not interrupt", "reasoning": "'额啊' 是语气词，无语义，不打断。"}
+{"content": "哇哇哇哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "切", "label": "interrupt", "reasoning": "'切' 是单字指令，打断。"}
+{"content": "哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "今天的天气预报有没有", "label": "interrupt", "reasoning": "'今天的天气预报有没有' 是完整句子，打断。"}
+{"content": "写", "label": "interrupt", "reasoning": "'写' 是单字指令，打断。"}
+{"content": "咋咋咋咋咋咋咋", "label": "do not interrupt", "reasoning": "'咋咋咋咋咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯知道了", "label": "interrupt", "reasoning": "'嗯知道了' 是语气词+实词，打断。"}
+{"content": "喔喔喔喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "天气怎么样", "label": "interrupt", "reasoning": "'天气怎么样' 是完整句子，打断。"}
+{"content": "明天的安排几点开门", "label": "interrupt", "reasoning": "'明天的安排几点开门' 是完整句子，打断。"}
+{"content": "哦哦呵呵", "label": "do not interrupt", "reasoning": "'哦哦呵呵' 是语气词，无语义，不打断。"}
+{"content": "啊呵", "label": "do not interrupt", "reasoning": "'啊呵' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯是", "label": "interrupt", "reasoning": "'嗯嗯嗯是' 是边界case，打断。"}
+{"content": "啊啊行", "label": "interrupt", "reasoning": "'啊啊行' 是边界case，打断。"}
+{"content": "我需要看看", "label": "interrupt", "reasoning": "'我需要看看' 是半句话，含意图，打断。"}
+{"content": "嗯嗯可以", "label": "interrupt", "reasoning": "'嗯嗯可以' 是边界case，打断。"}
+{"content": "尻尻", "label": "do not interrupt", "reasoning": "'尻尻' 是噪音/误识别，无语义，不打断。"}
+{"content": "可能吧", "label": "interrupt", "reasoning": "'可能吧' 是半句话，含意图，打断。"}
+{"content": "走", "label": "interrupt", "reasoning": "'走' 是单字指令，打断。"}
+{"content": "价格多少钱", "label": "interrupt", "reasoning": "'价格多少钱' 是完整句子，打断。"}
+{"content": "啊啊你好", "label": "interrupt", "reasoning": "'啊啊你好' 是语气词+实词，打断。"}
+{"content": "我要找一下", "label": "interrupt", "reasoning": "'我要找一下' 是半句话，含意图，打断。"}
+{"content": "地址怎么样", "label": "interrupt", "reasoning": "'地址怎么样' 是完整句子，打断。"}
+{"content": "快", "label": "interrupt", "reasoning": "'快' 是单字指令，打断。"}
+{"content": "地点是什么", "label": "interrupt", "reasoning": "'地点是什么' 是完整句子，打断。"}
+{"content": "这个", "label": "interrupt", "reasoning": "'这个' 是半句话，含意图，打断。"}
+{"content": "嗯嗯嗯嗯行", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯行' 是边界case，打断。"}
+{"content": "附近的医院有没有", "label": "interrupt", "reasoning": "'附近的医院有没有' 是完整句子，打断。"}
+{"content": "电话号码怎么预约", "label": "interrupt", "reasoning": "'电话号码怎么预约' 是完整句子，打断。"}
+{"content": "啊等一下", "label": "interrupt", "reasoning": "'啊等一下' 是语气词+实词，打断。"}
+{"content": "唔唔唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "天气有没有", "label": "interrupt", "reasoning": "'天气有没有' 是完整句子，打断。"}
+{"content": "帮我查地铁时刻表", "label": "interrupt", "reasoning": "'帮我查地铁时刻表' 是完整句子，打断。"}
+{"content": "可不可以了解一下", "label": "interrupt", "reasoning": "'可不可以了解一下' 是半句话，含意图，打断。"}
+{"content": "帮我查电影场次", "label": "interrupt", "reasoning": "'帮我查电影场次' 是完整句子，打断。"}
+{"content": "我想试试", "label": "interrupt", "reasoning": "'我想试试' 是半句话，含意图，打断。"}
+{"content": "移", "label": "interrupt", "reasoning": "'移' 是单字指令，打断。"}
+{"content": "我想看看", "label": "interrupt", "reasoning": "'我想看看' 是半句话，含意图，打断。"}
+{"content": "哘哒哘", "label": "do not interrupt", "reasoning": "'哘哒哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "滑哙哒", "label": "do not interrupt", "reasoning": "'滑哙哒' 是噪音/误识别，无语义，不打断。"}
+{"content": "额额嗯嗯", "label": "do not interrupt", "reasoning": "'额额嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "是不是", "label": "interrupt", "reasoning": "'是不是' 是半句话，含意图，打断。"}
+{"content": "啊啃", "label": "do not interrupt", "reasoning": "'啊啃' 是语气词，无语义，不打断。"}
+{"content": "这个月的账单是否开放", "label": "interrupt", "reasoning": "'这个月的账单是否开放' 是完整句子，打断。"}
+{"content": "哒哒哘哘", "label": "do not interrupt", "reasoning": "'哒哒哘哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "天气在哪里", "label": "interrupt", "reasoning": "'天气在哪里' 是完整句子，打断。"}
+{"content": "告诉我周边景点", "label": "interrupt", "reasoning": "'告诉我周边景点' 是完整句子，打断。"}
+{"content": "返回", "label": "interrupt", "reasoning": "'返回' 是单字指令，打断。"}
+{"content": "告诉我公交路线", "label": "interrupt", "reasoning": "'告诉我公交路线' 是完整句子，打断。"}
+{"content": "换", "label": "interrupt", "reasoning": "'换' 是单字指令，打断。"}
+{"content": "退出", "label": "interrupt", "reasoning": "'退出' 是单字指令，打断。"}
+{"content": "附近的药店是什么", "label": "interrupt", "reasoning": "'附近的药店是什么' 是完整句子，打断。"}
+{"content": "帮我查周边景点", "label": "interrupt", "reasoning": "'帮我查周边景点' 是完整句子，打断。"}
+{"content": "hhhh", "label": "do not interrupt", "reasoning": "'hhhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "额额", "label": "do not interrupt", "reasoning": "'额额' 是语气词，无语义，不打断。"}
+{"content": "做", "label": "interrupt", "reasoning": "'做' 是单字指令，打断。"}
+{"content": "唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯好", "label": "interrupt", "reasoning": "'嗯嗯好' 是边界case，打断。"}
+{"content": "呵啃", "label": "do not interrupt", "reasoning": "'呵啃' 是语气词，无语义，不打断。"}
+{"content": "营业时间在哪里", "label": "interrupt", "reasoning": "'营业时间在哪里' 是完整句子，打断。"}
+{"content": "能不能查询", "label": "interrupt", "reasoning": "'能不能查询' 是半句话，含意图，打断。"}
+{"content": "附近的医院怎么预约", "label": "interrupt", "reasoning": "'附近的医院怎么预约' 是完整句子，打断。"}
+{"content": "哎哎", "label": "do not interrupt", "reasoning": "'哎哎' 是语气词，无语义，不打断。"}
+{"content": "电话号码怎么去", "label": "interrupt", "reasoning": "'电话号码怎么去' 是完整句子，打断。"}
+{"content": "不", "label": "interrupt", "reasoning": "'不' 是单字指令，打断。"}
+{"content": "呵呵呵呵呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵呵呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "我打算看看", "label": "interrupt", "reasoning": "'我打算看看' 是半句话，含意图，打断。"}
+{"content": "啊那个", "label": "interrupt", "reasoning": "'啊那个' 是语气词+实词，打断。"}
+{"content": "嘟嘟嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "哩哩哩哩哩哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩哩哩哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "啊我想了解", "label": "interrupt", "reasoning": "'啊我想了解' 是语气词+实词，打断。"}
+{"content": "地址有没有", "label": "interrupt", "reasoning": "'地址有没有' 是完整句子，打断。"}
+{"content": "试", "label": "interrupt", "reasoning": "'试' 是单字指令，打断。"}
+{"content": "额啊额", "label": "do not interrupt", "reasoning": "'额啊额' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯行", "label": "interrupt", "reasoning": "'嗯嗯嗯行' 是边界case，打断。"}
+{"content": "唔唔唔唔唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔唔唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "能不能找一下", "label": "interrupt", "reasoning": "'能不能找一下' 是半句话，含意图，打断。"}
+{"content": "地址几点开门", "label": "interrupt", "reasoning": "'地址几点开门' 是完整句子，打断。"}
+{"content": "我打算询问", "label": "interrupt", "reasoning": "'我打算询问' 是半句话，含意图，打断。"}
+{"content": "关闭", "label": "interrupt", "reasoning": "'关闭' 是单字指令，打断。"}
+{"content": "我打算搜索", "label": "interrupt", "reasoning": "'我打算搜索' 是半句话，含意图，打断。"}
+{"content": "什么时候开始", "label": "interrupt", "reasoning": "'什么时候开始' 是完整句子，打断。"}
+{"content": "嗯嗯啃", "label": "do not interrupt", "reasoning": "'嗯嗯啃' 是语气词，无语义，不打断。"}
+{"content": "前", "label": "interrupt", "reasoning": "'前' 是单字指令，打断。"}
+{"content": "呵呵啊啊", "label": "do not interrupt", "reasoning": "'呵呵啊啊' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊可以", "label": "interrupt", "reasoning": "'啊啊啊可以' 是边界case，打断。"}
+{"content": "这周的日程怎么用", "label": "interrupt", "reasoning": "'这周的日程怎么用' 是完整句子，打断。"}
+{"content": "你能帮我吗", "label": "interrupt", "reasoning": "'你能帮我吗' 是完整句子，打断。"}
+{"content": "名字怎么预约", "label": "interrupt", "reasoning": "'名字怎么预约' 是完整句子，打断。"}
+{"content": "能不能用用", "label": "interrupt", "reasoning": "'能不能用用' 是半句话，含意图，打断。"}
+{"content": "啊啊哦", "label": "do not interrupt", "reasoning": "'啊啊哦' 是语气词，无语义，不打断。"}
+{"content": "嗯我想确认", "label": "interrupt", "reasoning": "'嗯我想确认' 是语气词+实词，打断。"}
+{"content": "说", "label": "interrupt", "reasoning": "'说' 是单字指令，打断。"}
+{"content": "名字在哪里", "label": "interrupt", "reasoning": "'名字在哪里' 是完整句子，打断。"}
+{"content": "电话号码是什么", "label": "interrupt", "reasoning": "'电话号码是什么' 是完整句子，打断。"}
+{"content": "啊可以的", "label": "interrupt", "reasoning": "'啊可以的' 是语气词+实词，打断。"}
+{"content": "提交", "label": "interrupt", "reasoning": "'提交' 是单字指令，打断。"}
+{"content": "啊呵呵", "label": "do not interrupt", "reasoning": "'啊呵呵' 是语气词，无语义，不打断。"}
+{"content": "否", "label": "interrupt", "reasoning": "'否' 是单字指令，打断。"}
+{"content": "哈哈哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "最新的消息是什么", "label": "interrupt", "reasoning": "'最新的消息是什么' 是完整句子，打断。"}
+{"content": "哟", "label": "do not interrupt", "reasoning": "'哟' 是语气词，无语义，不打断。"}
+{"content": "嗯呵", "label": "do not interrupt", "reasoning": "'嗯呵' 是语气词，无语义，不打断。"}
+{"content": "答", "label": "interrupt", "reasoning": "'答' 是单字指令，打断。"}
+{"content": "哦哈哦", "label": "do not interrupt", "reasoning": "'哦哈哦' 是语气词，无语义，不打断。"}
+{"content": "嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "开", "label": "interrupt", "reasoning": "'开' 是单字指令，打断。"}
+{"content": "哩哩哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "卖", "label": "interrupt", "reasoning": "'卖' 是单字指令，打断。"}
+{"content": "下周的计划几点开门", "label": "interrupt", "reasoning": "'下周的计划几点开门' 是完整句子，打断。"}
+{"content": "嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "呵呵哦", "label": "do not interrupt", "reasoning": "'呵呵哦' 是语气词，无语义，不打断。"}
+{"content": "哦哦哦哦哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦哦哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "地址多少钱", "label": "interrupt", "reasoning": "'地址多少钱' 是完整句子，打断。"}
+{"content": "可不可以确认", "label": "interrupt", "reasoning": "'可不可以确认' 是半句话，含意图，打断。"}
+{"content": "啊嗯嗯", "label": "do not interrupt", "reasoning": "'啊嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "名字是否开放", "label": "interrupt", "reasoning": "'名字是否开放' 是完整句子，打断。"}
+{"content": "哦哦", "label": "do not interrupt", "reasoning": "'哦哦' 是语气词，无语义，不打断。"}
+{"content": "哦哦啊", "label": "do not interrupt", "reasoning": "'哦哦啊' 是语气词，无语义，不打断。"}
+{"content": "哦嘟哦", "label": "do not interrupt", "reasoning": "'哦嘟哦' 是语气词，无语义，不打断。"}
+{"content": "哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "下周的计划是什么", "label": "interrupt", "reasoning": "'下周的计划是什么' 是完整句子，打断。"}
+{"content": "嗯哦", "label": "do not interrupt", "reasoning": "'嗯哦' 是语气词，无语义，不打断。"}
+{"content": "嘟嘟嘟嘟嘟嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟嘟嘟嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "额额额额额", "label": "do not interrupt", "reasoning": "'额额额额额' 是语气词，无语义，不打断。"}
+{"content": "pf咋咋", "label": "do not interrupt", "reasoning": "'pf咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "今天的天气预报是什么", "label": "interrupt", "reasoning": "'今天的天气预报是什么' 是完整句子，打断。"}
+{"content": "附近的医院是否开放", "label": "interrupt", "reasoning": "'附近的医院是否开放' 是完整句子，打断。"}
+{"content": "下一班车有没有", "label": "interrupt", "reasoning": "'下一班车有没有' 是完整句子，打断。"}
+{"content": "搜索一下附近的餐厅", "label": "interrupt", "reasoning": "'搜索一下附近的餐厅' 是完整句子，打断。"}
+{"content": "嗯哈哈", "label": "do not interrupt", "reasoning": "'嗯哈哈' 是语气词，无语义，不打断。"}
+{"content": "有什么方法", "label": "interrupt", "reasoning": "'有什么方法' 是完整句子，打断。"}
+{"content": "shh咋", "label": "do not interrupt", "reasoning": "'shh咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "帮我查停车场位置", "label": "interrupt", "reasoning": "'帮我查停车场位置' 是完整句子，打断。"}
+{"content": "hh咋咋", "label": "do not interrupt", "reasoning": "'hh咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "我希望询问", "label": "interrupt", "reasoning": "'我希望询问' 是半句话，含意图，打断。"}
+{"content": "时间是什么", "label": "interrupt", "reasoning": "'时间是什么' 是完整句子，打断。"}
+{"content": "啊应该", "label": "interrupt", "reasoning": "'啊应该' 是语气词+实词，打断。"}
+{"content": "喔喔喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "帮我查银行网点", "label": "interrupt", "reasoning": "'帮我查银行网点' 是完整句子，打断。"}
+{"content": "开放时间在哪里", "label": "interrupt", "reasoning": "'开放时间在哪里' 是完整句子，打断。"}
+{"content": "啊哈啊", "label": "do not interrupt", "reasoning": "'啊哈啊' 是语气词，无语义，不打断。"}
+{"content": "啊额啊", "label": "do not interrupt", "reasoning": "'啊额啊' 是语气词，无语义，不打断。"}
+{"content": "最近的餐厅怎么用", "label": "interrupt", "reasoning": "'最近的餐厅怎么用' 是完整句子，打断。"}
+{"content": "嗯等一下", "label": "interrupt", "reasoning": "'嗯等一下' 是语气词+实词，打断。"}
+{"content": "最近的餐厅怎么去", "label": "interrupt", "reasoning": "'最近的餐厅怎么去' 是完整句子，打断。"}
+{"content": "啊啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "下载", "label": "interrupt", "reasoning": "'下载' 是单字指令，打断。"}
+{"content": "好吧", "label": "interrupt", "reasoning": "'好吧' 是边界case，打断。"}
+{"content": "名字怎么样", "label": "interrupt", "reasoning": "'名字怎么样' 是完整句子，打断。"}
+{"content": "嗯嗯对", "label": "interrupt", "reasoning": "'嗯嗯对' 是边界case，打断。"}
+{"content": "然后呢", "label": "interrupt", "reasoning": "'然后呢' 是半句话，含意图，打断。"}
+{"content": "多", "label": "interrupt", "reasoning": "'多' 是单字指令，打断。"}
+{"content": "听", "label": "interrupt", "reasoning": "'听' 是单字指令，打断。"}
+{"content": "告诉我最近的医院", "label": "interrupt", "reasoning": "'告诉我最近的医院' 是完整句子，打断。"}
+{"content": "啊啊有个问题", "label": "interrupt", "reasoning": "'啊啊有个问题' 是语气词+实词，打断。"}
+{"content": "唉", "label": "do not interrupt", "reasoning": "'唉' 是语气词，无语义，不打断。"}
+{"content": "我想知道", "label": "interrupt", "reasoning": "'我想知道' 是半句话，含意图，打断。"}
+{"content": "额额嗯", "label": "do not interrupt", "reasoning": "'额额嗯' 是语气词，无语义，不打断。"}
+{"content": "我需要找一下", "label": "interrupt", "reasoning": "'我需要找一下' 是半句话，含意图，打断。"}
+{"content": "呵呵啃", "label": "do not interrupt", "reasoning": "'呵呵啃' 是语气词，无语义，不打断。"}
+{"content": "我需要知道", "label": "interrupt", "reasoning": "'我需要知道' 是半句话，含意图，打断。"}
+{"content": "hxh", "label": "do not interrupt", "reasoning": "'hxh' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊你好", "label": "interrupt", "reasoning": "'啊你好' 是语气词+实词，打断。"}
+{"content": "啊啊明白", "label": "interrupt", "reasoning": "'啊啊明白' 是边界case，打断。"}
+{"content": "呵啃啃", "label": "do not interrupt", "reasoning": "'呵啃啃' 是语气词，无语义，不打断。"}
+{"content": "给我找电影场次", "label": "interrupt", "reasoning": "'给我找电影场次' 是完整句子，打断。"}
+{"content": "啊啊哈", "label": "do not interrupt", "reasoning": "'啊啊哈' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯哈哈", "label": "do not interrupt", "reasoning": "'嗯嗯哈哈' 是语气词，无语义，不打断。"}
+{"content": "hx", "label": "do not interrupt", "reasoning": "'hx' 是噪音/误识别，无语义，不打断。"}
+{"content": "哦哈", "label": "do not interrupt", "reasoning": "'哦哈' 是语气词，无语义，不打断。"}
+{"content": "啊有个事", "label": "interrupt", "reasoning": "'啊有个事' 是语气词+实词，打断。"}
+{"content": "我希望咍询", "label": "interrupt", "reasoning": "'我希望咍询' 是半句话，含意图，打断。"}
+{"content": "啊啊帮我", "label": "interrupt", "reasoning": "'啊啊帮我' 是语气词+实词，打断。"}
+{"content": "可不可以找一下", "label": "interrupt", "reasoning": "'可不可以找一下' 是半句话，含意图，打断。"}
+{"content": "哦呵", "label": "do not interrupt", "reasoning": "'哦呵' 是语气词，无语义，不打断。"}
+{"content": "新", "label": "interrupt", "reasoning": "'新' 是单字指令，打断。"}
+{"content": "暂", "label": "interrupt", "reasoning": "'暂' 是单字指令，打断。"}
+{"content": "嗯我明白了", "label": "interrupt", "reasoning": "'嗯我明白了' 是语气词+实词，打断。"}
+{"content": "啊我觉得", "label": "interrupt", "reasoning": "'啊我觉得' 是语气词+实词，打断。"}
+{"content": "能不能问一下", "label": "interrupt", "reasoning": "'能不能问一下' 是半句话，含意图，打断。"}
+{"content": "啊大概", "label": "interrupt", "reasoning": "'啊大概' 是语气词+实词，打断。"}
+{"content": "哦哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯行", "label": "interrupt", "reasoning": "'嗯嗯行' 是边界case，打断。"}
+{"content": "哦嗯嗯", "label": "do not interrupt", "reasoning": "'哦嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "嗯额嗯", "label": "do not interrupt", "reasoning": "'嗯额嗯' 是语气词，无语义，不打断。"}
+{"content": "哦哦嘟", "label": "do not interrupt", "reasoning": "'哦哦嘟' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯应该", "label": "interrupt", "reasoning": "'嗯嗯应该' 是语气词+实词，打断。"}
+{"content": "我想", "label": "interrupt", "reasoning": "'我想' 是半句话，含意图，打断。"}
+{"content": "有没有其他办法", "label": "interrupt", "reasoning": "'有没有其他办法' 是完整句子，打断。"}
+{"content": "我希望了解一下", "label": "interrupt", "reasoning": "'我希望了解一下' 是半句话，含意图，打断。"}
+{"content": "告诉我天气预报", "label": "interrupt", "reasoning": "'告诉我天气预报' 是完整句子，打断。"}
+{"content": "下一班车是什么", "label": "interrupt", "reasoning": "'下一班车是什么' 是完整句子，打断。"}
+{"content": "shh", "label": "do not interrupt", "reasoning": "'shh' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯好的", "label": "interrupt", "reasoning": "'嗯好的' 是语气词+实词，打断。"}
+{"content": "切换", "label": "interrupt", "reasoning": "'切换' 是单字指令，打断。"}
+{"content": "哇哇哇哇哇哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇哇哇哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "啊可能", "label": "interrupt", "reasoning": "'啊可能' 是语气词+实词，打断。"}
+{"content": "我打算确认", "label": "interrupt", "reasoning": "'我打算确认' 是半句话，含意图，打断。"}
+{"content": "这是真的吗", "label": "interrupt", "reasoning": "'这是真的吗' 是完整句子，打断。"}
+{"content": "嗯哈嗯", "label": "do not interrupt", "reasoning": "'嗯哈嗯' 是语气词，无语义，不打断。"}
+{"content": "我需要核实", "label": "interrupt", "reasoning": "'我需要核实' 是半句话，含意图，打断。"}
+{"content": "额额哦", "label": "do not interrupt", "reasoning": "'额额哦' 是语气词，无语义，不打断。"}
+{"content": "哦啃", "label": "do not interrupt", "reasoning": "'哦啃' 是语气词，无语义，不打断。"}
+{"content": "嗯嘟嗯", "label": "do not interrupt", "reasoning": "'嗯嘟嗯' 是语气词，无语义，不打断。"}
+{"content": "天气几点开门", "label": "interrupt", "reasoning": "'天气几点开门' 是完整句子，打断。"}
+{"content": "怎样才能做到", "label": "interrupt", "reasoning": "'怎样才能做到' 是完整句子，打断。"}
+{"content": "这周的日程怎么预约", "label": "interrupt", "reasoning": "'这周的日程怎么预约' 是完整句子，打断。"}
+{"content": "呵嘟呵", "label": "do not interrupt", "reasoning": "'呵嘟呵' 是语气词，无语义，不打断。"}
+{"content": "时间多少钱", "label": "interrupt", "reasoning": "'时间多少钱' 是完整句子，打断。"}
+{"content": "啊啊我想了解", "label": "interrupt", "reasoning": "'啊啊我想了解' 是语气词+实词，打断。"}
+{"content": "哇哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嘟", "label": "do not interrupt", "reasoning": "'嗯嗯嘟' 是语气词，无语义，不打断。"}
+{"content": "咋咋咋hx", "label": "do not interrupt", "reasoning": "'咋咋咋hx' 是噪音/误识别，无语义，不打断。"}
+{"content": "嘟呵嘟", "label": "do not interrupt", "reasoning": "'嘟呵嘟' 是语气词，无语义，不打断。"}
+{"content": "呵哦", "label": "do not interrupt", "reasoning": "'呵哦' 是语气词，无语义，不打断。"}
+{"content": "调", "label": "interrupt", "reasoning": "'调' 是单字指令，打断。"}
+{"content": "啊能帮我", "label": "interrupt", "reasoning": "'啊能帮我' 是语气词+实词，打断。"}
+{"content": "哈哈哈哈哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈哈哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "我希望核实", "label": "interrupt", "reasoning": "'我希望核实' 是半句话，含意图，打断。"}
+{"content": "啊嗯啊", "label": "do not interrupt", "reasoning": "'啊嗯啊' 是语气词，无语义，不打断。"}
+{"content": "拿", "label": "interrupt", "reasoning": "'拿' 是单字指令，打断。"}
+{"content": "告诉我银行网点", "label": "interrupt", "reasoning": "'告诉我银行网点' 是完整句子，打断。"}
+{"content": "我想看一下", "label": "interrupt", "reasoning": "'我想看一下' 是半句话，含意图，打断。"}
+{"content": "咋hx", "label": "do not interrupt", "reasoning": "'咋hx' 是噪音/误识别，无语义，不打断。"}
+{"content": "哈哈", "label": "do not interrupt", "reasoning": "'哈哈' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "哦哦呵", "label": "do not interrupt", "reasoning": "'哦哦呵' 是语气词，无语义，不打断。"}
+{"content": "能否", "label": "interrupt", "reasoning": "'能否' 是半句话，含意图，打断。"}
+{"content": "改", "label": "interrupt", "reasoning": "'改' 是单字指令，打断。"}
+{"content": "hhh", "label": "do not interrupt", "reasoning": "'hhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "最近的餐厅在哪里", "label": "interrupt", "reasoning": "'最近的餐厅在哪里' 是完整句子，打断。"}
+{"content": "搜索一下天气预报", "label": "interrupt", "reasoning": "'搜索一下天气预报' 是完整句子，打断。"}
+{"content": "应该是", "label": "interrupt", "reasoning": "'应该是' 是半句话，含意图，打断。"}
+{"content": "呵呵额", "label": "do not interrupt", "reasoning": "'呵呵额' 是语气词，无语义，不打断。"}
+{"content": "开放时间怎么样", "label": "interrupt", "reasoning": "'开放时间怎么样' 是完整句子，打断。"}
+{"content": "搜索一下地铁时刻表", "label": "interrupt", "reasoning": "'搜索一下地铁时刻表' 是完整句子，打断。"}
+{"content": "哦哦哦哦哦哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦哦哦哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "告诉我24小时药店", "label": "interrupt", "reasoning": "'告诉我24小时药店' 是完整句子，打断。"}
+{"content": "价格几点开门", "label": "interrupt", "reasoning": "'价格几点开门' 是完整句子，打断。"}
+{"content": "嗨嗨嗨嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "啃", "label": "do not interrupt", "reasoning": "'啃' 是语气词，无语义，不打断。"}
+{"content": "关", "label": "interrupt", "reasoning": "'关' 是单字指令，打断。"}
+{"content": "营业时间怎么去", "label": "interrupt", "reasoning": "'营业时间怎么去' 是完整句子，打断。"}
+{"content": "电话号码是否开放", "label": "interrupt", "reasoning": "'电话号码是否开放' 是完整句子，打断。"}
+{"content": "是不是确认", "label": "interrupt", "reasoning": "'是不是确认' 是半句话，含意图，打断。"}
+{"content": "咋hh", "label": "do not interrupt", "reasoning": "'咋hh' 是噪音/误识别，无语义，不打断。"}
+{"content": "呵呵嗯嗯", "label": "do not interrupt", "reasoning": "'呵呵嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "加", "label": "interrupt", "reasoning": "'加' 是单字指令，打断。"}
+{"content": "啊帮我", "label": "interrupt", "reasoning": "'啊帮我' 是语气词+实词，打断。"}
+{"content": "ugh", "label": "do not interrupt", "reasoning": "'ugh' 是噪音/误识别，无语义，不打断。"}
+{"content": "唉唉唉唉唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉唉唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "你有什么建议吗", "label": "interrupt", "reasoning": "'你有什么建议吗' 是完整句子，打断。"}
+{"content": "推", "label": "interrupt", "reasoning": "'推' 是单字指令，打断。"}
+{"content": "打开", "label": "interrupt", "reasoning": "'打开' 是单字指令，打断。"}
+{"content": "怎么理解这个", "label": "interrupt", "reasoning": "'怎么理解这个' 是完整句子，打断。"}
+{"content": "嗯啃啃", "label": "do not interrupt", "reasoning": "'嗯啃啃' 是语气词，无语义，不打断。"}
+{"content": "啊啊我需要", "label": "interrupt", "reasoning": "'啊啊我需要' 是语气词+实词，打断。"}
+{"content": "哈呵哈", "label": "do not interrupt", "reasoning": "'哈呵哈' 是语气词，无语义，不打断。"}
+{"content": "喔喔喔喔喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔喔喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "啊啊没问题", "label": "interrupt", "reasoning": "'啊啊没问题' 是边界case，打断。"}
+{"content": "打", "label": "interrupt", "reasoning": "'打' 是单字指令，打断。"}
+{"content": "能告诉我", "label": "interrupt", "reasoning": "'能告诉我' 是半句话，含意图，打断。"}
+{"content": "喔", "label": "do not interrupt", "reasoning": "'喔' 是语气词，无语义，不打断。"}
+{"content": "呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "咋咋咋hh", "label": "do not interrupt", "reasoning": "'咋咋咋hh' 是噪音/误识别，无语义，不打断。"}
+{"content": "粘", "label": "interrupt", "reasoning": "'粘' 是单字指令，打断。"}
+{"content": "滑滑", "label": "do not interrupt", "reasoning": "'滑滑' 是噪音/误识别，无语义，不打断。"}
+{"content": "行", "label": "interrupt", "reasoning": "'行' 是单字指令，打断。"}
+{"content": "啊啊啊啊啊啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊啊啊啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "全屏", "label": "interrupt", "reasoning": "'全屏' 是单字指令，打断。"}
+{"content": "我想查一下", "label": "interrupt", "reasoning": "'我想查一下' 是半句话，含意图，打断。"}
+{"content": "存", "label": "interrupt", "reasoning": "'存' 是单字指令，打断。"}
+{"content": "我想了解", "label": "interrupt", "reasoning": "'我想了解' 是半句话，含意图，打断。"}
+{"content": "咋pf", "label": "do not interrupt", "reasoning": "'咋pf' 是噪音/误识别，无语义，不打断。"}
+{"content": "额呵额", "label": "do not interrupt", "reasoning": "'额呵额' 是语气词，无语义，不打断。"}
+{"content": "pfff", "label": "do not interrupt", "reasoning": "'pfff' 是噪音/误识别，无语义，不打断。"}
+{"content": "zhh", "label": "do not interrupt", "reasoning": "'zhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯你好", "label": "interrupt", "reasoning": "'嗯嗯你好' 是语气词+实词，打断。"}
+{"content": "帮我查一下", "label": "interrupt", "reasoning": "'帮我查一下' 是完整句子，打断。"}
+{"content": "嗯哦嗯", "label": "do not interrupt", "reasoning": "'嗯哦嗯' 是语气词，无语义，不打断。"}
+{"content": "啊啊对了", "label": "interrupt", "reasoning": "'啊啊对了' 是语气词+实词，打断。"}
+{"content": "给我找机票信息", "label": "interrupt", "reasoning": "'给我找机票信息' 是完整句子，打断。"}
+{"content": "哙", "label": "do not interrupt", "reasoning": "'哙' 是噪音/误识别，无语义，不打断。"}
+{"content": "搜索一下今日新闻", "label": "interrupt", "reasoning": "'搜索一下今日新闻' 是完整句子，打断。"}
+{"content": "附近的药店怎么样", "label": "interrupt", "reasoning": "'附近的药店怎么样' 是完整句子，打断。"}
+{"content": "嘉嘉嘉嘉", "label": "do not interrupt", "reasoning": "'嘉嘉嘉嘉' 是噪音/误识别，无语义，不打断。"}
+{"content": "咋咋shh", "label": "do not interrupt", "reasoning": "'咋咋shh' 是噪音/误识别，无语义，不打断。"}
+{"content": "地址怎么用", "label": "interrupt", "reasoning": "'地址怎么用' 是完整句子，打断。"}
+{"content": "問問問", "label": "do not interrupt", "reasoning": "'問問問' 是噪音/误识别，无语义，不打断。"}
+{"content": "复制", "label": "interrupt", "reasoning": "'复制' 是单字指令，打断。"}
+{"content": "我希望试试", "label": "interrupt", "reasoning": "'我希望试试' 是半句话，含意图，打断。"}
+{"content": "嗯嗯额", "label": "do not interrupt", "reasoning": "'嗯嗯额' 是语气词，无语义，不打断。"}
+{"content": "告诉我今日新闻", "label": "interrupt", "reasoning": "'告诉我今日新闻' 是完整句子，打断。"}
+{"content": "咋", "label": "do not interrupt", "reasoning": "'咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "慢", "label": "interrupt", "reasoning": "'慢' 是单字指令，打断。"}
+{"content": "啊啊我想知道", "label": "interrupt", "reasoning": "'啊啊我想知道' 是语气词+实词，打断。"}
+{"content": "你知道这是什么吗", "label": "interrupt", "reasoning": "'你知道这是什么吗' 是完整句子，打断。"}
+{"content": "嗯嗯嗯嗯明白", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯明白' 是边界case，打断。"}
+{"content": "好？", "label": "interrupt", "reasoning": "'好？' 是边界case，打断。"}
+{"content": "哘哒哙底", "label": "do not interrupt", "reasoning": "'哘哒哙底' 是噪音/误识别，无语义，不打断。"}
+{"content": "大", "label": "interrupt", "reasoning": "'大' 是单字指令，打断。"}
+{"content": "哦哦哈哈", "label": "do not interrupt", "reasoning": "'哦哦哈哈' 是语气词，无语义，不打断。"}
+{"content": "唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "按", "label": "interrupt", "reasoning": "'按' 是单字指令，打断。"}
+{"content": "呵啊啊", "label": "do not interrupt", "reasoning": "'呵啊啊' 是语气词，无语义，不打断。"}
+{"content": "哦哦好", "label": "interrupt", "reasoning": "'哦哦好' 是语气词+实词，打断。"}
+{"content": "喔喔", "label": "do not interrupt", "reasoning": "'喔喔' 是语气词，无语义，不打断。"}
+{"content": "咏咏咏咏咏咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏咏咏咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "呵", "label": "do not interrupt", "reasoning": "'呵' 是语气词，无语义，不打断。"}
+{"content": "哦啊啊", "label": "do not interrupt", "reasoning": "'哦啊啊' 是语气词，无语义，不打断。"}
+{"content": "地点怎么样", "label": "interrupt", "reasoning": "'地点怎么样' 是完整句子，打断。"}
+{"content": "你叫什么名字", "label": "interrupt", "reasoning": "'你叫什么名字' 是完整句子，打断。"}
+{"content": "停", "label": "interrupt", "reasoning": "'停' 是单字指令，打断。"}
+{"content": "这个价格怎么样", "label": "interrupt", "reasoning": "'这个价格怎么样' 是完整句子，打断。"}
+{"content": "最近的餐厅几点开门", "label": "interrupt", "reasoning": "'最近的餐厅几点开门' 是完整句子，打断。"}
+{"content": "我需要咍询", "label": "interrupt", "reasoning": "'我需要咍询' 是半句话，含意图，打断。"}
+{"content": "少", "label": "interrupt", "reasoning": "'少' 是单字指令，打断。"}
+{"content": "能不能试试", "label": "interrupt", "reasoning": "'能不能试试' 是半句话，含意图，打断。"}
+{"content": "我希望问一下", "label": "interrupt", "reasoning": "'我希望问一下' 是半句话，含意图，打断。"}
+{"content": "我要确认", "label": "interrupt", "reasoning": "'我要确认' 是半句话，含意图，打断。"}
+{"content": "下一班车多少钱", "label": "interrupt", "reasoning": "'下一班车多少钱' 是完整句子，打断。"}
+{"content": "唉唉唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "啊我想确认", "label": "interrupt", "reasoning": "'啊我想确认' 是语气词+实词，打断。"}
+{"content": "电话号码怎么用", "label": "interrupt", "reasoning": "'电话号码怎么用' 是完整句子，打断。"}
+{"content": "告诉我电影场次", "label": "interrupt", "reasoning": "'告诉我电影场次' 是完整句子，打断。"}
+{"content": "唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔' 是噪音/误识别，无语义，不打断。"}
+{"content": "好", "label": "interrupt", "reasoning": "'好' 是单字指令，打断。"}
+{"content": "啊啊是", "label": "interrupt", "reasoning": "'啊啊是' 是边界case，打断。"}
+{"content": "送", "label": "interrupt", "reasoning": "'送' 是单字指令，打断。"}
+{"content": "最近的餐厅多少钱", "label": "interrupt", "reasoning": "'最近的餐厅多少钱' 是完整句子，打断。"}
+{"content": "哦哦嗯", "label": "do not interrupt", "reasoning": "'哦哦嗯' 是语气词，无语义，不打断。"}
+{"content": "拉", "label": "interrupt", "reasoning": "'拉' 是单字指令，打断。"}
+{"content": "是不是问一下", "label": "interrupt", "reasoning": "'是不是问一下' 是半句话，含意图，打断。"}
+{"content": "嗯嗯告诉我", "label": "interrupt", "reasoning": "'嗯嗯告诉我' 是语气词+实词，打断。"}
+{"content": "嘟嗯嘟", "label": "do not interrupt", "reasoning": "'嘟嗯嘟' 是语气词，无语义，不打断。"}
+{"content": "呵好的", "label": "interrupt", "reasoning": "'呵好的' 是语气词+实词，打断。"}
+{"content": "帮我查公交路线", "label": "interrupt", "reasoning": "'帮我查公交路线' 是完整句子，打断。"}
+{"content": "跳转", "label": "interrupt", "reasoning": "'跳转' 是单字指令，打断。"}
+{"content": "这周的日程怎么去", "label": "interrupt", "reasoning": "'这周的日程怎么去' 是完整句子，打断。"}
+{"content": "嗯嗯然后", "label": "interrupt", "reasoning": "'嗯嗯然后' 是语气词+实词，打断。"}
+{"content": "我想知道", "label": "interrupt", "reasoning": "'我想知道' 是完整句子，打断。"}
+{"content": "营业时间有没有", "label": "interrupt", "reasoning": "'营业时间有没有' 是完整句子，打断。"}
+{"content": "电话号码多少钱", "label": "interrupt", "reasoning": "'电话号码多少钱' 是完整句子，打断。"}
+{"content": "告诉我酒店价格", "label": "interrupt", "reasoning": "'告诉我酒店价格' 是完整句子，打断。"}
+{"content": "这个月的账单多少钱", "label": "interrupt", "reasoning": "'这个月的账单多少钱' 是完整句子，打断。"}
+{"content": "你懂这个吗", "label": "interrupt", "reasoning": "'你懂这个吗' 是完整句子，打断。"}
+{"content": "xf", "label": "do not interrupt", "reasoning": "'xf' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啊嗯嗯", "label": "do not interrupt", "reasoning": "'啊啊嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "下一班车几点开门", "label": "interrupt", "reasoning": "'下一班车几点开门' 是完整句子，打断。"}
+{"content": "hh咋", "label": "do not interrupt", "reasoning": "'hh咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "唔唔唔唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "最新的消息怎么去", "label": "interrupt", "reasoning": "'最新的消息怎么去' 是完整句子，打断。"}
+{"content": "可不可以询问", "label": "interrupt", "reasoning": "'可不可以询问' 是半句话，含意图，打断。"}
+{"content": "啊啊呵", "label": "do not interrupt", "reasoning": "'啊啊呵' 是语气词，无语义，不打断。"}
+{"content": "可不可以看一下", "label": "interrupt", "reasoning": "'可不可以看一下' 是半句话，含意图，打断。"}
+{"content": "呵哦呵", "label": "do not interrupt", "reasoning": "'呵哦呵' 是语气词，无语义，不打断。"}
+{"content": "嗯好", "label": "interrupt", "reasoning": "'嗯好' 是边界case，打断。"}
+{"content": "有没有咍询", "label": "interrupt", "reasoning": "'有没有咍询' 是半句话，含意图，打断。"}
+{"content": "哦哦啃啃", "label": "do not interrupt", "reasoning": "'哦哦啃啃' 是语气词，无语义，不打断。"}
+{"content": "额额啊", "label": "do not interrupt", "reasoning": "'额额啊' 是语气词，无语义，不打断。"}
+{"content": "给我找酒店价格", "label": "interrupt", "reasoning": "'给我找酒店价格' 是完整句子，打断。"}
+{"content": "额额额额额额额额", "label": "do not interrupt", "reasoning": "'额额额额额额额额' 是语气词，无语义，不打断。"}
+{"content": "哦嗯哦", "label": "do not interrupt", "reasoning": "'哦嗯哦' 是语气词，无语义，不打断。"}
+{"content": "呵呵啊", "label": "do not interrupt", "reasoning": "'呵呵啊' 是语气词，无语义，不打断。"}
+{"content": "最新的消息有没有", "label": "interrupt", "reasoning": "'最新的消息有没有' 是完整句子，打断。"}
+{"content": "日期在哪里", "label": "interrupt", "reasoning": "'日期在哪里' 是完整句子，打断。"}
+{"content": "呵额呵", "label": "do not interrupt", "reasoning": "'呵额呵' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯我想确认", "label": "interrupt", "reasoning": "'嗯嗯我想确认' 是语气词+实词，打断。"}
+{"content": "哦我明白了", "label": "interrupt", "reasoning": "'哦我明白了' 是语气词+实词，打断。"}
+{"content": "最新的消息多少钱", "label": "interrupt", "reasoning": "'最新的消息多少钱' 是完整句子，打断。"}
+{"content": "下一班车是否开放", "label": "interrupt", "reasoning": "'下一班车是否开放' 是完整句子，打断。"}
+{"content": "呵嘟", "label": "do not interrupt", "reasoning": "'呵嘟' 是语气词，无语义，不打断。"}
+{"content": "给我找快递单号", "label": "interrupt", "reasoning": "'给我找快递单号' 是完整句子，打断。"}
+{"content": "明天的安排怎么用", "label": "interrupt", "reasoning": "'明天的安排怎么用' 是完整句子，打断。"}
+{"content": "嗯就是说", "label": "interrupt", "reasoning": "'嗯就是说' 是语气词+实词，打断。"}
+{"content": "我需要看一下", "label": "interrupt", "reasoning": "'我需要看一下' 是半句话，含意图，打断。"}
+{"content": "哩", "label": "do not interrupt", "reasoning": "'哩' 是语气词，无语义，不打断。"}
+{"content": "时间怎么去", "label": "interrupt", "reasoning": "'时间怎么去' 是完整句子，打断。"}
+{"content": "有没有确认一下", "label": "interrupt", "reasoning": "'有没有确认一下' 是半句话，含意图，打断。"}
+{"content": "嗯有个问题", "label": "interrupt", "reasoning": "'嗯有个问题' 是语气词+实词，打断。"}
+{"content": "fhh", "label": "do not interrupt", "reasoning": "'fhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯有个问题", "label": "interrupt", "reasoning": "'嗯嗯有个问题' 是语气词+实词，打断。"}
+{"content": "哦对了", "label": "interrupt", "reasoning": "'哦对了' 是语气词+实词，打断。"}
+{"content": "我想了解一下", "label": "interrupt", "reasoning": "'我想了解一下' 是半句话，含意图，打断。"}
+{"content": "今天的新闻是否开放", "label": "interrupt", "reasoning": "'今天的新闻是否开放' 是完整句子，打断。"}
+{"content": "我想用用", "label": "interrupt", "reasoning": "'我想用用' 是半句话，含意图，打断。"}
+{"content": "啊对了", "label": "interrupt", "reasoning": "'啊对了' 是语气词+实词，打断。"}
+{"content": "额额额", "label": "do not interrupt", "reasoning": "'额额额' 是语气词，无语义，不打断。"}
+{"content": "哟哟哟哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊明白", "label": "interrupt", "reasoning": "'啊啊啊明白' 是边界case，打断。"}
+{"content": "长", "label": "interrupt", "reasoning": "'长' 是单字指令，打断。"}
+{"content": "啃嗯啃", "label": "do not interrupt", "reasoning": "'啃嗯啃' 是语气词，无语义，不打断。"}
+{"content": "天气怎么用", "label": "interrupt", "reasoning": "'天气怎么用' 是完整句子，打断。"}
+{"content": "可不可以查询", "label": "interrupt", "reasoning": "'可不可以查询' 是半句话，含意图，打断。"}
+{"content": "哦啊哦", "label": "do not interrupt", "reasoning": "'哦啊哦' 是语气词，无语义，不打断。"}
+{"content": "hh", "label": "do not interrupt", "reasoning": "'hh' 是噪音/误识别，无语义，不打断。"}
+{"content": "那个", "label": "interrupt", "reasoning": "'那个' 是半句话，含意图，打断。"}
+{"content": "有没有试试", "label": "interrupt", "reasoning": "'有没有试试' 是半句话，含意图，打断。"}
+{"content": "日期怎么用", "label": "interrupt", "reasoning": "'日期怎么用' 是完整句子，打断。"}
+{"content": "我需要了解", "label": "interrupt", "reasoning": "'我需要了解' 是半句话，含意图，打断。"}
+{"content": "嗯嗯我明白了", "label": "interrupt", "reasoning": "'嗯嗯我明白了' 是语气词+实词，打断。"}
+{"content": "嗯嗯知道了", "label": "interrupt", "reasoning": "'嗯嗯知道了' 是边界case，打断。"}
+{"content": "有没有看看", "label": "interrupt", "reasoning": "'有没有看看' 是半句话，含意图，打断。"}
+{"content": "能否提供帮助", "label": "interrupt", "reasoning": "'能否提供帮助' 是完整句子，打断。"}
+{"content": "最新的消息怎么样", "label": "interrupt", "reasoning": "'最新的消息怎么样' 是完整句子，打断。"}
+{"content": "抢", "label": "interrupt", "reasoning": "'抢' 是单字指令，打断。"}
+{"content": "电话号码几点开门", "label": "interrupt", "reasoning": "'电话号码几点开门' 是完整句子，打断。"}
+{"content": "唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "下一班车在哪里", "label": "interrupt", "reasoning": "'下一班车在哪里' 是完整句子，打断。"}
+{"content": "给我找24小时药店", "label": "interrupt", "reasoning": "'给我找24小时药店' 是完整句子，打断。"}
+{"content": "我不太明白", "label": "interrupt", "reasoning": "'我不太明白' 是完整句子，打断。"}
+{"content": "嗯嗯我需要", "label": "interrupt", "reasoning": "'嗯嗯我需要' 是语气词+实词，打断。"}
+{"content": "啊告诉我", "label": "interrupt", "reasoning": "'啊告诉我' 是语气词+实词，打断。"}
+{"content": "播", "label": "interrupt", "reasoning": "'播' 是单字指令，打断。"}
+{"content": "就是说", "label": "interrupt", "reasoning": "'就是说' 是半句话，含意图，打断。"}
+{"content": "要不要", "label": "interrupt", "reasoning": "'要不要' 是半句话，含意图，打断。"}
+{"content": "哦额额", "label": "do not interrupt", "reasoning": "'哦额额' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊啊好", "label": "interrupt", "reasoning": "'啊啊啊啊好' 是边界case，打断。"}
+{"content": "问", "label": "interrupt", "reasoning": "'问' 是单字指令，打断。"}
+{"content": "录", "label": "interrupt", "reasoning": "'录' 是单字指令，打断。"}
+{"content": "嗯啊", "label": "do not interrupt", "reasoning": "'嗯啊' 是语气词，无语义，不打断。"}
+{"content": "哙哙", "label": "do not interrupt", "reasoning": "'哙哙' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯我想问", "label": "interrupt", "reasoning": "'嗯嗯我想问' 是语气词+实词，打断。"}
+{"content": "请告诉我", "label": "interrupt", "reasoning": "'请告诉我' 是完整句子，打断。"}
+{"content": "还", "label": "interrupt", "reasoning": "'还' 是单字指令，打断。"}
+{"content": "最近的餐厅怎么样", "label": "interrupt", "reasoning": "'最近的餐厅怎么样' 是完整句子，打断。"}
+{"content": "嗯嗯大概", "label": "interrupt", "reasoning": "'嗯嗯大概' 是语气词+实词，打断。"}
+{"content": "明天的安排是否开放", "label": "interrupt", "reasoning": "'明天的安排是否开放' 是完整句子，打断。"}
+{"content": "啃呵啃", "label": "do not interrupt", "reasoning": "'啃呵啃' 是语气词，无语义，不打断。"}
+{"content": "尻尻尻尻", "label": "do not interrupt", "reasoning": "'尻尻尻尻' 是噪音/误识别，无语义，不打断。"}
+{"content": "给", "label": "interrupt", "reasoning": "'给' 是单字指令，打断。"}
+{"content": "对？", "label": "interrupt", "reasoning": "'对？' 是边界case，打断。"}
+{"content": "是", "label": "interrupt", "reasoning": "'是' 是单字指令，打断。"}
+{"content": "请问", "label": "interrupt", "reasoning": "'请问' 是半句话，含意图，打断。"}
+{"content": "我打算用用", "label": "interrupt", "reasoning": "'我打算用用' 是半句话，含意图，打断。"}
+{"content": "明天的安排怎么样", "label": "interrupt", "reasoning": "'明天的安排怎么样' 是完整句子，打断。"}
+{"content": "底底", "label": "do not interrupt", "reasoning": "'底底' 是噪音/误识别，无语义，不打断。"}
+{"content": "进", "label": "interrupt", "reasoning": "'进' 是单字指令，打断。"}
+{"content": "查", "label": "interrupt", "reasoning": "'查' 是单字指令，打断。"}
+{"content": "重试", "label": "interrupt", "reasoning": "'重试' 是单字指令，打断。"}
+{"content": "今天的天气预报多少钱", "label": "interrupt", "reasoning": "'今天的天气预报多少钱' 是完整句子，打断。"}
+{"content": "我打算试试", "label": "interrupt", "reasoning": "'我打算试试' 是半句话，含意图，打断。"}
+{"content": "我要请教", "label": "interrupt", "reasoning": "'我要请教' 是半句话，含意图，打断。"}
+{"content": "咍", "label": "do not interrupt", "reasoning": "'咍' 是噪音/误识别，无语义，不打断。"}
+{"content": "日期有没有", "label": "interrupt", "reasoning": "'日期有没有' 是完整句子，打断。"}
+{"content": "营业时间多少钱", "label": "interrupt", "reasoning": "'营业时间多少钱' 是完整句子，打断。"}
+{"content": "哦嗯", "label": "do not interrupt", "reasoning": "'哦嗯' 是语气词，无语义，不打断。"}
+{"content": "帮我查机票信息", "label": "interrupt", "reasoning": "'帮我查机票信息' 是完整句子，打断。"}
+{"content": "我要看看", "label": "interrupt", "reasoning": "'我要看看' 是半句话，含意图，打断。"}
+{"content": "名字怎么去", "label": "interrupt", "reasoning": "'名字怎么去' 是完整句子，打断。"}
+{"content": "嗯稍等", "label": "interrupt", "reasoning": "'嗯稍等' 是语气词+实词，打断。"}
+{"content": "保存", "label": "interrupt", "reasoning": "'保存' 是单字指令，打断。"}
+{"content": "时间是否开放", "label": "interrupt", "reasoning": "'时间是否开放' 是完整句子，打断。"}
+{"content": "呵呵呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "哎", "label": "do not interrupt", "reasoning": "'哎' 是语气词，无语义，不打断。"}
+{"content": "哈哈哈哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "嗯额", "label": "do not interrupt", "reasoning": "'嗯额' 是语气词，无语义，不打断。"}
+{"content": "有没有确认", "label": "interrupt", "reasoning": "'有没有确认' 是半句话，含意图，打断。"}
+{"content": "附近的药店在哪里", "label": "interrupt", "reasoning": "'附近的药店在哪里' 是完整句子，打断。"}
+{"content": "嗯嗯呵呵", "label": "do not interrupt", "reasoning": "'嗯嗯呵呵' 是语气词，无语义，不打断。"}
+{"content": "会不会", "label": "interrupt", "reasoning": "'会不会' 是半句话，含意图，打断。"}
+{"content": "咋咋咋pf", "label": "do not interrupt", "reasoning": "'咋咋咋pf' 是噪音/误识别，无语义，不打断。"}
+{"content": "帮我查酒店价格", "label": "interrupt", "reasoning": "'帮我查酒店价格' 是完整句子，打断。"}
+{"content": "天气多少钱", "label": "interrupt", "reasoning": "'天气多少钱' 是完整句子，打断。"}
+{"content": "嗯嗯对了", "label": "interrupt", "reasoning": "'嗯嗯对了' 是语气词+实词，打断。"}
+{"content": "咋咋問", "label": "do not interrupt", "reasoning": "'咋咋問' 是噪音/误识别，无语义，不打断。"}
+{"content": "哟哟哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "zhhh", "label": "do not interrupt", "reasoning": "'zhhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "我打算看一下", "label": "interrupt", "reasoning": "'我打算看一下' 是半句话，含意图，打断。"}
+{"content": "嗯应该", "label": "interrupt", "reasoning": "'嗯应该' 是语气词+实词，打断。"}
+{"content": "最新的消息怎么用", "label": "interrupt", "reasoning": "'最新的消息怎么用' 是完整句子，打断。"}
+{"content": "地址怎么预约", "label": "interrupt", "reasoning": "'地址怎么预约' 是完整句子，打断。"}
+{"content": "嗯嗯不对", "label": "interrupt", "reasoning": "'嗯嗯不对' 是语气词+实词，打断。"}
+{"content": "给我找最近的医院", "label": "interrupt", "reasoning": "'给我找最近的医院' 是完整句子，打断。"}
+{"content": "我打算了解", "label": "interrupt", "reasoning": "'我打算了解' 是半句话，含意图，打断。"}
+{"content": "嘟嘟嘟嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "我需要搜索", "label": "interrupt", "reasoning": "'我需要搜索' 是半句话，含意图，打断。"}
+{"content": "啊就是说", "label": "interrupt", "reasoning": "'啊就是说' 是语气词+实词，打断。"}
+{"content": "明天会下雨吗", "label": "interrupt", "reasoning": "'明天会下雨吗' 是完整句子，打断。"}
+{"content": "想知道一下", "label": "interrupt", "reasoning": "'想知道一下' 是半句话，含意图，打断。"}
+{"content": "喟喟喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "你能解释一下吗", "label": "interrupt", "reasoning": "'你能解释一下吗' 是完整句子，打断。"}
+{"content": "啸啸", "label": "do not interrupt", "reasoning": "'啸啸' 是噪音/误识别，无语义，不打断。"}
+{"content": "接", "label": "interrupt", "reasoning": "'接' 是单字指令，打断。"}
+{"content": "有没有了解", "label": "interrupt", "reasoning": "'有没有了解' 是半句话，含意图，打断。"}
+{"content": "附近的医院怎么用", "label": "interrupt", "reasoning": "'附近的医院怎么用' 是完整句子，打断。"}
+{"content": "有没有核实", "label": "interrupt", "reasoning": "'有没有核实' 是半句话，含意图，打断。"}
+{"content": "哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "滑滑咍咍", "label": "do not interrupt", "reasoning": "'滑滑咍咍' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯我觉得", "label": "interrupt", "reasoning": "'嗯我觉得' 是语气词+实词，打断。"}
+{"content": "啊啊？", "label": "interrupt", "reasoning": "'啊啊？' 是边界case，打断。"}
+{"content": "额嗯", "label": "do not interrupt", "reasoning": "'额嗯' 是语气词，无语义，不打断。"}
+{"content": "怎么说呢", "label": "interrupt", "reasoning": "'怎么说呢' 是半句话，含意图，打断。"}
+{"content": "今天的新闻是什么", "label": "interrupt", "reasoning": "'今天的新闻是什么' 是完整句子，打断。"}
+{"content": "营业时间几点开门", "label": "interrupt", "reasoning": "'营业时间几点开门' 是完整句子，打断。"}
+{"content": "我觉得", "label": "interrupt", "reasoning": "'我觉得' 是半句话，含意图，打断。"}
+{"content": "额", "label": "do not interrupt", "reasoning": "'额' 是语气词，无语义，不打断。"}
+{"content": "日期是否开放", "label": "interrupt", "reasoning": "'日期是否开放' 是完整句子，打断。"}
+{"content": "可不可以了解", "label": "interrupt", "reasoning": "'可不可以了解' 是半句话，含意图，打断。"}
+{"content": "shh咋咋", "label": "do not interrupt", "reasoning": "'shh咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊是", "label": "interrupt", "reasoning": "'啊是' 是边界case，打断。"}
+{"content": "那个东西", "label": "interrupt", "reasoning": "'那个东西' 是半句话，含意图，打断。"}
+{"content": "哒哒", "label": "do not interrupt", "reasoning": "'哒哒' 是噪音/误识别，无语义，不打断。"}
+{"content": "可不可以核实", "label": "interrupt", "reasoning": "'可不可以核实' 是半句话，含意图，打断。"}
+{"content": "嗯嗯我觉得", "label": "interrupt", "reasoning": "'嗯嗯我觉得' 是语气词+实词，打断。"}
+{"content": "我要搜索", "label": "interrupt", "reasoning": "'我要搜索' 是半句话，含意图，打断。"}
+{"content": "最近的地铁站怎么预约", "label": "interrupt", "reasoning": "'最近的地铁站怎么预约' 是完整句子，打断。"}
+{"content": "咍滑咍", "label": "do not interrupt", "reasoning": "'咍滑咍' 是噪音/误识别，无语义，不打断。"}
+{"content": "额哦额", "label": "do not interrupt", "reasoning": "'额哦额' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊对", "label": "interrupt", "reasoning": "'啊啊啊对' 是边界case，打断。"}
+{"content": "啊啊能帮我", "label": "interrupt", "reasoning": "'啊啊能帮我' 是语气词+实词，打断。"}
+{"content": "时间几点开门", "label": "interrupt", "reasoning": "'时间几点开门' 是完整句子，打断。"}
+{"content": "喟喟喟喟喟喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟喟喟喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "能不能核实", "label": "interrupt", "reasoning": "'能不能核实' 是半句话，含意图，打断。"}
+{"content": "这个月的账单有没有", "label": "interrupt", "reasoning": "'这个月的账单有没有' 是完整句子，打断。"}
+{"content": "有没有搜索", "label": "interrupt", "reasoning": "'有没有搜索' 是半句话，含意图，打断。"}
+{"content": "嗯啊嗯", "label": "do not interrupt", "reasoning": "'嗯啊嗯' 是语气词，无语义，不打断。"}
+{"content": "嗯那个", "label": "interrupt", "reasoning": "'嗯那个' 是语气词+实词，打断。"}
+{"content": "开放时间怎么预约", "label": "interrupt", "reasoning": "'开放时间怎么预约' 是完整句子，打断。"}
+{"content": "下周的计划在哪里", "label": "interrupt", "reasoning": "'下周的计划在哪里' 是完整句子，打断。"}
+{"content": "啊嘟嘟", "label": "do not interrupt", "reasoning": "'啊嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "哇", "label": "do not interrupt", "reasoning": "'哇' 是语气词，无语义，不打断。"}
+{"content": "能重复一遍吗", "label": "interrupt", "reasoning": "'能重复一遍吗' 是完整句子，打断。"}
+{"content": "shhh", "label": "do not interrupt", "reasoning": "'shhh' 是噪音/误识别，无语义，不打断。"}
+{"content": "唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "放", "label": "interrupt", "reasoning": "'放' 是单字指令，打断。"}
+{"content": "pf", "label": "do not interrupt", "reasoning": "'pf' 是噪音/误识别，无语义，不打断。"}
+{"content": "继", "label": "interrupt", "reasoning": "'继' 是单字指令，打断。"}
+{"content": "对", "label": "interrupt", "reasoning": "'对' 是单字指令，打断。"}
+{"content": "哘", "label": "do not interrupt", "reasoning": "'哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "能不能确认", "label": "interrupt", "reasoning": "'能不能确认' 是半句话，含意图，打断。"}
+{"content": "嗯嗯嗯好", "label": "interrupt", "reasoning": "'嗯嗯嗯好' 是边界case，打断。"}
+{"content": "唔唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔唔' 是语气词，无语义，不打断。"}
+{"content": "哈嗯哈", "label": "do not interrupt", "reasoning": "'哈嗯哈' 是语气词，无语义，不打断。"}
+{"content": "明天的安排有没有", "label": "interrupt", "reasoning": "'明天的安排有没有' 是完整句子，打断。"}
+{"content": "啊明白", "label": "interrupt", "reasoning": "'啊明白' 是语气词+实词，打断。"}
+{"content": "截", "label": "interrupt", "reasoning": "'截' 是单字指令，打断。"}
+{"content": "嗯嗯就是说", "label": "interrupt", "reasoning": "'嗯嗯就是说' 是语气词+实词，打断。"}
+{"content": "呵呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "呵哦哦", "label": "do not interrupt", "reasoning": "'呵哦哦' 是语气词，无语义，不打断。"}
+{"content": "附近的医院多少钱", "label": "interrupt", "reasoning": "'附近的医院多少钱' 是完整句子，打断。"}
+{"content": "呵嗯", "label": "do not interrupt", "reasoning": "'呵嗯' 是语气词，无语义，不打断。"}
+{"content": "好好？", "label": "interrupt", "reasoning": "'好好？' 是边界case，打断。"}
+{"content": "grr", "label": "do not interrupt", "reasoning": "'grr' 是噪音/误识别，无语义，不打断。"}
+{"content": "日期多少钱", "label": "interrupt", "reasoning": "'日期多少钱' 是完整句子，打断。"}
+{"content": "附近的药店是否开放", "label": "interrupt", "reasoning": "'附近的药店是否开放' 是完整句子，打断。"}
+{"content": "我想找一下", "label": "interrupt", "reasoning": "'我想找一下' 是半句话，含意图，打断。"}
+{"content": "嗯嗯啃啃", "label": "do not interrupt", "reasoning": "'嗯嗯啃啃' 是语气词，无语义，不打断。"}
+{"content": "啊啊我想查一下", "label": "interrupt", "reasoning": "'啊啊我想查一下' 是语气词+实词，打断。"}
+{"content": "额嗯额", "label": "do not interrupt", "reasoning": "'额嗯额' 是语气词，无语义，不打断。"}
+{"content": "呵嘟嘟", "label": "do not interrupt", "reasoning": "'呵嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "下一班车怎么预约", "label": "interrupt", "reasoning": "'下一班车怎么预约' 是完整句子，打断。"}
+{"content": "嘟啊嘟", "label": "do not interrupt", "reasoning": "'嘟啊嘟' 是语气词，无语义，不打断。"}
+{"content": "嗯我想问", "label": "interrupt", "reasoning": "'嗯我想问' 是语气词+实词，打断。"}
+{"content": "啊稍等", "label": "interrupt", "reasoning": "'啊稍等' 是语气词+实词，打断。"}
+{"content": "地点怎么预约", "label": "interrupt", "reasoning": "'地点怎么预约' 是完整句子，打断。"}
+{"content": "問問問問", "label": "do not interrupt", "reasoning": "'問問問問' 是噪音/误识别，无语义，不打断。"}
+{"content": "呵呵啃啃", "label": "do not interrupt", "reasoning": "'呵呵啃啃' 是语气词，无语义，不打断。"}
+{"content": "开放时间是什么", "label": "interrupt", "reasoning": "'开放时间是什么' 是完整句子，打断。"}
+{"content": "搜索一下快递单号", "label": "interrupt", "reasoning": "'搜索一下快递单号' 是完整句子，打断。"}
+{"content": "啊我想知道", "label": "interrupt", "reasoning": "'啊我想知道' 是语气词+实词，打断。"}
+{"content": "咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "呵呵嘟嘟", "label": "do not interrupt", "reasoning": "'呵呵嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "价格怎么去", "label": "interrupt", "reasoning": "'价格怎么去' 是完整句子，打断。"}
+{"content": "日期几点开门", "label": "interrupt", "reasoning": "'日期几点开门' 是完整句子，打断。"}
+{"content": "啊啊对", "label": "interrupt", "reasoning": "'啊啊对' 是语气词+实词，打断。"}
+{"content": "嗯嗯嗯嗯嗯嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯嗯嗯嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "啊我想查一下", "label": "interrupt", "reasoning": "'啊我想查一下' 是语气词+实词，打断。"}
+{"content": "打印", "label": "interrupt", "reasoning": "'打印' 是单字指令，打断。"}
+{"content": "这个问题很重要", "label": "interrupt", "reasoning": "'这个问题很重要' 是完整句子，打断。"}
+{"content": "这周的日程几点开门", "label": "interrupt", "reasoning": "'这周的日程几点开门' 是完整句子，打断。"}
+{"content": "给我找停车场位置", "label": "interrupt", "reasoning": "'给我找停车场位置' 是完整句子，打断。"}
+{"content": "啊啊请问", "label": "interrupt", "reasoning": "'啊啊请问' 是语气词+实词，打断。"}
+{"content": "呵那个", "label": "interrupt", "reasoning": "'呵那个' 是语气词+实词，打断。"}
+{"content": "时间在哪里", "label": "interrupt", "reasoning": "'时间在哪里' 是完整句子，打断。"}
+{"content": "嗯嗯嗯知道了", "label": "interrupt", "reasoning": "'嗯嗯嗯知道了' 是边界case，打断。"}
+{"content": "嗯嗯我想了解", "label": "interrupt", "reasoning": "'嗯嗯我想了解' 是语气词+实词，打断。"}
+{"content": "下周的计划怎么用", "label": "interrupt", "reasoning": "'下周的计划怎么用' 是完整句子，打断。"}
+{"content": "我希望看一下", "label": "interrupt", "reasoning": "'我希望看一下' 是半句话，含意图，打断。"}
+{"content": "哦", "label": "do not interrupt", "reasoning": "'哦' 是语气词，无语义，不打断。"}
+{"content": "我想核实", "label": "interrupt", "reasoning": "'我想核实' 是半句话，含意图，打断。"}
+{"content": "明天的安排多少钱", "label": "interrupt", "reasoning": "'明天的安排多少钱' 是完整句子，打断。"}
+{"content": "呵呵", "label": "do not interrupt", "reasoning": "'呵呵' 是语气词，无语义，不打断。"}
+{"content": "这是什么意思", "label": "interrupt", "reasoning": "'这是什么意思' 是完整句子，打断。"}
+{"content": "是不是核实", "label": "interrupt", "reasoning": "'是不是核实' 是半句话，含意图，打断。"}
+{"content": "哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "pf咋", "label": "do not interrupt", "reasoning": "'pf咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯？", "label": "interrupt", "reasoning": "'嗯嗯？' 是边界case，打断。"}
+{"content": "有没有了解一下", "label": "interrupt", "reasoning": "'有没有了解一下' 是半句话，含意图，打断。"}
+{"content": "嗯额额", "label": "do not interrupt", "reasoning": "'嗯额额' 是语气词，无语义，不打断。"}
+{"content": "喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "啊知道了", "label": "interrupt", "reasoning": "'啊知道了' 是语气词+实词，打断。"}
+{"content": "啊啊知道了", "label": "interrupt", "reasoning": "'啊啊知道了' 是边界case，打断。"}
+{"content": "我打算核实", "label": "interrupt", "reasoning": "'我打算核实' 是半句话，含意图，打断。"}
+{"content": "附近的医院在哪里", "label": "interrupt", "reasoning": "'附近的医院在哪里' 是完整句子，打断。"}
+{"content": "晚", "label": "interrupt", "reasoning": "'晚' 是单字指令，打断。"}
+{"content": "哦哦额额", "label": "do not interrupt", "reasoning": "'哦哦额额' 是语气词，无语义，不打断。"}
+{"content": "静音", "label": "interrupt", "reasoning": "'静音' 是单字指令，打断。"}
+{"content": "嗯嗯哦哦", "label": "do not interrupt", "reasoning": "'嗯嗯哦哦' 是语气词，无语义，不打断。"}
+{"content": "fx", "label": "do not interrupt", "reasoning": "'fx' 是噪音/误识别，无语义，不打断。"}
+{"content": "ts", "label": "do not interrupt", "reasoning": "'ts' 是噪音/误识别，无语义，不打断。"}
+{"content": "下周的计划怎么样", "label": "interrupt", "reasoning": "'下周的计划怎么样' 是完整句子，打断。"}
+{"content": "嗨", "label": "do not interrupt", "reasoning": "'嗨' 是语气词，无语义，不打断。"}
+{"content": "zh", "label": "do not interrupt", "reasoning": "'zh' 是噪音/误识别，无语义，不打断。"}
+{"content": "今天的新闻怎么预约", "label": "interrupt", "reasoning": "'今天的新闻怎么预约' 是完整句子，打断。"}
+{"content": "用", "label": "interrupt", "reasoning": "'用' 是单字指令，打断。"}
+{"content": "嗯嗯我想查一下", "label": "interrupt", "reasoning": "'嗯嗯我想查一下' 是语气词+实词，打断。"}
+{"content": "嗯嘟", "label": "do not interrupt", "reasoning": "'嗯嘟' 是语气词，无语义，不打断。"}
+{"content": "啊啊我明白了", "label": "interrupt", "reasoning": "'啊啊我明白了' 是语气词+实词，打断。"}
+{"content": "这个月的账单怎么预约", "label": "interrupt", "reasoning": "'这个月的账单怎么预约' 是完整句子，打断。"}
+{"content": "营业时间怎么用", "label": "interrupt", "reasoning": "'营业时间怎么用' 是完整句子，打断。"}
+{"content": "可不可以咍询", "label": "interrupt", "reasoning": "'可不可以咍询' 是半句话，含意图，打断。"}
+{"content": "退", "label": "interrupt", "reasoning": "'退' 是单字指令，打断。"}
+{"content": "尻尻尻", "label": "do not interrupt", "reasoning": "'尻尻尻' 是噪音/误识别，无语义，不打断。"}
+{"content": "咋咋咋", "label": "do not interrupt", "reasoning": "'咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "大概是", "label": "interrupt", "reasoning": "'大概是' 是半句话，含意图，打断。"}
+{"content": "哎哎哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "啊啊哦哦", "label": "do not interrupt", "reasoning": "'啊啊哦哦' 是语气词，无语义，不打断。"}
+{"content": "哟哟", "label": "do not interrupt", "reasoning": "'哟哟' 是语气词，无语义，不打断。"}
+{"content": "嗯我想查一下", "label": "interrupt", "reasoning": "'嗯我想查一下' 是语气词+实词，打断。"}
+{"content": "啊啊我想确认", "label": "interrupt", "reasoning": "'啊啊我想确认' 是语气词+实词，打断。"}
+{"content": "有没有", "label": "interrupt", "reasoning": "'有没有' 是半句话，含意图，打断。"}
+{"content": "我想确认", "label": "interrupt", "reasoning": "'我想确认' 是半句话，含意图，打断。"}
+{"content": "tsk", "label": "do not interrupt", "reasoning": "'tsk' 是噪音/误识别，无语义，不打断。"}
+{"content": "旧", "label": "interrupt", "reasoning": "'旧' 是单字指令，打断。"}
+{"content": "啊嘟", "label": "do not interrupt", "reasoning": "'啊嘟' 是语气词，无语义，不打断。"}
+{"content": "附近的医院几点开门", "label": "interrupt", "reasoning": "'附近的医院几点开门' 是完整句子，打断。"}
+{"content": "下", "label": "interrupt", "reasoning": "'下' 是单字指令，打断。"}
+{"content": "名字怎么用", "label": "interrupt", "reasoning": "'名字怎么用' 是完整句子，打断。"}
+{"content": "哙底哙", "label": "do not interrupt", "reasoning": "'哙底哙' 是噪音/误识别，无语义，不打断。"}
+{"content": "能不能问你", "label": "interrupt", "reasoning": "'能不能问你' 是半句话，含意图，打断。"}
+{"content": "价格怎么用", "label": "interrupt", "reasoning": "'价格怎么用' 是完整句子，打断。"}
+{"content": "啊啊额", "label": "do not interrupt", "reasoning": "'啊啊额' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯啊", "label": "do not interrupt", "reasoning": "'嗯嗯啊' 是语气词，无语义，不打断。"}
+{"content": "啊啊嘟", "label": "do not interrupt", "reasoning": "'啊啊嘟' 是语气词，无语义，不打断。"}
+{"content": "价格怎么样", "label": "interrupt", "reasoning": "'价格怎么样' 是完整句子，打断。"}
+{"content": "有没有问你", "label": "interrupt", "reasoning": "'有没有问你' 是半句话，含意图，打断。"}
+{"content": "嗯嗯对", "label": "interrupt", "reasoning": "'嗯嗯对' 是语气词+实词，打断。"}
+{"content": "我希望查一下", "label": "interrupt", "reasoning": "'我希望查一下' 是半句话，含意图，打断。"}
+{"content": "是不是知道", "label": "interrupt", "reasoning": "'是不是知道' 是半句话，含意图，打断。"}
+{"content": "我打算问你", "label": "interrupt", "reasoning": "'我打算问你' 是半句话，含意图，打断。"}
+{"content": "嗯嗯我认为", "label": "interrupt", "reasoning": "'嗯嗯我认为' 是语气词+实词，打断。"}
+{"content": "对不对", "label": "interrupt", "reasoning": "'对不对' 是半句话，含意图，打断。"}
+{"content": "pff", "label": "do not interrupt", "reasoning": "'pff' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啊啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "哒哒哒", "label": "do not interrupt", "reasoning": "'哒哒哒' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯哈", "label": "do not interrupt", "reasoning": "'嗯哈' 是语气词，无语义，不打断。"}
+{"content": "呵额", "label": "do not interrupt", "reasoning": "'呵额' 是语气词，无语义，不打断。"}
+{"content": "呵呵嘟", "label": "do not interrupt", "reasoning": "'呵呵嘟' 是语气词，无语义，不打断。"}
+{"content": "小", "label": "interrupt", "reasoning": "'小' 是单字指令，打断。"}
+{"content": "咋咋", "label": "do not interrupt", "reasoning": "'咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "咏", "label": "do not interrupt", "reasoning": "'咏' 是语气词，无语义，不打断。"}
+{"content": "这个月的账单怎么去", "label": "interrupt", "reasoning": "'这个月的账单怎么去' 是完整句子，打断。"}
+{"content": "我要问你", "label": "interrupt", "reasoning": "'我要问你' 是半句话，含意图，打断。"}
+{"content": "哦嘟", "label": "do not interrupt", "reasoning": "'哦嘟' 是语气词，无语义，不打断。"}
+{"content": "明天的安排是什么", "label": "interrupt", "reasoning": "'明天的安排是什么' 是完整句子，打断。"}
+{"content": "嗯嗯好的", "label": "interrupt", "reasoning": "'嗯嗯好的' 是语气词+实词，打断。"}
+{"content": "能不能咍询", "label": "interrupt", "reasoning": "'能不能咍询' 是半句话，含意图，打断。"}
+{"content": "啊啊啃啃", "label": "do not interrupt", "reasoning": "'啊啊啃啃' 是语气词，无语义，不打断。"}
+{"content": "嗯可以", "label": "interrupt", "reasoning": "'嗯可以' 是边界case，打断。"}
+{"content": "最近的地铁站几点开门", "label": "interrupt", "reasoning": "'最近的地铁站几点开门' 是完整句子，打断。"}
+{"content": "ngh", "label": "do not interrupt", "reasoning": "'ngh' 是噪音/误识别，无语义，不打断。"}
+{"content": "哦哦嗯嗯", "label": "do not interrupt", "reasoning": "'哦哦嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "点", "label": "interrupt", "reasoning": "'点' 是单字指令，打断。"}
+{"content": "啊哈", "label": "do not interrupt", "reasoning": "'啊哈' 是语气词，无语义，不打断。"}
+{"content": "有没有请教", "label": "interrupt", "reasoning": "'有没有请教' 是半句话，含意图，打断。"}
+{"content": "啊啊那个", "label": "interrupt", "reasoning": "'啊啊那个' 是语气词+实词，打断。"}
+{"content": "嗯嗯啊啊", "label": "do not interrupt", "reasoning": "'嗯嗯啊啊' 是语气词，无语义，不打断。"}
+{"content": "嘟嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "搜", "label": "interrupt", "reasoning": "'搜' 是单字指令，打断。"}
+{"content": "营业时间怎么样", "label": "interrupt", "reasoning": "'营业时间怎么样' 是完整句子，打断。"}
+{"content": "呵啊", "label": "do not interrupt", "reasoning": "'呵啊' 是语气词，无语义，不打断。"}
+{"content": "天气怎么预约", "label": "interrupt", "reasoning": "'天气怎么预约' 是完整句子，打断。"}
+{"content": "附近的药店几点开门", "label": "interrupt", "reasoning": "'附近的药店几点开门' 是完整句子，打断。"}
+{"content": "呵呵哈", "label": "do not interrupt", "reasoning": "'呵呵哈' 是语气词，无语义，不打断。"}
+{"content": "能不能查一下", "label": "interrupt", "reasoning": "'能不能查一下' 是半句话，含意图，打断。"}
+{"content": "哦哦额", "label": "do not interrupt", "reasoning": "'哦哦额' 是语气词，无语义，不打断。"}
+{"content": "哎哎哎哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "hh咋咋咋", "label": "do not interrupt", "reasoning": "'hh咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "我打算查一下", "label": "interrupt", "reasoning": "'我打算查一下' 是半句话，含意图，打断。"}
+{"content": "咋咋咋ts", "label": "do not interrupt", "reasoning": "'咋咋咋ts' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊哦啊", "label": "do not interrupt", "reasoning": "'啊哦啊' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯稍等", "label": "interrupt", "reasoning": "'嗯嗯稍等' 是语气词+实词，打断。"}
+{"content": "唔唔", "label": "do not interrupt", "reasoning": "'唔唔' 是语气词，无语义，不打断。"}
+{"content": "附近的药店怎么去", "label": "interrupt", "reasoning": "'附近的药店怎么去' 是完整句子，打断。"}
+{"content": "啊啊额额", "label": "do not interrupt", "reasoning": "'啊啊额额' 是语气词，无语义，不打断。"}
+{"content": "电话号码怎么样", "label": "interrupt", "reasoning": "'电话号码怎么样' 是完整句子，打断。"}
+{"content": "喔喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "取", "label": "interrupt", "reasoning": "'取' 是单字指令，打断。"}
+{"content": "嘉嘉嘉", "label": "do not interrupt", "reasoning": "'嘉嘉嘉' 是噪音/误识别，无语义，不打断。"}
+{"content": "粘贴", "label": "interrupt", "reasoning": "'粘贴' 是单字指令，打断。"}
+{"content": "这个怎么用", "label": "interrupt", "reasoning": "'这个怎么用' 是完整句子，打断。"}
+{"content": "最新的消息是否开放", "label": "interrupt", "reasoning": "'最新的消息是否开放' 是完整句子，打断。"}
+{"content": "天气是否开放", "label": "interrupt", "reasoning": "'天气是否开放' 是完整句子，打断。"}
+{"content": "今天的天气预报是否开放", "label": "interrupt", "reasoning": "'今天的天气预报是否开放' 是完整句子，打断。"}
+{"content": "我要了解一下", "label": "interrupt", "reasoning": "'我要了解一下' 是半句话，含意图，打断。"}
+{"content": "哦哦啊啊", "label": "do not interrupt", "reasoning": "'哦哦啊啊' 是语气词，无语义，不打断。"}
+{"content": "额额啊啊", "label": "do not interrupt", "reasoning": "'额额啊啊' 是语气词，无语义，不打断。"}
+{"content": "啊啊告诉我", "label": "interrupt", "reasoning": "'啊啊告诉我' 是语气词+实词，打断。"}
+{"content": "哦哈哈", "label": "do not interrupt", "reasoning": "'哦哈哈' 是语气词，无语义，不打断。"}
+{"content": "唉唉", "label": "do not interrupt", "reasoning": "'唉唉' 是语气词，无语义，不打断。"}
+{"content": "哦呵呵", "label": "do not interrupt", "reasoning": "'哦呵呵' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊知道了", "label": "interrupt", "reasoning": "'啊啊啊知道了' 是边界case，打断。"}
+{"content": "呵呵是", "label": "interrupt", "reasoning": "'呵呵是' 是语气词+实词，打断。"}
+{"content": "刷新", "label": "interrupt", "reasoning": "'刷新' 是单字指令，打断。"}
+{"content": "啊啊知道了", "label": "interrupt", "reasoning": "'啊啊知道了' 是语气词+实词，打断。"}
+{"content": "嗯嗯能帮我", "label": "interrupt", "reasoning": "'嗯嗯能帮我' 是语气词+实词，打断。"}
+{"content": "fh", "label": "do not interrupt", "reasoning": "'fh' 是噪音/误识别，无语义，不打断。"}
+{"content": "帮我查快递单号", "label": "interrupt", "reasoning": "'帮我查快递单号' 是完整句子，打断。"}
+{"content": "我想咍询你", "label": "interrupt", "reasoning": "'我想咍询你' 是完整句子，打断。"}
+{"content": "下周的计划是否开放", "label": "interrupt", "reasoning": "'下周的计划是否开放' 是完整句子，打断。"}
+{"content": "我要查一下", "label": "interrupt", "reasoning": "'我要查一下' 是半句话，含意图，打断。"}
+{"content": "啊啊这个", "label": "interrupt", "reasoning": "'啊啊这个' 是语气词+实词，打断。"}
+{"content": "嗯嗯这个", "label": "interrupt", "reasoning": "'嗯嗯这个' 是语气词+实词，打断。"}
+{"content": "附近的医院怎么去", "label": "interrupt", "reasoning": "'附近的医院怎么去' 是完整句子，打断。"}
+{"content": "啊啊好的", "label": "interrupt", "reasoning": "'啊啊好的' 是语气词+实词，打断。"}
+{"content": "啊呵啊", "label": "do not interrupt", "reasoning": "'啊呵啊' 是语气词，无语义，不打断。"}
+{"content": "等", "label": "interrupt", "reasoning": "'等' 是单字指令，打断。"}
+{"content": "嗯嗯是", "label": "interrupt", "reasoning": "'嗯嗯是' 是边界case，打断。"}
+{"content": "跳", "label": "interrupt", "reasoning": "'跳' 是单字指令，打断。"}
+{"content": "我想询问", "label": "interrupt", "reasoning": "'我想询问' 是半句话，含意图，打断。"}
+{"content": "嗯啊啊", "label": "do not interrupt", "reasoning": "'嗯啊啊' 是语气词，无语义，不打断。"}
+{"content": "哦哦哦哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "电话号码有没有", "label": "interrupt", "reasoning": "'电话号码有没有' 是完整句子，打断。"}
+{"content": "哇哇", "label": "do not interrupt", "reasoning": "'哇哇' 是语气词，无语义，不打断。"}
+{"content": "哦啊", "label": "do not interrupt", "reasoning": "'哦啊' 是语气词，无语义，不打断。"}
+{"content": "哦哦哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "后", "label": "interrupt", "reasoning": "'后' 是单字指令，打断。"}
+{"content": "额额额额额额", "label": "do not interrupt", "reasoning": "'额额额额额额' 是语气词，无语义，不打断。"}
+{"content": "确定", "label": "interrupt", "reasoning": "'确定' 是单字指令，打断。"}
+{"content": "嗯对了", "label": "interrupt", "reasoning": "'嗯对了' 是语气词+实词，打断。"}
+{"content": "哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "这样做对吗", "label": "interrupt", "reasoning": "'这样做对吗' 是完整句子，打断。"}
+{"content": "啊", "label": "do not interrupt", "reasoning": "'啊' 是语气词，无语义，不打断。"}
+{"content": "取消", "label": "interrupt", "reasoning": "'取消' 是单字指令，打断。"}
+{"content": "给我找周边景点", "label": "interrupt", "reasoning": "'给我找周边景点' 是完整句子，打断。"}
+{"content": "这周的日程怎么样", "label": "interrupt", "reasoning": "'这周的日程怎么样' 是完整句子，打断。"}
+{"content": "嗯这个", "label": "interrupt", "reasoning": "'嗯这个' 是语气词+实词，打断。"}
+{"content": "额额额额", "label": "do not interrupt", "reasoning": "'额额额额' 是语气词，无语义，不打断。"}
+{"content": "可不可以请教", "label": "interrupt", "reasoning": "'可不可以请教' 是半句话，含意图，打断。"}
+{"content": "哒哘哒", "label": "do not interrupt", "reasoning": "'哒哘哒' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "我想了解一下", "label": "interrupt", "reasoning": "'我想了解一下' 是完整句子，打断。"}
+{"content": "我想查询", "label": "interrupt", "reasoning": "'我想查询' 是半句话，含意图，打断。"}
+{"content": "哦哦嘟嘟", "label": "do not interrupt", "reasoning": "'哦哦嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "嗯有个事", "label": "interrupt", "reasoning": "'嗯有个事' 是语气词+实词，打断。"}
+{"content": "啊额", "label": "do not interrupt", "reasoning": "'啊额' 是语气词，无语义，不打断。"}
+{"content": "今天的新闻怎么去", "label": "interrupt", "reasoning": "'今天的新闻怎么去' 是完整句子，打断。"}
+{"content": "开放时间怎么去", "label": "interrupt", "reasoning": "'开放时间怎么去' 是完整句子，打断。"}
+{"content": "嗯嗯明白", "label": "interrupt", "reasoning": "'嗯嗯明白' 是语气词+实词，打断。"}
+{"content": "咋ts", "label": "do not interrupt", "reasoning": "'咋ts' 是噪音/误识别，无语义，不打断。"}
+{"content": "底底哙哙", "label": "do not interrupt", "reasoning": "'底底哙哙' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啊然后", "label": "interrupt", "reasoning": "'啊啊然后' 是语气词+实词，打断。"}
+{"content": "哒", "label": "do not interrupt", "reasoning": "'哒' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯告诉我", "label": "interrupt", "reasoning": "'嗯告诉我' 是语气词+实词，打断。"}
+{"content": "嗯哦哦", "label": "do not interrupt", "reasoning": "'嗯哦哦' 是语气词，无语义，不打断。"}
+{"content": "呵呵？", "label": "interrupt", "reasoning": "'呵呵？' 是边界case，打断。"}
+{"content": "价格是否开放", "label": "interrupt", "reasoning": "'价格是否开放' 是完整句子，打断。"}
+{"content": "下一班车怎么用", "label": "interrupt", "reasoning": "'下一班车怎么用' 是完整句子，打断。"}
+{"content": "啊我认为", "label": "interrupt", "reasoning": "'啊我认为' 是语气词+实词，打断。"}
+{"content": "帮我查天气预报", "label": "interrupt", "reasoning": "'帮我查天气预报' 是完整句子，打断。"}
+{"content": "喟喟", "label": "do not interrupt", "reasoning": "'喟喟' 是语气词，无语义，不打断。"}
+{"content": "啊然后", "label": "interrupt", "reasoning": "'啊然后' 是语气词+实词，打断。"}
+{"content": "呵嗯嗯", "label": "do not interrupt", "reasoning": "'呵嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "这周的日程是什么", "label": "interrupt", "reasoning": "'这周的日程是什么' 是完整句子，打断。"}
+{"content": "日期怎么样", "label": "interrupt", "reasoning": "'日期怎么样' 是完整句子，打断。"}
+{"content": "嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "可不可以知道", "label": "interrupt", "reasoning": "'可不可以知道' 是半句话，含意图，打断。"}
+{"content": "我希望用用", "label": "interrupt", "reasoning": "'我希望用用' 是半句话，含意图，打断。"}
+{"content": "我要了解", "label": "interrupt", "reasoning": "'我要了解' 是半句话，含意图，打断。"}
+{"content": "明天的安排怎么去", "label": "interrupt", "reasoning": "'明天的安排怎么去' 是完整句子，打断。"}
+{"content": "hx咋", "label": "do not interrupt", "reasoning": "'hx咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "这个月的账单在哪里", "label": "interrupt", "reasoning": "'这个月的账单在哪里' 是完整句子，打断。"}
+{"content": "加速", "label": "interrupt", "reasoning": "'加速' 是单字指令，打断。"}
+{"content": "我希望查询", "label": "interrupt", "reasoning": "'我希望查询' 是半句话，含意图，打断。"}
+{"content": "哦哦哈", "label": "do not interrupt", "reasoning": "'哦哦哈' 是语气词，无语义，不打断。"}
+{"content": "哩哩哩哩哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩哩哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "删除", "label": "interrupt", "reasoning": "'删除' 是单字指令，打断。"}
+{"content": "今天的天气预报怎么用", "label": "interrupt", "reasoning": "'今天的天气预报怎么用' 是完整句子，打断。"}
+{"content": "嗯嗯可能", "label": "interrupt", "reasoning": "'嗯嗯可能' 是语气词+实词，打断。"}
+{"content": "时间怎么样", "label": "interrupt", "reasoning": "'时间怎么样' 是完整句子，打断。"}
+{"content": "最近的地铁站怎么样", "label": "interrupt", "reasoning": "'最近的地铁站怎么样' 是完整句子，打断。"}
+{"content": "额哦", "label": "do not interrupt", "reasoning": "'额哦' 是语气词，无语义，不打断。"}
+{"content": "呵哈", "label": "do not interrupt", "reasoning": "'呵哈' 是语气词，无语义，不打断。"}
+{"content": "今天的新闻怎么样", "label": "interrupt", "reasoning": "'今天的新闻怎么样' 是完整句子，打断。"}
+{"content": "呵啊呵", "label": "do not interrupt", "reasoning": "'呵啊呵' 是语气词，无语义，不打断。"}
+{"content": "我需要了解一下", "label": "interrupt", "reasoning": "'我需要了解一下' 是半句话，含意图，打断。"}
+{"content": "减速", "label": "interrupt", "reasoning": "'减速' 是单字指令，打断。"}
+{"content": "嗯？", "label": "interrupt", "reasoning": "'嗯？' 是边界case，打断。"}
+{"content": "啊啊好", "label": "interrupt", "reasoning": "'啊啊好' 是边界case，打断。"}
+{"content": "额嗯嗯", "label": "do not interrupt", "reasoning": "'额嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "嘟嘟嘟嘟嘟嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟嘟嘟嘟嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "帮我查24小时药店", "label": "interrupt", "reasoning": "'帮我查24小时药店' 是完整句子，打断。"}
+{"content": "有没有查一下", "label": "interrupt", "reasoning": "'有没有查一下' 是半句话，含意图，打断。"}
+{"content": "tsss", "label": "do not interrupt", "reasoning": "'tsss' 是噪音/误识别，无语义，不打断。"}
+{"content": "挂", "label": "interrupt", "reasoning": "'挂' 是单字指令，打断。"}
+{"content": "咋問", "label": "do not interrupt", "reasoning": "'咋問' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯你好", "label": "interrupt", "reasoning": "'嗯你好' 是语气词+实词，打断。"}
+{"content": "啊我想问", "label": "interrupt", "reasoning": "'啊我想问' 是语气词+实词，打断。"}
+{"content": "名字多少钱", "label": "interrupt", "reasoning": "'名字多少钱' 是完整句子，打断。"}
+{"content": "哦嘟嘟", "label": "do not interrupt", "reasoning": "'哦嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "呵呵额额", "label": "do not interrupt", "reasoning": "'呵呵额额' 是语气词，无语义，不打断。"}
+{"content": "咏咏", "label": "do not interrupt", "reasoning": "'咏咏' 是语气词，无语义，不打断。"}
+{"content": "啊嘟啊", "label": "do not interrupt", "reasoning": "'啊嘟啊' 是语气词，无语义，不打断。"}
+{"content": "呵我想", "label": "interrupt", "reasoning": "'呵我想' 是语气词+实词，打断。"}
+{"content": "价格在哪里", "label": "interrupt", "reasoning": "'价格在哪里' 是完整句子，打断。"}
+{"content": "返", "label": "interrupt", "reasoning": "'返' 是单字指令，打断。"}
+{"content": "最近的地铁站是什么", "label": "interrupt", "reasoning": "'最近的地铁站是什么' 是完整句子，打断。"}
+{"content": "哘哘", "label": "do not interrupt", "reasoning": "'哘哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "去", "label": "interrupt", "reasoning": "'去' 是单字指令，打断。"}
+{"content": "我希望看看", "label": "interrupt", "reasoning": "'我希望看看' 是半句话，含意图，打断。"}
+{"content": "告诉我加油站位置", "label": "interrupt", "reasoning": "'告诉我加油站位置' 是完整句子，打断。"}
+{"content": "嗯嗯我想知道", "label": "interrupt", "reasoning": "'嗯嗯我想知道' 是语气词+实词，打断。"}
+{"content": "啊啊啊啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "嗯请问", "label": "interrupt", "reasoning": "'嗯请问' 是语气词+实词，打断。"}
+{"content": "我希望了解", "label": "interrupt", "reasoning": "'我希望了解' 是半句话，含意图，打断。"}
+{"content": "能不能看一下", "label": "interrupt", "reasoning": "'能不能看一下' 是半句话，含意图，打断。"}
+{"content": "啊啊啃", "label": "do not interrupt", "reasoning": "'啊啊啃' 是语气词，无语义，不打断。"}
+{"content": "发", "label": "interrupt", "reasoning": "'发' 是单字指令，打断。"}
+{"content": "是不是查一下", "label": "interrupt", "reasoning": "'是不是查一下' 是半句话，含意图，打断。"}
+{"content": "附近的药店多少钱", "label": "interrupt", "reasoning": "'附近的药店多少钱' 是完整句子，打断。"}
+{"content": "日期是什么", "label": "interrupt", "reasoning": "'日期是什么' 是完整句子，打断。"}
+{"content": "今天的天气预报在哪里", "label": "interrupt", "reasoning": "'今天的天气预报在哪里' 是完整句子，打断。"}
+{"content": "tch", "label": "do not interrupt", "reasoning": "'tch' 是噪音/误识别，无语义，不打断。"}
+{"content": "额额哦哦", "label": "do not interrupt", "reasoning": "'额额哦哦' 是语气词，无语义，不打断。"}
+{"content": "放大", "label": "interrupt", "reasoning": "'放大' 是单字指令，打断。"}
+{"content": "右", "label": "interrupt", "reasoning": "'右' 是单字指令，打断。"}
+{"content": "啊啊嗯", "label": "do not interrupt", "reasoning": "'啊啊嗯' 是语气词，无语义，不打断。"}
+{"content": "搜索一下公交路线", "label": "interrupt", "reasoning": "'搜索一下公交路线' 是完整句子，打断。"}
+{"content": "帮我查最近的医院", "label": "interrupt", "reasoning": "'帮我查最近的医院' 是完整句子，打断。"}
+{"content": "唉唉唉唉唉唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉唉唉唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "地址是否开放", "label": "interrupt", "reasoning": "'地址是否开放' 是完整句子，打断。"}
+{"content": "嗯嗯知道了", "label": "interrupt", "reasoning": "'嗯嗯知道了' 是语气词+实词，打断。"}
+{"content": "呵哈哈", "label": "do not interrupt", "reasoning": "'呵哈哈' 是语气词，无语义，不打断。"}
+{"content": "要", "label": "interrupt", "reasoning": "'要' 是单字指令，打断。"}
+{"content": "啊啊啊啊行", "label": "interrupt", "reasoning": "'啊啊啊啊行' 是边界case，打断。"}
+{"content": "哈哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "低", "label": "interrupt", "reasoning": "'低' 是单字指令，打断。"}
+{"content": "啊啊啊是", "label": "interrupt", "reasoning": "'啊啊啊是' 是边界case，打断。"}
+{"content": "底哙底", "label": "do not interrupt", "reasoning": "'底哙底' 是噪音/误识别，无语义，不打断。"}
+{"content": "最近的餐厅是否开放", "label": "interrupt", "reasoning": "'最近的餐厅是否开放' 是完整句子，打断。"}
+{"content": "明天的安排怎么预约", "label": "interrupt", "reasoning": "'明天的安排怎么预约' 是完整句子，打断。"}
+{"content": "嗯可能", "label": "interrupt", "reasoning": "'嗯可能' 是语气词+实词，打断。"}
+{"content": "是不是看看", "label": "interrupt", "reasoning": "'是不是看看' 是半句话，含意图，打断。"}
+{"content": "撤销", "label": "interrupt", "reasoning": "'撤销' 是单字指令，打断。"}
+{"content": "能不能了解一下", "label": "interrupt", "reasoning": "'能不能了解一下' 是半句话，含意图，打断。"}
+{"content": "我想确认一下", "label": "interrupt", "reasoning": "'我想确认一下' 是完整句子，打断。"}
+{"content": "价格是什么", "label": "interrupt", "reasoning": "'价格是什么' 是完整句子，打断。"}
+{"content": "附近的药店怎么用", "label": "interrupt", "reasoning": "'附近的药店怎么用' 是完整句子，打断。"}
+{"content": "可不可以问你", "label": "interrupt", "reasoning": "'可不可以问你' 是半句话，含意图，打断。"}
+{"content": "有没有用用", "label": "interrupt", "reasoning": "'有没有用用' 是半句话，含意图，打断。"}
+{"content": "問咋問", "label": "do not interrupt", "reasoning": "'問咋問' 是噪音/误识别，无语义，不打断。"}
+{"content": "搜索一下最近的医院", "label": "interrupt", "reasoning": "'搜索一下最近的医院' 是完整句子，打断。"}
+{"content": "天气是什么", "label": "interrupt", "reasoning": "'天气是什么' 是完整句子，打断。"}
+{"content": "啨啨啨啨", "label": "do not interrupt", "reasoning": "'啨啨啨啨' 是噪音/误识别，无语义，不打断。"}
+{"content": "这个月的账单怎么样", "label": "interrupt", "reasoning": "'这个月的账单怎么样' 是完整句子，打断。"}
+{"content": "帮我查今日新闻", "label": "interrupt", "reasoning": "'帮我查今日新闻' 是完整句子，打断。"}
+{"content": "开放时间是否开放", "label": "interrupt", "reasoning": "'开放时间是否开放' 是完整句子，打断。"}
+{"content": "跑", "label": "interrupt", "reasoning": "'跑' 是单字指令，打断。"}
+{"content": "啃啊啃", "label": "do not interrupt", "reasoning": "'啃啊啃' 是语气词，无语义，不打断。"}
+{"content": "今天的新闻怎么用", "label": "interrupt", "reasoning": "'今天的新闻怎么用' 是完整句子，打断。"}
+{"content": "嗯嗯没问题", "label": "interrupt", "reasoning": "'嗯嗯没问题' 是边界case，打断。"}
+{"content": "今天的天气预报怎么样", "label": "interrupt", "reasoning": "'今天的天气预报怎么样' 是完整句子，打断。"}
+{"content": "哦哦？", "label": "interrupt", "reasoning": "'哦哦？' 是边界case，打断。"}
+{"content": "哦啃啃", "label": "do not interrupt", "reasoning": "'哦啃啃' 是语气词，无语义，不打断。"}
+{"content": "就", "label": "interrupt", "reasoning": "'就' 是单字指令，打断。"}
+{"content": "最近的地铁站是否开放", "label": "interrupt", "reasoning": "'最近的地铁站是否开放' 是完整句子，打断。"}
+{"content": "额啊啊", "label": "do not interrupt", "reasoning": "'额啊啊' 是语气词，无语义，不打断。"}
+{"content": "啊啊就是说", "label": "interrupt", "reasoning": "'啊啊就是说' 是语气词+实词，打断。"}
+{"content": "哦我知道", "label": "interrupt", "reasoning": "'哦我知道' 是语气词+实词，打断。"}
+{"content": "啊啊啊啊啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊啊啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "哟哟哟哟哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟哟哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯有个事", "label": "interrupt", "reasoning": "'嗯嗯有个事' 是语气词+实词，打断。"}
+{"content": "啊啊我想问", "label": "interrupt", "reasoning": "'啊啊我想问' 是语气词+实词，打断。"}
+{"content": "读", "label": "interrupt", "reasoning": "'读' 是单字指令，打断。"}
+{"content": "ssh", "label": "do not interrupt", "reasoning": "'ssh' 是噪音/误识别，无语义，不打断。"}
+{"content": "在哪里可以找到", "label": "interrupt", "reasoning": "'在哪里可以找到' 是完整句子，打断。"}
+{"content": "啊啊可以", "label": "interrupt", "reasoning": "'啊啊可以' 是边界case，打断。"}
+{"content": "嗯不对", "label": "interrupt", "reasoning": "'嗯不对' 是语气词+实词，打断。"}
+{"content": "grrr", "label": "do not interrupt", "reasoning": "'grrr' 是噪音/误识别，无语义，不打断。"}
+{"content": "問問", "label": "do not interrupt", "reasoning": "'問問' 是噪音/误识别，无语义，不打断。"}
+{"content": "我打算问一下", "label": "interrupt", "reasoning": "'我打算问一下' 是半句话，含意图，打断。"}
+{"content": "明天的安排在哪里", "label": "interrupt", "reasoning": "'明天的安排在哪里' 是完整句子，打断。"}
+{"content": "唉唉唉唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "呵嗯呵", "label": "do not interrupt", "reasoning": "'呵嗯呵' 是语气词，无语义，不打断。"}
+{"content": "啃啃", "label": "do not interrupt", "reasoning": "'啃啃' 是语气词，无语义，不打断。"}
+{"content": "能不能", "label": "interrupt", "reasoning": "'能不能' 是半句话，含意图，打断。"}
+{"content": "我要知道", "label": "interrupt", "reasoning": "'我要知道' 是半句话，含意图，打断。"}
+{"content": "底", "label": "do not interrupt", "reasoning": "'底' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯没问题", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯没问题' 是边界case，打断。"}
+{"content": "咏咏咏咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "天气怎么去", "label": "interrupt", "reasoning": "'天气怎么去' 是完整句子，打断。"}
+{"content": "这周的日程多少钱", "label": "interrupt", "reasoning": "'这周的日程多少钱' 是完整句子，打断。"}
+{"content": "地点几点开门", "label": "interrupt", "reasoning": "'地点几点开门' 是完整句子，打断。"}
+{"content": "可不可以看看", "label": "interrupt", "reasoning": "'可不可以看看' 是半句话，含意图，打断。"}
+{"content": "滑咍滑", "label": "do not interrupt", "reasoning": "'滑咍滑' 是噪音/误识别，无语义，不打断。"}
+{"content": "哒哘底哙", "label": "do not interrupt", "reasoning": "'哒哘底哙' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯然后", "label": "interrupt", "reasoning": "'嗯然后' 是语气词+实词，打断。"}
+{"content": "可不可以用用", "label": "interrupt", "reasoning": "'可不可以用用' 是半句话，含意图，打断。"}
+{"content": "brr", "label": "do not interrupt", "reasoning": "'brr' 是噪音/误识别，无语义，不打断。"}
+{"content": "我打算确认一下", "label": "interrupt", "reasoning": "'我打算确认一下' 是半句话，含意图，打断。"}
+{"content": "喟喟喟喟喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟喟喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "上", "label": "interrupt", "reasoning": "'上' 是单字指令，打断。"}
+{"content": "問問咋", "label": "do not interrupt", "reasoning": "'問問咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啊对", "label": "interrupt", "reasoning": "'啊啊对' 是边界case，打断。"}
+{"content": "最近的地铁站在哪里", "label": "interrupt", "reasoning": "'最近的地铁站在哪里' 是完整句子，打断。"}
+{"content": "ughh", "label": "do not interrupt", "reasoning": "'ughh' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啊啊", "label": "do not interrupt", "reasoning": "'啊啊啊' 是语气词，无语义，不打断。"}
+{"content": "啃哦啃", "label": "do not interrupt", "reasoning": "'啃哦啃' 是语气词，无语义，不打断。"}
+{"content": "哈啊哈", "label": "do not interrupt", "reasoning": "'哈啊哈' 是语气词，无语义，不打断。"}
+{"content": "咋咋pf", "label": "do not interrupt", "reasoning": "'咋咋pf' 是噪音/误识别，无语义，不打断。"}
+{"content": "营业时间是否开放", "label": "interrupt", "reasoning": "'营业时间是否开放' 是完整句子，打断。"}
+{"content": "哇哇哇哇哇哇哇", "label": "do not interrupt", "reasoning": "'哇哇哇哇哇哇哇' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯没问题", "label": "interrupt", "reasoning": "'嗯嗯嗯没问题' 是边界case，打断。"}
+{"content": "登录", "label": "interrupt", "reasoning": "'登录' 是单字指令，打断。"}
+{"content": "最新的消息在哪里", "label": "interrupt", "reasoning": "'最新的消息在哪里' 是完整句子，打断。"}
+{"content": "嗯明白", "label": "interrupt", "reasoning": "'嗯明白' 是语气词+实词，打断。"}
+{"content": "我要看一下", "label": "interrupt", "reasoning": "'我要看一下' 是半句话，含意图，打断。"}
+{"content": "这个月的账单几点开门", "label": "interrupt", "reasoning": "'这个月的账单几点开门' 是完整句子，打断。"}
+{"content": "我希望确认", "label": "interrupt", "reasoning": "'我希望确认' 是半句话，含意图，打断。"}
+{"content": "我需要问一下", "label": "interrupt", "reasoning": "'我需要问一下' 是半句话，含意图，打断。"}
+{"content": "可不可以试试", "label": "interrupt", "reasoning": "'可不可以试试' 是半句话，含意图，打断。"}
+{"content": "嘟嘟", "label": "do not interrupt", "reasoning": "'嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "为什么会这样", "label": "interrupt", "reasoning": "'为什么会这样' 是完整句子，打断。"}
+{"content": "xhx", "label": "do not interrupt", "reasoning": "'xhx' 是噪音/误识别，无语义，不打断。"}
+{"content": "名字是什么", "label": "interrupt", "reasoning": "'名字是什么' 是完整句子，打断。"}
+{"content": "滑", "label": "do not interrupt", "reasoning": "'滑' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "我打算知道", "label": "interrupt", "reasoning": "'我打算知道' 是半句话，含意图，打断。"}
+{"content": "开放时间多少钱", "label": "interrupt", "reasoning": "'开放时间多少钱' 是完整句子，打断。"}
+{"content": "我需要试试", "label": "interrupt", "reasoning": "'我需要试试' 是半句话，含意图，打断。"}
+{"content": "最近的地铁站有没有", "label": "interrupt", "reasoning": "'最近的地铁站有没有' 是完整句子，打断。"}
+{"content": "告诉我附近的餐厅", "label": "interrupt", "reasoning": "'告诉我附近的餐厅' 是完整句子，打断。"}
+{"content": "tss", "label": "do not interrupt", "reasoning": "'tss' 是噪音/误识别，无语义，不打断。"}
+{"content": "告诉我更多信息", "label": "interrupt", "reasoning": "'告诉我更多信息' 是完整句子，打断。"}
+{"content": "嗯嗯嗯可以", "label": "interrupt", "reasoning": "'嗯嗯嗯可以' 是边界case，打断。"}
+{"content": "嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "这周的日程在哪里", "label": "interrupt", "reasoning": "'这周的日程在哪里' 是完整句子，打断。"}
+{"content": "ts咋咋", "label": "do not interrupt", "reasoning": "'ts咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "我需要确认一下", "label": "interrupt", "reasoning": "'我需要确认一下' 是半句话，含意图，打断。"}
+{"content": "我要用用", "label": "interrupt", "reasoning": "'我要用用' 是半句话，含意图，打断。"}
+{"content": "能帮我解释吗", "label": "interrupt", "reasoning": "'能帮我解释吗' 是完整句子，打断。"}
+{"content": "再", "label": "interrupt", "reasoning": "'再' 是单字指令，打断。"}
+{"content": "你知道吧", "label": "interrupt", "reasoning": "'你知道吧' 是半句话，含意图，打断。"}
+{"content": "好像是", "label": "interrupt", "reasoning": "'好像是' 是半句话，含意图，打断。"}
+{"content": "啸啸啸", "label": "do not interrupt", "reasoning": "'啸啸啸' 是噪音/误识别，无语义，不打断。"}
+{"content": "下周的计划多少钱", "label": "interrupt", "reasoning": "'下周的计划多少钱' 是完整句子，打断。"}
+{"content": "xh", "label": "do not interrupt", "reasoning": "'xh' 是噪音/误识别，无语义，不打断。"}
+{"content": "啃啃啃啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "告诉我停车场位置", "label": "interrupt", "reasoning": "'告诉我停车场位置' 是完整句子，打断。"}
+{"content": "日期怎么去", "label": "interrupt", "reasoning": "'日期怎么去' 是完整句子，打断。"}
+{"content": "我想确认一下", "label": "interrupt", "reasoning": "'我想确认一下' 是半句话，含意图，打断。"}
+{"content": "啊啊啊啊可以", "label": "interrupt", "reasoning": "'啊啊啊啊可以' 是边界case，打断。"}
+{"content": "能给我建议吗", "label": "interrupt", "reasoning": "'能给我建议吗' 是完整句子，打断。"}
+{"content": "嗯嗯嗯嗯对", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯对' 是边界case，打断。"}
+{"content": "呵对", "label": "interrupt", "reasoning": "'呵对' 是边界case，打断。"}
+{"content": "帮", "label": "interrupt", "reasoning": "'帮' 是单字指令，打断。"}
+{"content": "先", "label": "interrupt", "reasoning": "'先' 是单字指令，打断。"}
+{"content": "额额额额额额额", "label": "do not interrupt", "reasoning": "'额额额额额额额' 是语气词，无语义，不打断。"}
+{"content": "呵呵嗯", "label": "do not interrupt", "reasoning": "'呵呵嗯' 是语气词，无语义，不打断。"}
+{"content": "我需要询问", "label": "interrupt", "reasoning": "'我需要询问' 是半句话，含意图，打断。"}
+{"content": "啊啊", "label": "do not interrupt", "reasoning": "'啊啊' 是语气词，无语义，不打断。"}
+{"content": "给我找今日新闻", "label": "interrupt", "reasoning": "'给我找今日新闻' 是完整句子，打断。"}
+{"content": "最近的餐厅是什么", "label": "interrupt", "reasoning": "'最近的餐厅是什么' 是完整句子，打断。"}
+{"content": "这周的日程有没有", "label": "interrupt", "reasoning": "'这周的日程有没有' 是完整句子，打断。"}
+{"content": "啊啊啊啊是", "label": "interrupt", "reasoning": "'啊啊啊啊是' 是边界case，打断。"}
+{"content": "嗨嗨嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊啊对", "label": "interrupt", "reasoning": "'啊啊啊啊对' 是边界case，打断。"}
+{"content": "是？", "label": "interrupt", "reasoning": "'是？' 是边界case，打断。"}
+{"content": "我打算查询", "label": "interrupt", "reasoning": "'我打算查询' 是半句话，含意图，打断。"}
+{"content": "复", "label": "interrupt", "reasoning": "'复' 是单字指令，打断。"}
+{"content": "我想请教", "label": "interrupt", "reasoning": "'我想请教' 是半句话，含意图，打断。"}
+{"content": "啊我需要", "label": "interrupt", "reasoning": "'啊我需要' 是语气词+实词，打断。"}
+{"content": "给我找地铁时刻表", "label": "interrupt", "reasoning": "'给我找地铁时刻表' 是完整句子，打断。"}
+{"content": "呵呵哈哈", "label": "do not interrupt", "reasoning": "'呵呵哈哈' 是语气词，无语义，不打断。"}
+{"content": "啊哦哦", "label": "do not interrupt", "reasoning": "'啊哦哦' 是语气词，无语义，不打断。"}
+{"content": "能帮我查一下吗", "label": "interrupt", "reasoning": "'能帮我查一下吗' 是完整句子，打断。"}
+{"content": "下周的计划怎么去", "label": "interrupt", "reasoning": "'下周的计划怎么去' 是完整句子，打断。"}
+{"content": "今天的新闻多少钱", "label": "interrupt", "reasoning": "'今天的新闻多少钱' 是完整句子，打断。"}
+{"content": "价格怎么预约", "label": "interrupt", "reasoning": "'价格怎么预约' 是完整句子，打断。"}
+{"content": "嗯啃嗯", "label": "do not interrupt", "reasoning": "'嗯啃嗯' 是语气词，无语义，不打断。"}
+{"content": "hx咋咋咋", "label": "do not interrupt", "reasoning": "'hx咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "啊啃啃", "label": "do not interrupt", "reasoning": "'啊啃啃' 是语气词，无语义，不打断。"}
+{"content": "短", "label": "interrupt", "reasoning": "'短' 是单字指令，打断。"}
+{"content": "啨啨啨", "label": "do not interrupt", "reasoning": "'啨啨啨' 是噪音/误识别，无语义，不打断。"}
+{"content": "嘟", "label": "do not interrupt", "reasoning": "'嘟' 是语气词，无语义，不打断。"}
+{"content": "最近的地铁站怎么用", "label": "interrupt", "reasoning": "'最近的地铁站怎么用' 是完整句子，打断。"}
+{"content": "额哦哦", "label": "do not interrupt", "reasoning": "'额哦哦' 是语气词，无语义，不打断。"}
+{"content": "嗯啃", "label": "do not interrupt", "reasoning": "'嗯啃' 是语气词，无语义，不打断。"}
+{"content": "啃啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "問問咋咋", "label": "do not interrupt", "reasoning": "'問問咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "是不是咍询", "label": "interrupt", "reasoning": "'是不是咍询' 是半句话，含意图，打断。"}
+{"content": "嗯嗯额额", "label": "do not interrupt", "reasoning": "'嗯嗯额额' 是语气词，无语义，不打断。"}
+{"content": "价格有没有", "label": "interrupt", "reasoning": "'价格有没有' 是完整句子，打断。"}
+{"content": "嗯我认为", "label": "interrupt", "reasoning": "'嗯我认为' 是语气词+实词，打断。"}
+{"content": "请问一下", "label": "interrupt", "reasoning": "'请问一下' 是完整句子，打断。"}
+{"content": "地址怎么去", "label": "interrupt", "reasoning": "'地址怎么去' 是完整句子，打断。"}
+{"content": "brrr", "label": "do not interrupt", "reasoning": "'brrr' 是噪音/误识别，无语义，不打断。"}
+{"content": "滑滑滑", "label": "do not interrupt", "reasoning": "'滑滑滑' 是噪音/误识别，无语义，不打断。"}
+{"content": "附近的医院怎么样", "label": "interrupt", "reasoning": "'附近的医院怎么样' 是完整句子，打断。"}
+{"content": "最近的餐厅怎么预约", "label": "interrupt", "reasoning": "'最近的餐厅怎么预约' 是完整句子，打断。"}
+{"content": "早", "label": "interrupt", "reasoning": "'早' 是单字指令，打断。"}
+{"content": "我希望请教", "label": "interrupt", "reasoning": "'我希望请教' 是半句话，含意图，打断。"}
+{"content": "收", "label": "interrupt", "reasoning": "'收' 是单字指令，打断。"}
+{"content": "能不能询问", "label": "interrupt", "reasoning": "'能不能询问' 是半句话，含意图，打断。"}
+{"content": "哦这样", "label": "interrupt", "reasoning": "'哦这样' 是边界case，打断。"}
+{"content": "有没有问一下", "label": "interrupt", "reasoning": "'有没有问一下' 是半句话，含意图，打断。"}
+{"content": "嘟哦嘟", "label": "do not interrupt", "reasoning": "'嘟哦嘟' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯对", "label": "interrupt", "reasoning": "'嗯嗯嗯对' 是边界case，打断。"}
+{"content": "啊？", "label": "interrupt", "reasoning": "'啊？' 是边界case，打断。"}
+{"content": "啊好的", "label": "interrupt", "reasoning": "'啊好的' 是语气词+实词，打断。"}
+{"content": "哩哩哩哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "哈哈哈哈哈哈哈哈", "label": "do not interrupt", "reasoning": "'哈哈哈哈哈哈哈哈' 是语气词，无语义，不打断。"}
+{"content": "哦哦哦", "label": "do not interrupt", "reasoning": "'哦哦哦' 是语气词，无语义，不打断。"}
+{"content": "我要咍询", "label": "interrupt", "reasoning": "'我要咍询' 是半句话，含意图，打断。"}
+{"content": "开放时间有没有", "label": "interrupt", "reasoning": "'开放时间有没有' 是完整句子，打断。"}
+{"content": "啊不对", "label": "interrupt", "reasoning": "'啊不对' 是语气词+实词，打断。"}
+{"content": "啃啃啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "喔喔喔喔喔喔喔喔", "label": "do not interrupt", "reasoning": "'喔喔喔喔喔喔喔喔' 是语气词，无语义，不打断。"}
+{"content": "嘉嘉", "label": "do not interrupt", "reasoning": "'嘉嘉' 是噪音/误识别，无语义，不打断。"}
+{"content": "上传", "label": "interrupt", "reasoning": "'上传' 是单字指令，打断。"}
+{"content": "跳过", "label": "interrupt", "reasoning": "'跳过' 是单字指令，打断。"}
+{"content": "哩哩哩哩", "label": "do not interrupt", "reasoning": "'哩哩哩哩' 是语气词，无语义，不打断。"}
+{"content": "电话号码在哪里", "label": "interrupt", "reasoning": "'电话号码在哪里' 是完整句子，打断。"}
+{"content": "pf咋咋咋", "label": "do not interrupt", "reasoning": "'pf咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "能不能搜索", "label": "interrupt", "reasoning": "'能不能搜索' 是半句话，含意图，打断。"}
+{"content": "呵啃呵", "label": "do not interrupt", "reasoning": "'呵啃呵' 是语气词，无语义，不打断。"}
+{"content": "是不是问你", "label": "interrupt", "reasoning": "'是不是问你' 是半句话，含意图，打断。"}
+{"content": "哈哦哈", "label": "do not interrupt", "reasoning": "'哈哦哈' 是语气词，无语义，不打断。"}
+{"content": "下周的计划有没有", "label": "interrupt", "reasoning": "'下周的计划有没有' 是完整句子，打断。"}
+{"content": "缩小", "label": "interrupt", "reasoning": "'缩小' 是单字指令，打断。"}
+{"content": "我需要查询", "label": "interrupt", "reasoning": "'我需要查询' 是半句话，含意图，打断。"}
+{"content": "想", "label": "interrupt", "reasoning": "'想' 是单字指令，打断。"}
+{"content": "我要询问", "label": "interrupt", "reasoning": "'我要询问' 是半句话，含意图，打断。"}
+{"content": "这个月的账单是什么", "label": "interrupt", "reasoning": "'这个月的账单是什么' 是完整句子，打断。"}
+{"content": "有没有看一下", "label": "interrupt", "reasoning": "'有没有看一下' 是半句话，含意图，打断。"}
+{"content": "今天的新闻在哪里", "label": "interrupt", "reasoning": "'今天的新闻在哪里' 是完整句子，打断。"}
+{"content": "啊嗯", "label": "do not interrupt", "reasoning": "'啊嗯' 是语气词，无语义，不打断。"}
+{"content": "今天的新闻几点开门", "label": "interrupt", "reasoning": "'今天的新闻几点开门' 是完整句子，打断。"}
+{"content": "是不是了解", "label": "interrupt", "reasoning": "'是不是了解' 是半句话，含意图，打断。"}
+{"content": "哎哎哎哎哎哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎哎哎哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "可不可以搜索", "label": "interrupt", "reasoning": "'可不可以搜索' 是半句话，含意图，打断。"}
+{"content": "底咍哘", "label": "do not interrupt", "reasoning": "'底咍哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "滑哒咍哘", "label": "do not interrupt", "reasoning": "'滑哒咍哘' 是噪音/误识别，无语义，不打断。"}
+{"content": "嗯嗯嗯嗯可以", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯可以' 是边界case，打断。"}
+{"content": "哦啃哦", "label": "do not interrupt", "reasoning": "'哦啃哦' 是语气词，无语义，不打断。"}
+{"content": "我想问", "label": "interrupt", "reasoning": "'我想问' 是半句话，含意图，打断。"}
+{"content": "嗯", "label": "do not interrupt", "reasoning": "'嗯' 是语气词，无语义，不打断。"}
+{"content": "找", "label": "interrupt", "reasoning": "'找' 是单字指令，打断。"}
+{"content": "地址是什么", "label": "interrupt", "reasoning": "'地址是什么' 是完整句子，打断。"}
+{"content": "今天的天气预报怎么去", "label": "interrupt", "reasoning": "'今天的天气预报怎么去' 是完整句子，打断。"}
+{"content": "我希望确认一下", "label": "interrupt", "reasoning": "'我希望确认一下' 是半句话，含意图，打断。"}
+{"content": "给我找加油站位置", "label": "interrupt", "reasoning": "'给我找加油站位置' 是完整句子，打断。"}
+{"content": "最新的消息几点开门", "label": "interrupt", "reasoning": "'最新的消息几点开门' 是完整句子，打断。"}
+{"content": "给我找公交路线", "label": "interrupt", "reasoning": "'给我找公交路线' 是完整句子，打断。"}
+{"content": "啊啊哈哈", "label": "do not interrupt", "reasoning": "'啊啊哈哈' 是语气词，无语义，不打断。"}
+{"content": "啊啊嘟嘟", "label": "do not interrupt", "reasoning": "'啊啊嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "我希望问你", "label": "interrupt", "reasoning": "'我希望问你' 是半句话，含意图，打断。"}
+{"content": "哒哘底", "label": "do not interrupt", "reasoning": "'哒哘底' 是噪音/误识别，无语义，不打断。"}
+{"content": "下一班车怎么去", "label": "interrupt", "reasoning": "'下一班车怎么去' 是完整句子，打断。"}
+{"content": "嗯我想知道", "label": "interrupt", "reasoning": "'嗯我想知道' 是语气词+实词，打断。"}
+{"content": "左", "label": "interrupt", "reasoning": "'左' 是单字指令，打断。"}
+{"content": "啊啊啊行", "label": "interrupt", "reasoning": "'啊啊啊行' 是边界case，打断。"}
+{"content": "扫", "label": "interrupt", "reasoning": "'扫' 是单字指令，打断。"}
+{"content": "啊我明白了", "label": "interrupt", "reasoning": "'啊我明白了' 是语气词+实词，打断。"}
+{"content": "有没有知道", "label": "interrupt", "reasoning": "'有没有知道' 是半句话，含意图，打断。"}
+{"content": "可", "label": "interrupt", "reasoning": "'可' 是单字指令，打断。"}
+{"content": "能不能确认一下", "label": "interrupt", "reasoning": "'能不能确认一下' 是半句话，含意图，打断。"}
+{"content": "高", "label": "interrupt", "reasoning": "'高' 是单字指令，打断。"}
+{"content": "呵呵呵呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "啃啃啃啃啃啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃啃啃啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "今天的天气预报怎么预约", "label": "interrupt", "reasoning": "'今天的天气预报怎么预约' 是完整句子，打断。"}
+{"content": "我需要用用", "label": "interrupt", "reasoning": "'我需要用用' 是半句话，含意图，打断。"}
+{"content": "嗯呵嗯", "label": "do not interrupt", "reasoning": "'嗯呵嗯' 是语气词，无语义，不打断。"}
+{"content": "喟喟喟", "label": "do not interrupt", "reasoning": "'喟喟喟' 是语气词，无语义，不打断。"}
+{"content": "我要问一下", "label": "interrupt", "reasoning": "'我要问一下' 是半句话，含意图，打断。"}
+{"content": "我想搜索", "label": "interrupt", "reasoning": "'我想搜索' 是半句话，含意图，打断。"}
+{"content": "开放时间怎么用", "label": "interrupt", "reasoning": "'开放时间怎么用' 是完整句子，打断。"}
+{"content": "地点在哪里", "label": "interrupt", "reasoning": "'地点在哪里' 是完整句子，打断。"}
+{"content": "嗯能帮我", "label": "interrupt", "reasoning": "'嗯能帮我' 是语气词+实词，打断。"}
+{"content": "啊哈哈", "label": "do not interrupt", "reasoning": "'啊哈哈' 是语气词，无语义，不打断。"}
+{"content": "哈", "label": "do not interrupt", "reasoning": "'哈' 是语气词，无语义，不打断。"}
+{"content": "我可以问你吗", "label": "interrupt", "reasoning": "'我可以问你吗' 是完整句子，打断。"}
+{"content": "给我找天气预报", "label": "interrupt", "reasoning": "'给我找天气预报' 是完整句子，打断。"}
+{"content": "咏咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "给我找银行网点", "label": "interrupt", "reasoning": "'给我找银行网点' 是完整句子，打断。"}
+{"content": "嗯嗯等一下", "label": "interrupt", "reasoning": "'嗯嗯等一下' 是语气词+实词，打断。"}
+{"content": "嗯嗯请问", "label": "interrupt", "reasoning": "'嗯嗯请问' 是语气词+实词，打断。"}
+{"content": "咋咋ts", "label": "do not interrupt", "reasoning": "'咋咋ts' 是噪音/误识别，无语义，不打断。"}
+{"content": "最近的餐厅有没有", "label": "interrupt", "reasoning": "'最近的餐厅有没有' 是完整句子，打断。"}
+{"content": "咋咋咋咋", "label": "do not interrupt", "reasoning": "'咋咋咋咋' 是噪音/误识别，无语义，不打断。"}
+{"content": "可不可以查一下", "label": "interrupt", "reasoning": "'可不可以查一下' 是半句话，含意图，打断。"}
+{"content": "今天天气怎么样", "label": "interrupt", "reasoning": "'今天天气怎么样' 是完整句子，打断。"}
+{"content": "嗯嗯嗯嗯知道了", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯知道了' 是边界case，打断。"}
+{"content": "啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "附近的医院是什么", "label": "interrupt", "reasoning": "'附近的医院是什么' 是完整句子，打断。"}
+{"content": "时间怎么用", "label": "interrupt", "reasoning": "'时间怎么用' 是完整句子，打断。"}
+{"content": "嗨嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "如何解决这个问题", "label": "interrupt", "reasoning": "'如何解决这个问题' 是完整句子，打断。"}
+{"content": "嗯我需要", "label": "interrupt", "reasoning": "'嗯我需要' 是语气词+实词，打断。"}
+{"content": "咏咏咏咏咏", "label": "do not interrupt", "reasoning": "'咏咏咏咏咏' 是语气词，无语义，不打断。"}
+{"content": "呵呵呵呵呵呵呵呵", "label": "do not interrupt", "reasoning": "'呵呵呵呵呵呵呵呵' 是语气词，无语义，不打断。"}
+{"content": "哦呵哦", "label": "do not interrupt", "reasoning": "'哦呵哦' 是语气词，无语义，不打断。"}
+{"content": "这周的日程是否开放", "label": "interrupt", "reasoning": "'这周的日程是否开放' 是完整句子，打断。"}
+{"content": "啊这个", "label": "interrupt", "reasoning": "'啊这个' 是语气词+实词，打断。"}
+{"content": "哎哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "嗯嘟嘟", "label": "do not interrupt", "reasoning": "'嗯嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "是否", "label": "interrupt", "reasoning": "'是否' 是半句话，含意图，打断。"}
+{"content": "咋咋hh", "label": "do not interrupt", "reasoning": "'咋咋hh' 是噪音/误识别，无语义，不打断。"}
+{"content": "哦额哦", "label": "do not interrupt", "reasoning": "'哦额哦' 是语气词，无语义，不打断。"}
+{"content": "啊有个问题", "label": "interrupt", "reasoning": "'啊有个问题' 是语气词+实词，打断。"}
+{"content": "有没有找一下", "label": "interrupt", "reasoning": "'有没有找一下' 是半句话，含意图，打断。"}
+{"content": "嗯嗯哈", "label": "do not interrupt", "reasoning": "'嗯嗯哈' 是语气词，无语义，不打断。"}
+{"content": "呵额额", "label": "do not interrupt", "reasoning": "'呵额额' 是语气词，无语义，不打断。"}
+{"content": "嗯嗯嗯明白", "label": "interrupt", "reasoning": "'嗯嗯嗯明白' 是边界case，打断。"}
+{"content": "帮我查加油站位置", "label": "interrupt", "reasoning": "'帮我查加油站位置' 是完整句子，打断。"}
+{"content": "嗯嗯那个", "label": "interrupt", "reasoning": "'嗯嗯那个' 是语气词+实词，打断。"}
+{"content": "嗯嗯嗯嗯是", "label": "interrupt", "reasoning": "'嗯嗯嗯嗯是' 是边界case，打断。"}
+{"content": "嗯嗯嘟嘟", "label": "do not interrupt", "reasoning": "'嗯嗯嘟嘟' 是语气词，无语义，不打断。"}
+{"content": "能不能知道", "label": "interrupt", "reasoning": "'能不能知道' 是半句话，含意图，打断。"}
+{"content": "嗯嗯嗯嗯嗯嗯嗯", "label": "do not interrupt", "reasoning": "'嗯嗯嗯嗯嗯嗯嗯' 是语气词，无语义，不打断。"}
+{"content": "开放时间几点开门", "label": "interrupt", "reasoning": "'开放时间几点开门' 是完整句子，打断。"}
+{"content": "地点多少钱", "label": "interrupt", "reasoning": "'地点多少钱' 是完整句子，打断。"}
+{"content": "啊请问", "label": "interrupt", "reasoning": "'啊请问' 是语气词+实词，打断。"}
+{"content": "我希望知道", "label": "interrupt", "reasoning": "'我希望知道' 是半句话，含意图，打断。"}
+{"content": "我打算找一下", "label": "interrupt", "reasoning": "'我打算找一下' 是半句话，含意图，打断。"}
+{"content": "嗨嗨嗨嗨嗨嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨嗨嗨嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "名字几点开门", "label": "interrupt", "reasoning": "'名字几点开门' 是完整句子，打断。"}
+{"content": "我需要请教", "label": "interrupt", "reasoning": "'我需要请教' 是半句话，含意图，打断。"}
+{"content": "哦额", "label": "do not interrupt", "reasoning": "'哦额' 是语气词，无语义，不打断。"}
+{"content": "又", "label": "interrupt", "reasoning": "'又' 是单字指令，打断。"}
+{"content": "最近的地铁站怎么去", "label": "interrupt", "reasoning": "'最近的地铁站怎么去' 是完整句子，打断。"}
+{"content": "唉唉唉唉", "label": "do not interrupt", "reasoning": "'唉唉唉唉' 是语气词，无语义，不打断。"}
+{"content": "啊啊啊没问题", "label": "interrupt", "reasoning": "'啊啊啊没问题' 是边界case，打断。"}
+{"content": "啸啸啸啸", "label": "do not interrupt", "reasoning": "'啸啸啸啸' 是噪音/误识别，无语义，不打断。"}
+{"content": "今天的天气预报几点开门", "label": "interrupt", "reasoning": "'今天的天气预报几点开门' 是完整句子，打断。"}
+{"content": "我要试试", "label": "interrupt", "reasoning": "'我要试试' 是半句话，含意图，打断。"}
+{"content": "啨啨", "label": "do not interrupt", "reasoning": "'啨啨' 是噪音/误识别，无语义，不打断。"}
+{"content": "减", "label": "interrupt", "reasoning": "'减' 是单字指令，打断。"}
+{"content": "我需要帮助", "label": "interrupt", "reasoning": "'我需要帮助' 是完整句子，打断。"}
+{"content": "哎哎哎哎哎哎哎", "label": "do not interrupt", "reasoning": "'哎哎哎哎哎哎哎' 是语气词，无语义，不打断。"}
+{"content": "营业时间是什么", "label": "interrupt", "reasoning": "'营业时间是什么' 是完整句子，打断。"}
+{"content": "所以说", "label": "interrupt", "reasoning": "'所以说' 是半句话，含意图，打断。"}
+{"content": "啃啃啃啃啃啃啃", "label": "do not interrupt", "reasoning": "'啃啃啃啃啃啃啃' 是语气词，无语义，不打断。"}
+{"content": "嗨嗨嗨嗨嗨嗨嗨", "label": "do not interrupt", "reasoning": "'嗨嗨嗨嗨嗨嗨嗨' 是语气词，无语义，不打断。"}
+{"content": "看", "label": "interrupt", "reasoning": "'看' 是单字指令，打断。"}
+{"content": "这个能用吗", "label": "interrupt", "reasoning": "'这个能用吗' 是完整句子，打断。"}
+{"content": "我要确认一下", "label": "interrupt", "reasoning": "'我要确认一下' 是半句话，含意图，打断。"}
+{"content": "今天的新闻有没有", "label": "interrupt", "reasoning": "'今天的新闻有没有' 是完整句子，打断。"}
+{"content": "能不能了解", "label": "interrupt", "reasoning": "'能不能了解' 是半句话，含意图，打断。"}
+{"content": "我需要确认", "label": "interrupt", "reasoning": "'我需要确认' 是半句话，含意图，打断。"}
+{"content": "嗯大概", "label": "interrupt", "reasoning": "'嗯大概' 是语气词+实词，打断。"}
+{"content": "咍哘哒滑", "label": "do not interrupt", "reasoning": "'咍哘哒滑' 是噪音/误识别，无语义，不打断。"}
+{"content": "喟", "label": "do not interrupt", "reasoning": "'喟' 是语气词，无语义，不打断。"}
+{"content": "我打算咍询", "label": "interrupt", "reasoning": "'我打算咍询' 是半句话，含意图，打断。"}
+{"content": "nghh", "label": "do not interrupt", "reasoning": "'nghh' 是噪音/误识别，无语义，不打断。"}
+{"content": "营业时间怎么预约", "label": "interrupt", "reasoning": "'营业时间怎么预约' 是完整句子，打断。"}
+{"content": "問", "label": "do not interrupt", "reasoning": "'問' 是噪音/误识别，无语义，不打断。"}
+{"content": "时间有没有", "label": "interrupt", "reasoning": "'时间有没有' 是完整句子，打断。"}
+{"content": "啊额额", "label": "do not interrupt", "reasoning": "'啊额额' 是语气词，无语义，不打断。"}
+{"content": "完成", "label": "interrupt", "reasoning": "'完成' 是单字指令，打断。"}
+{"content": "能不能看看", "label": "interrupt", "reasoning": "'能不能看看' 是半句话，含意图，打断。"}
+{"content": "我想咍询", "label": "interrupt", "reasoning": "'我想咍询' 是半句话，含意图，打断。"}
+{"content": "告诉我快递单号", "label": "interrupt", "reasoning": "'告诉我快递单号' 是完整句子，打断。"}
+{"content": "唔唔唔唔唔", "label": "do not interrupt", "reasoning": "'唔唔唔唔唔' 是噪音/误识别，无语义，不打断。"}
+{"content": "哟哟哟哟哟哟哟哟", "label": "do not interrupt", "reasoning": "'哟哟哟哟哟哟哟哟' 是语气词，无语义，不打断。"}
+{"content": "哩哩", "label": "do not interrupt", "reasoning": "'哩哩' 是语气词，无语义，不打断。"}
+{"content": "时间怎么预约", "label": "interrupt", "reasoning": "'时间怎么预约' 是完整句子，打断。"}
