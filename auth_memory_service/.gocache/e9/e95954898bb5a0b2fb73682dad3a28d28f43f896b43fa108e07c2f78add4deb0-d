@@ -1,0 +1,4 @@
+./auth_service.go
+./memory_service.go
+./auth_service_test.go
+./memory_service_test.go

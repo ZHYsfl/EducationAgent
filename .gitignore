@@ -219,6 +219,11 @@ qwen_omni/
 # Go binaries
 *.exe
 
+# Local planning/agent instruction artifacts
+plans/
+PLAN.md
+AGENTS.md
+
 # Cursor project files
 .cursor/
 
