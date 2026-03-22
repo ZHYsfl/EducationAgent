@@ -37,6 +37,7 @@ type SessionModel struct {
 	UpdatedAt int64  `gorm:"column:updated_at;not null"`
 }
 
+// TableName 指定 SessionModel 在数据库中映射到 sessions 表。
 func (SessionModel) TableName() string { return "sessions" }
 
 type FileModel struct {
@@ -53,6 +54,7 @@ type FileModel struct {
 	CreatedAt  int64   `gorm:"column:created_at;not null"`
 }
 
+// TableName 指定 FileModel 在数据库中映射到 files 表。
 func (FileModel) TableName() string { return "files" }
 
 type FileDeleteJobModel struct {
@@ -67,6 +69,7 @@ type FileDeleteJobModel struct {
 	UpdatedAt  int64  `gorm:"column:updated_at;not null"`
 }
 
+// TableName 指定 FileDeleteJobModel 在数据库中映射到 file_delete_jobs 表。
 func (FileDeleteJobModel) TableName() string { return "file_delete_jobs" }
 
 type SearchRequestModel struct {
@@ -81,6 +84,7 @@ type SearchRequestModel struct {
 	UpdatedAt int64  `gorm:"column:updated_at;not null"`
 }
 
+// TableName 指定 SearchRequestModel 在数据库中映射到 search_requests 表。
 func (SearchRequestModel) TableName() string { return "search_requests" }
 
 type SearchResultItem struct {
@@ -104,6 +108,7 @@ type App struct {
 	workerMaxRetry   int
 }
 
+// main 启动应用：初始化依赖、启动文件清理 worker、注册路由并监听 9500 端口。
 func main() {
 	app, err := initApp()
 	if err != nil {
@@ -132,6 +137,7 @@ func main() {
 	}
 }
 
+// initApp 初始化应用依赖：PostgreSQL/GORM、数据表和触发器、MinIO 客户端及运行参数。
 func initApp() (*App, error) {
 	dsn := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -217,17 +223,23 @@ EXECUTE FUNCTION trg_enqueue_file_delete_job();
 	}, nil
 }
 
+// ok 返回统一成功响应，响应结构为 code/message/data。
 func ok(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, APIResponse{Code: 200, Message: "success", Data: data})
 }
 
+// fail 返回统一失败响应，业务错误码放在 code 字段。
 func fail(c *gin.Context, code int, message string) {
 	c.JSON(http.StatusOK, APIResponse{Code: code, Message: message, Data: nil})
 }
 
+// nowMs 返回当前 Unix 毫秒时间戳。
 func nowMs() int64 { return time.Now().UnixMilli() }
+
+// newID 生成带业务前缀的 UUID 标识符。
 func newID(prefix string) string { return prefix + uuid.NewString() }
 
+// uploadFile 接收 multipart 文件，上传至 MinIO，并写入 files 元数据。
 func (a *App) uploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -289,6 +301,7 @@ func (a *App) uploadFile(c *gin.Context) {
 	})
 }
 
+// getFile 查询文件元数据并返回 MinIO 预签名下载地址。
 func (a *App) getFile(c *gin.Context) {
 	fileID := c.Param("file_id")
 	if !strings.HasPrefix(fileID, "file_") {
@@ -324,6 +337,7 @@ func (a *App) getFile(c *gin.Context) {
 	})
 }
 
+// deleteFile 删除 files 记录，依靠 outbox/trigger 将真实文件删除任务交给后台 worker。
 func (a *App) deleteFile(c *gin.Context) {
 	fileID := c.Param("file_id")
 	if !strings.HasPrefix(fileID, "file_") {
@@ -373,6 +387,7 @@ func (a *App) deleteFile(c *gin.Context) {
 	ok(c, gin.H{"deleted": true, "file_id": fileID})
 }
 
+// createSession 创建会话容器，保存 user_id、标题和初始状态。
 func (a *App) createSession(c *gin.Context) {
 	var req struct {
 		UserID string `json:"user_id"`
@@ -399,6 +414,7 @@ func (a *App) createSession(c *gin.Context) {
 	ok(c, gin.H{"session_id": rec.ID})
 }
 
+// getSession 按 session_id 查询单个会话详情。
 func (a *App) getSession(c *gin.Context) {
 	sid := c.Param("session_id")
 	if !strings.HasPrefix(sid, "sess_") {
@@ -417,6 +433,7 @@ func (a *App) getSession(c *gin.Context) {
 	ok(c, gin.H{"session_id": rec.ID, "user_id": rec.UserID, "title": rec.Title, "status": rec.Status, "created_at": rec.CreatedAt, "updated_at": rec.UpdatedAt})
 }
 
+// listSessions 按 user_id 分页查询会话列表，并返回 total/page/page_size。
 func (a *App) listSessions(c *gin.Context) {
 	userID := c.Query("user_id")
 	if userID == "" || !strings.HasPrefix(userID, "user_") {
@@ -448,6 +465,7 @@ func (a *App) listSessions(c *gin.Context) {
 	ok(c, gin.H{"sessions": items, "total": total, "page": page, "page_size": pageSize})
 }
 
+// updateSession 更新会话标题或状态，并返回更新后的最终字段值。
 func (a *App) updateSession(c *gin.Context) {
 	sid := c.Param("session_id")
 	if !strings.HasPrefix(sid, "sess_") {
@@ -502,6 +520,7 @@ func (a *App) updateSession(c *gin.Context) {
 	ok(c, gin.H{"session_id": sid, "title": current.Title, "status": current.Status, "updated_at": current.UpdatedAt})
 }
 
+// searchQuery 创建异步搜索任务，立即返回 request_id 和 pending 状态。
 func (a *App) searchQuery(c *gin.Context) {
 	var req struct {
 		RequestID  string `json:"request_id"`
@@ -546,6 +565,7 @@ func (a *App) searchQuery(c *gin.Context) {
 	ok(c, gin.H{"request_id": req.RequestID, "status": "pending"})
 }
 
+// searchResult 按 request_id 查询异步搜索结果状态与结果数据。
 func (a *App) searchResult(c *gin.Context) {
 	requestID := c.Param("request_id")
 	if !strings.HasPrefix(requestID, "search_") {
@@ -569,6 +589,7 @@ func (a *App) searchResult(c *gin.Context) {
 	ok(c, gin.H{"request_id": rec.RequestID, "status": rec.Status, "results": results, "summary": rec.Summary, "duration": rec.Duration})
 }
 
+// runSearchAsync 在后台执行搜索任务：可选 KB 去重，随后调用真实 provider 并落库状态。
 func (a *App) runSearchAsync(requestID, userID, query string, maxResults int, language, searchType string) {
 	start := time.Now()
 
@@ -588,6 +609,7 @@ func (a *App) runSearchAsync(requestID, userID, query string, maxResults int, la
 	a.finishSearch(requestID, "completed", results, summary, time.Since(start).Milliseconds(), "")
 }
 
+// finishSearch 将搜索任务最终状态写回数据库（completed/failed）并保存结果与摘要。
 func (a *App) finishSearch(requestID, status string, results []SearchResultItem, summary string, duration int64, lastErr string) {
 	resultsJSON := ""
 	if len(results) > 0 {
@@ -601,6 +623,7 @@ func (a *App) finishSearch(requestID, status string, results []SearchResultItem,
 	_ = a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(updates).Error
 }
 
+// fetchSearchResults 按 provider 分发真实搜索请求并返回统一结构结果。
 func (a *App) fetchSearchResults(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
 	switch a.searchProvider {
 	case "serpapi":
@@ -612,6 +635,7 @@ func (a *App) fetchSearchResults(query string, maxResults int, language, searchT
 	}
 }
 
+// searchBySerpAPI 调用 SerpAPI 执行实时搜索并做结果标准化。
 func (a *App) searchBySerpAPI(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
 	if a.serpAPIKey == "" {
 		return nil, "", errors.New("SERPAPI_KEY 未配置")
@@ -653,6 +677,7 @@ func (a *App) searchBySerpAPI(query string, maxResults int, language, searchType
 	return items, buildSummary(query, items), nil
 }
 
+// searchByDuckDuckGo 调用 DuckDuckGo 接口，并按 search_type 调整查询语义。
 func (a *App) searchByDuckDuckGo(query string, maxResults int, searchType string) ([]SearchResultItem, string, error) {
 	q := query
 	if searchType == "news" {
@@ -700,6 +725,7 @@ func (a *App) searchByDuckDuckGo(query string, maxResults int, searchType string
 	return items, buildSummary(query, items), nil
 }
 
+// searchByMetaso 调用秘塔搜索 API，并将返回数据映射为统一搜索结果结构。
 func (a *App) searchByMetaso(query string, maxResults int, searchType string) ([]SearchResultItem, string, error) {
 	if a.metasoAPIKey == "" {
 		return nil, "", errors.New("METASO_API_KEY 未配置")
@@ -789,6 +815,7 @@ func (a *App) searchByMetaso(query string, maxResults int, searchType string) ([
 	return items, buildSummary(query, items), nil
 }
 
+// kbLikelyHasAnswer 调用 KB 查询接口判断知识库是否已有高相关答案，用于搜索去重。
 func (a *App) kbLikelyHasAnswer(userID, query string) (bool, error) {
 	body := map[string]interface{}{"user_id": userID, "query": query, "top_k": 1, "score_threshold": a.kbScoreThreshold}
 	b, _ := json.Marshal(body)
@@ -820,6 +847,7 @@ func (a *App) kbLikelyHasAnswer(userID, query string) (bool, error) {
 	return raw.Data.Chunks[0].Score >= a.kbScoreThreshold, nil
 }
 
+// startFileDeleteWorker 启动定时任务，周期性扫描并处理待删除文件任务。
 func (a *App) startFileDeleteWorker(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	go func() {
@@ -835,6 +863,7 @@ func (a *App) startFileDeleteWorker(ctx context.Context) {
 	}()
 }
 
+// pollAndProcessDeleteJobs 拉取 pending/failed 的删除任务并逐条执行。
 func (a *App) pollAndProcessDeleteJobs(ctx context.Context) {
 	var jobs []FileDeleteJobModel
 	if err := a.db.Where("status IN ? AND retry_count < ?", []string{"pending", "failed"}, a.workerMaxRetry).Order("updated_at ASC").Limit(20).Find(&jobs).Error; err != nil {
@@ -845,6 +874,7 @@ func (a *App) pollAndProcessDeleteJobs(ctx context.Context) {
 	}
 }
 
+// processFileDeleteJob 调用 MinIO 删除对象并更新任务状态、重试次数与错误信息。
 func (a *App) processFileDeleteJob(ctx context.Context, job FileDeleteJobModel) {
 	_ = a.db.Model(&FileDeleteJobModel{}).Where("id = ?", job.ID).Updates(map[string]interface{}{"status": "processing", "updated_at": nowMs()}).Error
 
@@ -857,6 +887,7 @@ func (a *App) processFileDeleteJob(ctx context.Context, job FileDeleteJobModel) 
 	_ = a.db.Model(&FileDeleteJobModel{}).Where("id = ?", job.ID).Updates(map[string]interface{}{"status": "done", "last_error": "", "updated_at": nowMs()}).Error
 }
 
+// isAllowedPurpose 校验文件用途字段是否在规范允许枚举内。
 func isAllowedPurpose(v string) bool {
 	switch v {
 	case "reference", "export", "knowledge_base", "render":
@@ -866,6 +897,7 @@ func isAllowedPurpose(v string) bool {
 	}
 }
 
+// isAllowedSessionStatus 校验会话状态字段是否合法。
 func isAllowedSessionStatus(v string) bool {
 	switch v {
 	case "active", "completed", "archived":
@@ -875,6 +907,7 @@ func isAllowedSessionStatus(v string) bool {
 	}
 }
 
+// detectFileType 根据文件扩展名映射到系统约定的 file_type。
 func detectFileType(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
@@ -895,6 +928,7 @@ func detectFileType(name string) string {
 	}
 }
 
+// parsePositiveInt 解析正整数参数，失败时返回默认值。
 func parsePositiveInt(s string, def int) int {
 	v, err := strconv.Atoi(s)
 	if err != nil || v <= 0 {
@@ -903,6 +937,7 @@ func parsePositiveInt(s string, def int) int {
 	return v
 }
 
+// parseUserID 从 Authorization 头中解析 Bearer user_xxx 形式的用户标识。
 func parseUserID(auth string) string {
 	if strings.HasPrefix(auth, "Bearer ") {
 		v := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
@@ -913,6 +948,7 @@ func parseUserID(auth string) string {
 	return ""
 }
 
+// emptyToNil 将空字符串转为 nil，用于可空数据库字段写入。
 func emptyToNil(v string) *string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -921,6 +957,7 @@ func emptyToNil(v string) *string {
 	return &v
 }
 
+// getenv 读取环境变量，若为空则回退到默认值。
 func getenv(k, d string) string {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
@@ -929,11 +966,13 @@ func getenv(k, d string) string {
 	return v
 }
 
+// toString 将 interface{} 安全转换为字符串并去除首尾空白。
 func toString(v interface{}) string {
 	s, _ := v.(string)
 	return strings.TrimSpace(s)
 }
 
+// titleFromSnippet 在标题缺失时从摘要生成简短标题。
 func titleFromSnippet(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -946,6 +985,7 @@ func titleFromSnippet(s string) string {
 	return s
 }
 
+// titleOrDefault 优先使用原始标题，若为空则从 snippet 生成兜底标题。
 func titleOrDefault(title, snippet string) string {
 	title = strings.TrimSpace(title)
 	if title != "" {
@@ -954,6 +994,7 @@ func titleOrDefault(title, snippet string) string {
 	return titleFromSnippet(snippet)
 }
 
+// refineSnippet 对原始摘要做清洗与截断，保证可读性并适合知识库沉淀。
 func refineSnippet(snippet, query string) string {
 	s := strings.TrimSpace(snippet)
 	s = strings.ReplaceAll(s, "\n", " ")
@@ -969,6 +1010,7 @@ func refineSnippet(snippet, query string) string {
 	return s
 }
 
+// buildSummary 生成本次搜索结果的整体摘要说明。
 func buildSummary(query string, items []SearchResultItem) string {
 	if len(items) == 0 {
 		return ""
@@ -976,6 +1018,7 @@ func buildSummary(query string, items []SearchResultItem) string {
 	return fmt.Sprintf("围绕“%s”检索到 %d 条结果，已完成摘要精炼，可直接用于回注与知识库沉淀。", query, len(items))
 }
 
+// hostOf 从 URL 中提取站点域名作为结果来源。
 func hostOf(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
