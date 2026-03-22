@@ -224,3 +224,5 @@ qwen_omni/
 
 # Specstory
 .specstory/
+
+models/

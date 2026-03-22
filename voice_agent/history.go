@@ -74,13 +74,27 @@ func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previou
 	return msgs
 }
 
-// ToOpenAIWithThought builds messages for final processing:
-// history (which already includes the user message via AddUser) + accumulated
-// thinker output as an assistant prefix (if any).
-func (h *ConversationHistory) ToOpenAIWithThought(previousThought string) []openai.ChatCompletionMessageParamUnion {
-	msgs := h.ToOpenAI()
+func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	prompt := h.systemPrompt
+	if systemPrompt != "" {
+		prompt = systemPrompt
+	}
 	if previousThought != "" {
-		msgs = append(msgs, openai.AssistantMessage("[内部草稿，可能不完整或片面，仅供继续推理，不可直接复述] "+previousThought+" [基于部分输入的预思考，请结合完整输入继续]"))
+		prompt += "\n\n[预思考草稿 - 基于用户部分输入生成，可能方向有误，仅供参考，以用户完整输入为准]\n" + previousThought
+	}
+
+	msgs := make([]openai.ChatCompletionMessageParamUnion, 0, len(h.messages)+1)
+	msgs = append(msgs, openai.SystemMessage(prompt))
+	for _, m := range h.messages {
+		switch m.Role {
+		case "user":
+			msgs = append(msgs, openai.UserMessage(m.Content))
+		case "assistant":
+			msgs = append(msgs, openai.AssistantMessage(m.Content))
+		}
 	}
 	return msgs
 }

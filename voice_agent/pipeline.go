@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -15,11 +17,12 @@ import (
 type Pipeline struct {
 	session *Session
 	config  *Config
+	clients ExternalServices
 
-	asrClient *ASRClient
+	asrClient ASRProvider
 	smallLLM  *toolcalling.Agent
 	largeLLM  *toolcalling.Agent
-	ttsClient *TTSClient
+	ttsClient TTSProvider
 
 	history  *ConversationHistory
 	adaptive *AdaptiveController
@@ -37,14 +40,48 @@ type Pipeline struct {
 	draftMu       sync.Mutex
 	draftOutput   strings.Builder // accumulated thinker output across rounds
 	draftOutputMu sync.Mutex
+
+	contextQueue      chan ContextMessage
+	pendingContexts   []ContextMessage
+	pendingMu         sync.Mutex
+	highPriorityQueue chan ContextMessage
 }
 
-func NewPipeline(session *Session, config *Config) *Pipeline {
+func NewPipeline(session *Session, config *Config, clients ExternalServices) *Pipeline {
 	sizes := LoadChannelSizes(config.AdaptiveSizesFile, DefaultChannelSizes())
+
+	var asr ASRProvider
+	if config.ASRMode == "remote" {
+		asr = NewDouBaoASRClient(DouBaoASRConfig{
+			AppKey:     config.DouBaoASRAppKey,
+			AccessKey:  config.DouBaoASRAccessKey,
+			ResourceId: config.DouBaoASRResourceId,
+		})
+		log.Printf("ASR mode: remote (Doubao)")
+	} else {
+		asr = NewASRClient(config.ASRWSURL)
+		log.Printf("ASR mode: local (%s)", config.ASRWSURL)
+	}
+
+	var tts TTSProvider
+	if config.TTSMode == "remote" {
+		tts = NewDouBaoTTSClient(DouBaoTTSConfig{
+			AppId:     config.DouBaoTTSAppId,
+			Token:     config.DouBaoTTSToken,
+			Cluster:   config.DouBaoTTSCluster,
+			VoiceType: config.DouBaoTTSVoiceType,
+		})
+		log.Printf("TTS mode: remote (Doubao %s)", config.DouBaoTTSVoiceType)
+	} else {
+		tts = NewTTSClient(config.TTSURL)
+		log.Printf("TTS mode: local (%s)", config.TTSURL)
+	}
+
 	return &Pipeline{
 		session:   session,
 		config:    config,
-		asrClient: NewASRClient(config.ASRWSURL),
+		clients:   clients,
+		asrClient: asr,
 		smallLLM: toolcalling.NewAgent(toolcalling.LLMConfig{
 			APIKey:  config.SmallLLMAPIKey,
 			Model:   config.SmallLLMModel,
@@ -55,10 +92,12 @@ func NewPipeline(session *Session, config *Config) *Pipeline {
 			Model:   config.LargeLLMModel,
 			BaseURL: config.LargeLLMBaseURL,
 		}),
-		ttsClient: NewTTSClient(config.TTSURL),
-		history:   NewConversationHistory(config.SystemPrompt),
-		audioBuf:  NewAudioBuffer(),
-		adaptive:  NewAdaptiveController(sizes),
+		ttsClient:         tts,
+		history:           NewConversationHistory(config.SystemPrompt),
+		audioBuf:          NewAudioBuffer(),
+		adaptive:          NewAdaptiveController(sizes),
+		contextQueue:      make(chan ContextMessage, 64),
+		highPriorityQueue: make(chan ContextMessage, 16),
 	}
 }
 
@@ -120,6 +159,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 	p.audioBuf.Reset()
 	p.audioCh = make(chan []byte, p.adaptive.Get("audio_ch"))
 	p.vadEndCh = make(chan struct{}, 1)
+	go p.highPriorityListener(ctx)
 
 	p.tokensMu.Lock()
 	p.rawGeneratedTokens.Reset()
@@ -142,6 +182,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 	draftStarted := false
 	asrSinceDraft := 0
 	draftInterval := 1
+	contextQueriesStarted := false
 
 	for {
 		select {
@@ -188,6 +229,13 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 
 			// Draft thinking uses partial text (low latency)
 			currentText := strings.Join(partialTexts, "")
+			if currentText == "" && finalText != "" {
+				currentText = finalText
+			}
+			if !contextQueriesStarted && currentText != "" {
+				contextQueriesStarted = true
+				p.launchAsyncContextQueries(ctx, currentText)
+			}
 			if currentText == "" {
 				break
 			}
@@ -340,6 +388,41 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 	p.history.AddUser(userText)
 
+	contextMsgs := p.drainContextQueue()
+	contextPrompt := FormatContextForLLM(contextMsgs)
+
+	inRequirementsMode := false
+	systemPrompt := p.config.SystemPrompt
+	p.session.reqMu.RLock()
+	req := p.session.Requirements
+	p.session.reqMu.RUnlock()
+	if req != nil && (req.Status == "collecting" || req.Status == "confirming") {
+		inRequirementsMode = true
+		var profile *UserProfile
+		if p.clients != nil {
+			if pInfo, err := p.clients.GetUserProfile(ctx, req.UserID); err == nil {
+				profile = &pInfo
+			}
+		}
+		systemPrompt = req.BuildRequirementsSystemPrompt(profile)
+	}
+
+	if !inRequirementsMode {
+		systemPrompt += pptIntentDetectionPrompt
+	}
+
+	taskListContext := p.buildTaskListContext()
+	if taskListContext != "" {
+		systemPrompt += taskListContext
+	}
+	pendingQContext := p.buildPendingQuestionsContext()
+	if pendingQContext != "" {
+		systemPrompt += pendingQContext
+	}
+	if contextPrompt != "" {
+		systemPrompt += contextPrompt
+	}
+
 	log.Printf("Processing user input: %s", truncate(userText, 100))
 	if previousThought != "" {
 		log.Printf("With %d chars of pre-thinking", len(previousThought))
@@ -359,7 +442,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	}()
 
 	// Stream tokens from Large LLM (with accumulated thought if available).
-	messages := p.history.ToOpenAIWithThought(previousThought)
+	messages := p.history.ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
 	totalTokens := 0 // ALL tokens (including <think>) for budget accounting
@@ -470,11 +553,346 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		if finalText != "" {
 			p.history.AddAssistant(finalText)
 		}
+
+		p.postProcessResponse(ctx, userText, finalText, inRequirementsMode)
+		p.asyncExtractMemory(userText, finalText)
+
 		p.session.SetState(StateIdle)
 	}
 
 	p.adaptive.Adjust()
 	p.adaptive.Save(p.config.AdaptiveSizesFile)
+}
+
+// ---------------------------------------------------------------------------
+// Post-processing: conflict resolution, requirements state transitions
+// ---------------------------------------------------------------------------
+
+func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmResponse string, inRequirementsMode bool) {
+	if p.tryResolveConflict(ctx, userText, llmResponse) {
+		return
+	}
+
+	if inRequirementsMode {
+		p.handleRequirementsTransition(llmResponse)
+		return
+	}
+
+	if p.tryDetectTaskInit(llmResponse) {
+		return
+	}
+
+	p.trySendPPTFeedback(userText, llmResponse)
+}
+
+func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse string) bool {
+	if p.clients == nil {
+		return false
+	}
+	p.session.pendingQMu.RLock()
+	pendingCount := len(p.session.PendingQuestions)
+	if pendingCount == 0 {
+		p.session.pendingQMu.RUnlock()
+		return false
+	}
+
+	var contextID, taskID string
+	if pendingCount == 1 {
+		for cid, tid := range p.session.PendingQuestions {
+			contextID = cid
+			taskID = tid
+		}
+	} else {
+		contextID = p.extractContextIDFromResponse(llmResponse)
+		if contextID != "" {
+			taskID = p.session.PendingQuestions[contextID]
+		}
+		if contextID == "" || taskID == "" {
+			for cid, tid := range p.session.PendingQuestions {
+				contextID = cid
+				taskID = tid
+				break
+			}
+		}
+	}
+	p.session.pendingQMu.RUnlock()
+
+	if _, ok := p.session.ResolvePendingQuestion(contextID); !ok {
+		return false
+	}
+	log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, taskID)
+
+	viewingPageID := p.session.GetViewingPageID()
+	baseTS := p.session.GetLastVADTimestamp()
+	go func() {
+		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
+			TaskID:           taskID,
+			BaseTimestamp:    baseTS,
+			ViewingPageID:    viewingPageID,
+			ReplyToContextID: contextID,
+			RawText:          userText,
+			Intents: []Intent{{
+				ActionType: "resolve_conflict",
+				ContextID:  contextID,
+			}},
+		}); err != nil {
+			log.Printf("[pipeline] SendFeedback resolve_conflict failed: %v", err)
+		}
+	}()
+	return true
+}
+
+func (p *Pipeline) extractContextIDFromResponse(text string) string {
+	marker := "[RESOLVE_CONFLICT:"
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := text[idx+len(marker):]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func (p *Pipeline) trySendPPTFeedback(userText, llmResponse string) {
+	if p.clients == nil {
+		return
+	}
+	taskID, ok := p.session.ResolveTaskID()
+	if !ok || taskID == "" {
+		return
+	}
+
+	marker := "[PPT_FEEDBACK]"
+	idx := strings.Index(llmResponse, marker)
+	if idx < 0 {
+		return
+	}
+	jsonStr := llmResponse[idx+len(marker):]
+	jsonStr = strings.TrimSpace(jsonStr)
+
+	endIdx := strings.Index(jsonStr, "[/PPT_FEEDBACK]")
+	if endIdx > 0 {
+		jsonStr = jsonStr[:endIdx]
+	}
+
+	var parsed struct {
+		ActionType   string   `json:"action_type"`
+		PageID       string   `json:"page_id"`
+		TargetPageID string   `json:"target_page_id"`
+		Instruction  string   `json:"instruction"`
+		Scope        string   `json:"scope"`
+		Keywords     []string `json:"keywords"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		log.Printf("[pipeline] failed to parse PPT_FEEDBACK JSON: %v (raw: %s)", err, truncate(jsonStr, 200))
+		return
+	}
+
+	viewingPageID := p.session.GetViewingPageID()
+	pageID := parsed.PageID
+	if pageID == "" {
+		pageID = viewingPageID
+	}
+
+	baseTS := p.session.GetLastVADTimestamp()
+	go func() {
+		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
+			TaskID:        taskID,
+			BaseTimestamp: baseTS,
+			ViewingPageID: viewingPageID,
+			RawText:       userText,
+			Intents: []Intent{{
+				ActionType:   parsed.ActionType,
+				PageID:       pageID,
+				TargetPageID: parsed.TargetPageID,
+				Instruction:  parsed.Instruction,
+				Scope:        parsed.Scope,
+				Keywords:     parsed.Keywords,
+			}},
+		}); err != nil {
+			log.Printf("[pipeline] SendFeedback failed: %v", err)
+		}
+	}()
+}
+
+func (p *Pipeline) tryDetectTaskInit(llmResponse string) bool {
+	marker := "[TASK_INIT]"
+	idx := strings.Index(llmResponse, marker)
+	if idx < 0 {
+		return false
+	}
+
+	jsonStr := strings.TrimSpace(llmResponse[idx+len(marker):])
+	endIdx := strings.Index(jsonStr, "[/TASK_INIT]")
+	if endIdx > 0 {
+		jsonStr = jsonStr[:endIdx]
+	}
+
+	var initData struct {
+		Topic string `json:"topic"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &initData); err != nil {
+		log.Printf("[pipeline] failed to parse TASK_INIT JSON: %v (raw: %s)", err, truncate(jsonStr, 200))
+		return false
+	}
+
+	req := NewTaskRequirements(p.session.SessionID, p.session.UserID)
+	if initData.Topic != "" {
+		req.Topic = initData.Topic
+	}
+	p.session.prefillFromMemory(req)
+	req.RefreshCollectedFields()
+
+	p.session.reqMu.Lock()
+	p.session.Requirements = req
+	p.session.reqMu.Unlock()
+
+	p.session.SendJSON(WSMessage{
+		Type:            "requirements_progress",
+		Status:          req.Status,
+		CollectedFields: req.CollectedFields,
+		MissingFields:   req.GetMissingFields(),
+		Requirements:    req,
+	})
+
+	log.Printf("[pipeline] voice-initiated task_init, topic=%q", initData.Topic)
+	return true
+}
+
+func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
+	if p.clients == nil || (userText == "" && assistantText == "") {
+		return
+	}
+	sessionID := p.session.SessionID
+	userID := p.session.UserID
+	turns := make([]ConversationTurn, 0, 2)
+	if userText != "" {
+		turns = append(turns, ConversationTurn{Role: "user", Content: userText})
+	}
+	if assistantText != "" {
+		turns = append(turns, ConversationTurn{Role: "assistant", Content: assistantText})
+	}
+	go func() {
+		if _, err := p.clients.ExtractMemory(context.Background(), MemoryExtractRequest{
+			UserID:    userID,
+			SessionID: sessionID,
+			Messages:  turns,
+		}); err != nil {
+			log.Printf("[pipeline] ExtractMemory failed: %v", err)
+		}
+	}()
+}
+
+func (p *Pipeline) handleRequirementsTransition(llmResponse string) {
+	p.session.reqMu.Lock()
+	req := p.session.Requirements
+	if req == nil {
+		p.session.reqMu.Unlock()
+		return
+	}
+
+	switch req.Status {
+	case "confirming":
+		if strings.Contains(llmResponse, "[REQUIREMENTS_CONFIRMED]") {
+			req.Status = "confirmed"
+			req.UpdatedAt = time.Now().UnixMilli()
+			p.session.reqMu.Unlock()
+			go p.session.createPPTFromRequirements()
+			return
+		}
+		req.Status = "collecting"
+		req.UpdatedAt = time.Now().UnixMilli()
+		req.RefreshCollectedFields()
+		collected := req.CollectedFields
+		missing := req.GetMissingFields()
+		p.session.reqMu.Unlock()
+
+		p.session.SendJSON(WSMessage{
+			Type:            "requirements_progress",
+			Status:          "collecting",
+			CollectedFields: collected,
+			MissingFields:   missing,
+		})
+		return
+
+	case "collecting":
+		if strings.Contains(llmResponse, "[REQUIREMENTS_CONFIRMED]") {
+			req.Status = "confirming"
+			req.UpdatedAt = time.Now().UnixMilli()
+			req.RefreshCollectedFields()
+			summaryText := req.BuildSummaryText()
+			p.session.reqMu.Unlock()
+
+			p.session.SendJSON(WSMessage{
+				Type:         "requirements_summary",
+				SummaryText:  summaryText,
+				Requirements: req,
+			})
+			return
+		}
+
+		req.RefreshCollectedFields()
+		req.UpdatedAt = time.Now().UnixMilli()
+		missing := req.GetMissingFields()
+		collected := req.CollectedFields
+		p.session.reqMu.Unlock()
+
+		p.session.SendJSON(WSMessage{
+			Type:            "requirements_progress",
+			Status:          "collecting",
+			CollectedFields: collected,
+			MissingFields:   missing,
+		})
+		return
+
+	default:
+		p.session.reqMu.Unlock()
+	}
+}
+
+func (p *Pipeline) buildTaskListContext() string {
+	p.session.activeTaskMu.RLock()
+	defer p.session.activeTaskMu.RUnlock()
+	if len(p.session.OwnedTasks) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n[系统提示 - 当前用户的 PPT 任务列表]\n")
+	for tid, topic := range p.session.OwnedTasks {
+		marker := ""
+		if tid == p.session.ActiveTaskID {
+			marker = " (当前活跃)"
+		}
+		sb.WriteString(fmt.Sprintf("- task_id=%s, 主题=\"%s\"%s\n", tid, topic, marker))
+	}
+	if len(p.session.OwnedTasks) > 1 {
+		sb.WriteString("\n用户可能用简称、缩写、别名来指代某个任务（例如用\"高数\"指\"高等数学\"）。\n")
+		sb.WriteString("请根据语义判断用户说的是哪个任务。如果确实无法判断，主动追问用户，绝不要猜。\n")
+		sb.WriteString("默认操作当前活跃的任务，除非用户明确提到了其他任务。\n")
+	}
+	return sb.String()
+}
+
+func (p *Pipeline) buildPendingQuestionsContext() string {
+	p.session.pendingQMu.RLock()
+	defer p.session.pendingQMu.RUnlock()
+	if len(p.session.PendingQuestions) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n[系统提示 - 待回答的冲突问题]\n")
+	sb.WriteString("以下是 PPT Agent 提出的需要用户确认的问题，请判断用户是否在回答这些问题：\n")
+	for cid, tid := range p.session.PendingQuestions {
+		sb.WriteString(fmt.Sprintf("- context_id=%s, task_id=%s\n", cid, tid))
+	}
+	if len(p.session.PendingQuestions) > 1 {
+		sb.WriteString("\n有多个待确认问题，请在回复末尾标注你判断用户回答的是哪个问题：")
+		sb.WriteString("[RESOLVE_CONFLICT:context_id值]\n")
+	}
+	return sb.String()
 }
 
 // ttsWorker reads sentences from the channel, synthesizes audio, and sends
@@ -512,6 +930,165 @@ func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
 	}
 }
 
+func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) {
+	if p.clients == nil {
+		return
+	}
+
+	userID := p.session.UserID
+	sessionID := p.session.SessionID
+
+	var kbTopScoreMu sync.Mutex
+	kbTopScore := 0.0 // KB 没结果时 score=0，应触发搜索结果沉淀
+	kbScoreReady := make(chan struct{})
+	var kbScoreReadyOnce sync.Once
+	markKBReady := func() {
+		kbScoreReadyOnce.Do(func() { close(kbScoreReady) })
+	}
+
+	p.asyncQuery(ctx, "knowledge_base", "rag_chunks", func() (string, error) {
+		defer markKBReady()
+		resp, err := p.clients.QueryKB(ctx, KBQueryRequest{
+			UserID:         userID,
+			Query:          query,
+			TopK:           5,
+			ScoreThreshold: 0.5,
+		})
+		if err != nil {
+			return "", err
+		}
+		if len(resp.Chunks) > 0 {
+			kbTopScoreMu.Lock()
+			kbTopScore = resp.Chunks[0].Score
+			kbTopScoreMu.Unlock()
+		}
+		return formatChunksForLLM(resp.Chunks), nil
+	})
+
+	p.asyncQuery(ctx, "memory", "memory_recall", func() (string, error) {
+		resp, err := p.clients.RecallMemory(ctx, MemoryRecallRequest{
+			UserID:    userID,
+			SessionID: sessionID,
+			Query:     query,
+			TopK:      10,
+		})
+		if err != nil {
+			return "", err
+		}
+		return formatMemoryForLLM(resp), nil
+	})
+
+	p.asyncQuery(ctx, "web_search", "search_result", func() (string, error) {
+		resp, err := p.clients.SearchWeb(ctx, SearchRequest{
+			RequestID:  NewID("search_"),
+			UserID:     userID,
+			Query:      query,
+			MaxResults: 5,
+			Language:   "zh",
+			SearchType: "general",
+		})
+		if err != nil {
+			return "", err
+		}
+
+		// Wait briefly for KB score so ingest decision uses KB result when available.
+		select {
+		case <-kbScoreReady:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(300 * time.Millisecond):
+		}
+
+		kbTopScoreMu.Lock()
+		shouldIngest := kbTopScore < 0.5
+		kbTopScoreMu.Unlock()
+		if shouldIngest && len(resp.Results) > 0 {
+			items := make([]SearchIngestItem, 0, len(resp.Results))
+			for _, r := range resp.Results {
+				items = append(items, SearchIngestItem{
+					Title:   r.Title,
+					URL:     r.URL,
+					Content: r.Snippet,
+					Source:  r.Source,
+				})
+			}
+			go func(items []SearchIngestItem) {
+				if err := p.clients.IngestFromSearch(context.Background(), IngestFromSearchRequest{
+					UserID: userID,
+					Items:  items,
+				}); err != nil {
+					log.Printf("[context-bus] ingest-from-search failed: %v", err)
+				}
+			}(items)
+		}
+		return formatSearchForLLM(resp), nil
+	})
+}
+
+func formatChunksForLLM(chunks []RetrievedChunk) string {
+	if len(chunks) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("知识库检索结果：\n")
+	for i, c := range chunks {
+		sb.WriteString(fmt.Sprintf("%d) [%s] %s (score=%.2f)\n", i+1, c.DocTitle, c.Content, c.Score))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func formatMemoryForLLM(resp MemoryRecallResponse) string {
+	var sb strings.Builder
+	if len(resp.Facts) > 0 {
+		sb.WriteString("相关事实记忆：\n")
+		for i, f := range resp.Facts {
+			text := strings.TrimSpace(f.Content)
+			if text == "" {
+				text = strings.TrimSpace(f.Value)
+			}
+			if text == "" {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("%d) %s\n", i+1, text))
+		}
+	}
+	if len(resp.Preferences) > 0 {
+		sb.WriteString("相关偏好：\n")
+		for i, f := range resp.Preferences {
+			text := strings.TrimSpace(f.Content)
+			if text == "" {
+				text = strings.TrimSpace(f.Value)
+			}
+			if text == "" {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("%d) %s\n", i+1, text))
+		}
+	}
+	if resp.ProfileSummary != "" {
+		sb.WriteString("画像摘要：")
+		sb.WriteString(resp.ProfileSummary)
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func formatSearchForLLM(resp SearchResponse) string {
+	var sb strings.Builder
+	if resp.Summary != "" {
+		sb.WriteString("网络搜索摘要：")
+		sb.WriteString(resp.Summary)
+		sb.WriteString("\n")
+	}
+	if len(resp.Results) > 0 {
+		sb.WriteString("搜索结果：\n")
+		for i, r := range resp.Results {
+			sb.WriteString(fmt.Sprintf("%d) %s - %s (%s)\n", i+1, r.Title, r.Snippet, r.URL))
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 // ---------------------------------------------------------------------------
 // Interrupt detection (uses Small LLM via SDK Agent)
 // ---------------------------------------------------------------------------
@@ -531,6 +1108,10 @@ func isInterrupt(ctx context.Context, agent *toolcalling.Agent, text string) boo
 		log.Printf("interrupt detection error: %v", err)
 		return true
 	}
+	// Small LLM is a thinking model (Qwen3.5-0.8B); strip <think>...</think>
+	// before parsing the label, otherwise reasoning content that happens to
+	// contain "interrupt" would cause false positives.
+	resp = stripThinkTags(resp)
 	label := strings.ToLower(strings.TrimSpace(resp))
 	label = strings.Trim(label, " \t\r\n\"'`.,!?;:()[]{}<>，。！？；：")
 
@@ -582,3 +1163,24 @@ func truncate(s string, maxLen int) string {
 	}
 	return string(runes[:maxLen]) + "..."
 }
+
+// ---------------------------------------------------------------------------
+// LLM prompt fragments for intent detection
+// ---------------------------------------------------------------------------
+
+const pptIntentDetectionPrompt = `
+
+[系统指令 - PPT 操作意图识别]
+当用户表达想制作/创建PPT课件的意图时，请在回复末尾追加标记：
+[TASK_INIT]{"topic":"用户提到的主题（如有）"}[/TASK_INIT]
+例如用户说"帮我做一个关于高等数学的PPT"，你在正常回复后追加：
+[TASK_INIT]{"topic":"高等数学"}[/TASK_INIT]
+
+当用户对已有PPT提出修改/编辑/调整指令时，请在回复末尾追加标记：
+[PPT_FEEDBACK]{"action_type":"modify|insert|delete|reorder|style","page_id":"","instruction":"用户的具体修改要求","scope":"page|global","keywords":[]}[/PPT_FEEDBACK]
+action_type 取值：modify(修改内容)、insert(新增页面)、delete(删除页面)、reorder(调整顺序)、style(修改样式)
+page_id：如果用户指定了某一页就填入，否则留空
+scope：page(只改某页) 或 global(全局修改)
+
+注意：这些标记不会展示给用户，仅供系统后处理使用。正常对话内容中不要提及这些标记。
+`

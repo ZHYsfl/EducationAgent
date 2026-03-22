@@ -4,6 +4,8 @@
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const startBtn = document.getElementById("start-btn");
+const testBtn = document.getElementById("test-btn");
+const recordBtn = document.getElementById("record-btn");
 const chatContainer = document.getElementById("chat-container");
 const chatEmpty = document.getElementById("chat-empty");
 const eventLogEl = document.getElementById("event-log");
@@ -32,24 +34,49 @@ let currentAIBubble = null;
 // WebSocket
 // ---------------------------------------------------------------------------
 function connectWS() {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
-  ws.binaryType = "arraybuffer";
+  return new Promise((resolve, reject) => {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${proto}//${location.host}/ws`);
+    socket.binaryType = "arraybuffer";
 
-  ws.onopen = () => logEvent("WS", "connected");
-  ws.onclose = () => {
-    logEvent("WS", "disconnected");
-    if (running) setTimeout(connectWS, 2000);
-  };
-  ws.onerror = (e) => logEvent("WS_ERROR", e.type);
+    const timer = setTimeout(() => {
+      socket.close();
+      reject(new Error("WebSocket 连接超时(8s)"));
+    }, 8000);
 
-  ws.onmessage = (event) => {
-    if (event.data instanceof ArrayBuffer) {
-      queueAudio(event.data);
-    } else {
-      handleServerMessage(JSON.parse(event.data));
-    }
-  };
+    socket.onopen = () => {
+      clearTimeout(timer);
+      ws = socket;
+      logEvent("WS", "connected");
+      resolve();
+    };
+    socket.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("WebSocket 连接失败"));
+    };
+    socket.onclose = () => {
+      clearTimeout(timer);
+      logEvent("WS", "disconnected");
+      ws = null;
+      if (running) {
+        running = false;
+        startBtn.textContent = "Start";
+        startBtn.classList.remove("active");
+        startBtn.disabled = false;
+        stopVAD();
+        stopAudio();
+        setStatus("idle");
+        logEvent("SYSTEM", "连接断开，请重新点 Start");
+      }
+    };
+    socket.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        queueAudio(event.data);
+      } else {
+        handleServerMessage(JSON.parse(event.data));
+      }
+    };
+  });
 }
 
 function sendJSON(obj) {
@@ -173,7 +200,7 @@ function scrollChat() {
 }
 
 // ---------------------------------------------------------------------------
-// Event log
+// Event log (auto-open so diagnostics are always visible)
 // ---------------------------------------------------------------------------
 function logEvent(type, detail) {
   const now = new Date();
@@ -184,6 +211,8 @@ function logEvent(type, detail) {
   line.innerHTML = `<span class="ts">[${ts}]</span> <span class="evt">${type}</span> ${escapeHtml(detail || "")}`;
   eventLogEl.appendChild(line);
   eventLogEl.scrollTop = eventLogEl.scrollHeight;
+
+  console.log(`[${type}] ${detail || ""}`);
 }
 
 function toggleLog() {
@@ -204,13 +233,34 @@ function truncateLog(s, max) {
 // VAD + Audio capture
 // ---------------------------------------------------------------------------
 async function startVAD() {
-  audioContext = new AudioContext({ sampleRate: 16000 });
+  logEvent("VAD", "step1: checking vad_web library");
+  if (typeof vad_web === "undefined") {
+    throw new Error("vad_web 未加载 — CDN 脚本可能被墙，请检查网络");
+  }
+  if (typeof ort === "undefined") {
+    throw new Error("onnxruntime 未加载 — CDN 脚本可能被墙，请检查网络");
+  }
 
-  vad = await vad_web.MicVAD.new({
-    positiveSpeechThreshold: 0.8,
-    negativeSpeechThreshold: 0.3,
-    minSpeechFrames: 3,
-    preSpeechPadFrames: 0,
+  logEvent("VAD", "step2: requesting mic permission");
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream.getTracks().forEach((t) => t.stop());
+  logEvent("VAD", "step3: mic permission granted");
+
+  audioContext = new AudioContext({ sampleRate: 16000 });
+  logEvent("VAD", "step4: AudioContext created (state=" + audioContext.state + ")");
+
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+    logEvent("VAD", "step4b: AudioContext resumed");
+  }
+
+  logEvent("VAD", "step5: initializing MicVAD (local model)");
+
+  const vadConfig = {
+    positiveSpeechThreshold: 0.22,
+    negativeSpeechThreshold: 0.18,
+    minSpeechFrames: 1,
+    preSpeechPadFrames: 3,
 
     onSpeechStart: () => {
       isSpeaking = true;
@@ -228,7 +278,12 @@ async function startVAD() {
       logEvent("VAD", "speech_end");
     },
 
-    onFrameProcessed: (_probs, frame) => {
+    onFrameProcessed: (probs, frame) => {
+      if (window._vadDebugCount == null) window._vadDebugCount = 0;
+      window._vadDebugCount++;
+      if (window._vadDebugCount % 100 === 0 && probs && typeof probs.isSpeech === "number") {
+        logEvent("VAD_DEBUG", "prob=" + probs.isSpeech.toFixed(2) + " (speak to test)");
+      }
       if (isSpeaking) {
         sendAudio(float32ToInt16(frame));
       } else {
@@ -238,18 +293,32 @@ async function startVAD() {
         }
       }
     },
-  });
+  };
+
+  try {
+    vad = await vad_web.MicVAD.new({
+      ...vadConfig,
+      modelURL: "/models/silero_vad.onnx",
+    });
+    logEvent("VAD", "step6: MicVAD created (local model)");
+  } catch (e1) {
+    logEvent("VAD_WARN", "local model failed: " + (e1.message || e1));
+    logEvent("VAD", "step6b: retrying with CDN model");
+    vad = await vad_web.MicVAD.new(vadConfig);
+    logEvent("VAD", "step6c: MicVAD created (CDN model)");
+  }
 
   vad.start();
+  logEvent("VAD", "step7: MicVAD started — speak now!");
 }
 
 function stopVAD() {
   if (vad) {
-    vad.destroy();
+    try { vad.destroy(); } catch (_) {}
     vad = null;
   }
   if (audioContext) {
-    audioContext.close();
+    try { audioContext.close(); } catch (_) {}
     audioContext = null;
   }
   isSpeaking = false;
@@ -324,18 +393,124 @@ async function toggleVoice() {
     running = false;
     startBtn.textContent = "Start";
     startBtn.classList.remove("active");
+    startBtn.disabled = false;
     stopVAD();
     stopAudio();
-    if (ws) ws.close();
+    if (ws) { ws.close(); ws = null; }
+    if (testBtn) testBtn.style.display = "none";
+    if (recordBtn) recordBtn.style.display = "none";
     setStatus("idle");
     logEvent("SYSTEM", "stopped");
-  } else {
+    return;
+  }
+
+  // Auto-open EVENT LOG so user can see diagnostics
+  if (!eventLogEl.classList.contains("open")) {
+    eventLogEl.classList.add("open");
+    logArrow.classList.add("open");
+  }
+
+  startBtn.textContent = "Starting...";
+  startBtn.classList.add("active");
+  startBtn.disabled = true;
+
+  try {
+    logEvent("SYSTEM", "connecting...");
+    await connectWS();
+
+    logEvent("SYSTEM", "initializing VAD...");
     running = true;
+    await startVAD();
+
+    if (!running) return;
     startBtn.textContent = "Stop";
-    startBtn.classList.add("active");
-    connectWS();
-    setTimeout(() => startVAD(), 500);
+    startBtn.disabled = false;
+    if (testBtn) testBtn.style.display = "inline-block";
+    if (recordBtn) recordBtn.style.display = "inline-block";
     setStatus("idle");
-    logEvent("SYSTEM", "started");
+    logEvent("SYSTEM", "✓ ready — speak now!");
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    logEvent("ERROR", msg);
+    console.error("toggleVoice error:", err);
+    running = false;
+    startBtn.textContent = "Start";
+    startBtn.classList.remove("active");
+    startBtn.disabled = false;
+    stopVAD();
+    stopAudio();
+    if (ws) { ws.close(); ws = null; }
+    setStatus("idle");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Simulate speech (bypass VAD for testing backend)
+// ---------------------------------------------------------------------------
+function simulateSpeech() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !running) return;
+  logEvent("TEST", "模拟说话 — 发送 vad_start");
+  sendJSON({ type: "vad_start" });
+  const sr = 16000;
+  const dur = 1.5;
+  const samples = Math.floor(sr * dur);
+  const buf = new Int16Array(samples);
+  for (let i = 0; i < samples; i++) {
+    buf[i] = Math.sin(2 * Math.PI * 440 * i / sr) * 8000;
+  }
+  const chunk = 3200;
+  for (let i = 0; i < buf.length; i += chunk) {
+    sendAudio(buf.subarray(i, Math.min(i + chunk, buf.length)));
+  }
+  setTimeout(() => {
+    logEvent("TEST", "模拟说话 — 发送 vad_end");
+    sendJSON({ type: "vad_end" });
+  }, 1800);
+}
+
+async function recordAndSend() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !running) return;
+  try {
+    logEvent("RECORD", "开始录制 3 秒，请说话...");
+    recordBtn.disabled = true;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    const src = ctx.createMediaStreamSource(stream);
+    const processor = ctx.createScriptProcessor(4096, 1, 1);
+
+    sendJSON({ type: "vad_start" });
+    processor.onaudioprocess = (e) => {
+      const f32 = new Float32Array(e.inputBuffer.getChannelData(0));
+      sendAudio(float32ToInt16(f32));
+    };
+    src.connect(processor);
+    processor.connect(ctx.destination);
+
+    await new Promise((r) => setTimeout(r, 3000));
+    processor.disconnect();
+    src.disconnect();
+    stream.getTracks().forEach((t) => t.stop());
+    ctx.close();
+
+    sendJSON({ type: "vad_end" });
+    logEvent("RECORD", "已发送，等待识别...");
+  } catch (e) {
+    logEvent("RECORD_ERR", e.message || e);
+  } finally {
+    recordBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page load: check CDN readiness
+// ---------------------------------------------------------------------------
+window.addEventListener("load", () => {
+  const cdnOk = typeof ort !== "undefined" && typeof vad_web !== "undefined";
+  logEvent("INIT", cdnOk
+    ? "CDN loaded (ort + vad_web)"
+    : "CDN NOT loaded! ort=" + (typeof ort) + " vad_web=" + (typeof vad_web));
+  if (!cdnOk) {
+    chatEmpty.textContent = "CDN 资源未加载，请检查网络连接后刷新页面";
+    startBtn.disabled = true;
+  }
+});
