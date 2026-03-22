@@ -223,6 +223,7 @@ qwen_omni/
 plans/
 PLAN.md
 AGENTS.md
+system_interface_spec.md
 
 # Cursor project files
 .cursor/
