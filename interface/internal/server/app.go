@@ -103,6 +103,6 @@ EXECUTE FUNCTION trg_enqueue_file_delete_job();`)
 
 func (a *App) Start() error {
 	a.startFileDeleteWorker(a.baseCtx)
-	r := setupRouter(a)
+	r := SetupRouter(a)
 	return r.Run(":" + getenv("PORT", "9500"))
 }
