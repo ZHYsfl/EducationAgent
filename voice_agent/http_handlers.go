@@ -115,6 +115,9 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, 50200, fmt.Sprintf("fetch canvas status failed: %v", err))
 		return
 	}
+	// 顶层 status：任务级汇总，与每页 pages[].status 不同。
+	// 规则与《系统接口规范》§2.3 GET /api/v1/tasks/{task_id}/preview 示例一致：
+	// 任一页 failed → failed；否则任一页 rendering/suspended_for_human → generating；否则 completed。
 	status := "completed"
 	pages := make([]PageInfoBrief, 0, len(canvas.PagesInfo))
 	for _, p := range canvas.PagesInfo {

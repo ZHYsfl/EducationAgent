@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -18,6 +19,25 @@ func NewTaskRequirements(sessionID, userID string) *TaskRequirements {
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
+}
+
+func CloneTaskRequirements(in *TaskRequirements) *TaskRequirements {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.KnowledgePoints = append([]string(nil), in.KnowledgePoints...)
+	out.TeachingGoals = append([]string(nil), in.TeachingGoals...)
+	out.KeyDifficulties = append([]string(nil), in.KeyDifficulties...)
+	out.OutputFormats = append([]string(nil), in.OutputFormats...)
+	out.CollectedFields = append([]string(nil), in.CollectedFields...)
+	if len(in.ReferenceFiles) > 0 {
+		out.ReferenceFiles = make([]ReferenceFileReq, len(in.ReferenceFiles))
+		copy(out.ReferenceFiles, in.ReferenceFiles)
+	} else {
+		out.ReferenceFiles = nil
+	}
+	return &out
 }
 
 func (r *TaskRequirements) GetMissingFields() []string {
@@ -114,25 +134,58 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 	return sb.String()
 }
 
+func formatStringMap(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+m[k])
+	}
+	return strings.Join(parts, ",")
+}
+
+// formatProfileSummary 将 Memory 返回的 UserProfile 全部非空字段写入系统提示，供需求收集 LLM 参考。
+// 字段定义见 api_types.go UserProfile。
 func formatProfileSummary(profile *UserProfile) string {
 	if profile == nil {
 		return "暂无画像信息。"
 	}
 	var items []string
+	if profile.UserID != "" {
+		items = append(items, "用户ID="+profile.UserID)
+	}
 	if profile.DisplayName != "" {
 		items = append(items, "姓名="+profile.DisplayName)
 	}
 	if profile.Subject != "" {
 		items = append(items, "学科="+profile.Subject)
 	}
+	if profile.School != "" {
+		items = append(items, "学校="+profile.School)
+	}
 	if profile.TeachingStyle != "" {
 		items = append(items, "授课风格="+profile.TeachingStyle)
+	}
+	if profile.ContentDepth != "" {
+		items = append(items, "内容深度="+profile.ContentDepth)
+	}
+	if s := formatStringMap(profile.Preferences); s != "" {
+		items = append(items, "偏好="+s)
+	}
+	if s := formatStringMap(profile.VisualPreferences); s != "" {
+		items = append(items, "视觉偏好="+s)
 	}
 	if profile.HistorySummary != "" {
 		items = append(items, "历史摘要="+profile.HistorySummary)
 	}
-	if len(profile.VisualPreferences) > 0 {
-		items = append(items, "视觉偏好="+fmt.Sprint(profile.VisualPreferences))
+	if profile.LastActiveAt != 0 {
+		items = append(items, fmt.Sprintf("最近活跃(ms)=%d", profile.LastActiveAt))
 	}
 	if len(items) == 0 {
 		return "暂无画像信息。"

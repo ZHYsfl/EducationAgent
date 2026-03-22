@@ -30,6 +30,8 @@ type Pipeline struct {
 	audioBuf *AudioBuffer
 	audioCh  chan []byte   // audio data from session → pipeline
 	vadEndCh chan struct{} // signal: user stopped speaking
+	ioMu     sync.RWMutex  // protects audioCh/vadEndCh pointer swaps
+	runMu    sync.Mutex    // ensures only one StartListening runs at a time
 
 	// For interrupt preservation: tracks ALL tokens including <think> content
 	rawGeneratedTokens strings.Builder
@@ -103,10 +105,13 @@ func NewPipeline(session *Session, config *Config, clients ExternalServices) *Pi
 
 // OnAudioData is called by the session when audio arrives during LISTENING.
 func (p *Pipeline) OnAudioData(data []byte) {
-	if p.audioCh != nil {
-		p.adaptive.RecordLen("audio_ch", len(p.audioCh))
+	p.ioMu.RLock()
+	audioCh := p.audioCh
+	p.ioMu.RUnlock()
+	if audioCh != nil {
+		p.adaptive.RecordLen("audio_ch", len(audioCh))
 		select {
-		case p.audioCh <- data:
+		case audioCh <- data:
 		default:
 			p.adaptive.RecordBlock("audio_ch")
 		}
@@ -115,9 +120,12 @@ func (p *Pipeline) OnAudioData(data []byte) {
 
 // OnVADEnd is called when the browser signals end of speech.
 func (p *Pipeline) OnVADEnd() {
-	if p.vadEndCh != nil {
+	p.ioMu.RLock()
+	vadEndCh := p.vadEndCh
+	p.ioMu.RUnlock()
+	if vadEndCh != nil {
 		select {
-		case p.vadEndCh <- struct{}{}:
+		case vadEndCh <- struct{}{}:
 		default:
 		}
 	}
@@ -156,9 +164,27 @@ func (p *Pipeline) OnInterrupt() {
 // StartListening runs the listening pipeline: accumulate audio, run ASR,
 // check for interrupt intent, and optionally do draft thinking.
 func (p *Pipeline) StartListening(ctx context.Context) {
+	p.runMu.Lock()
+	defer p.runMu.Unlock()
+
+	audioCh := make(chan []byte, p.adaptive.Get("audio_ch"))
+	vadEndCh := make(chan struct{}, 1)
+	p.ioMu.Lock()
 	p.audioBuf.Reset()
-	p.audioCh = make(chan []byte, p.adaptive.Get("audio_ch"))
-	p.vadEndCh = make(chan struct{}, 1)
+	p.audioCh = audioCh
+	p.vadEndCh = vadEndCh
+	p.ioMu.Unlock()
+	defer func() {
+		p.ioMu.Lock()
+		if p.audioCh == audioCh {
+			p.audioCh = nil
+		}
+		if p.vadEndCh == vadEndCh {
+			p.vadEndCh = nil
+		}
+		p.ioMu.Unlock()
+	}()
+
 	go p.highPriorityListener(ctx)
 
 	p.tokensMu.Lock()
@@ -186,7 +212,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 
 	for {
 		select {
-		case audio := <-p.audioCh:
+		case audio := <-audioCh:
 			p.audioBuf.Write(audio)
 
 			// Extract complete 1s blocks and send to ASR
@@ -256,7 +282,7 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 				}
 			}
 
-		case <-p.vadEndCh:
+		case <-vadEndCh:
 			vadEnded = true
 			if remaining := p.audioBuf.Flush(); len(remaining) > 0 {
 				select {
@@ -394,17 +420,17 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	inRequirementsMode := false
 	systemPrompt := p.config.SystemPrompt
 	p.session.reqMu.RLock()
-	req := p.session.Requirements
+	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
 	p.session.reqMu.RUnlock()
-	if req != nil && (req.Status == "collecting" || req.Status == "confirming") {
+	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "confirming") {
 		inRequirementsMode = true
 		var profile *UserProfile
 		if p.clients != nil {
-			if pInfo, err := p.clients.GetUserProfile(ctx, req.UserID); err == nil {
+			if pInfo, err := p.clients.GetUserProfile(ctx, reqSnapshot.UserID); err == nil {
 				profile = &pInfo
 			}
 		}
-		systemPrompt = req.BuildRequirementsSystemPrompt(profile)
+		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
 	}
 
 	if !inRequirementsMode {
@@ -745,6 +771,7 @@ func (p *Pipeline) tryDetectTaskInit(llmResponse string) bool {
 	}
 	p.session.prefillFromMemory(req)
 	req.RefreshCollectedFields()
+	reqSnapshot := CloneTaskRequirements(req)
 
 	p.session.reqMu.Lock()
 	p.session.Requirements = req
@@ -755,7 +782,7 @@ func (p *Pipeline) tryDetectTaskInit(llmResponse string) bool {
 		Status:          req.Status,
 		CollectedFields: req.CollectedFields,
 		MissingFields:   req.GetMissingFields(),
-		Requirements:    req,
+		Requirements:    reqSnapshot,
 	})
 
 	log.Printf("[pipeline] voice-initiated task_init, topic=%q", initData.Topic)
@@ -797,10 +824,12 @@ func (p *Pipeline) handleRequirementsTransition(llmResponse string) {
 	switch req.Status {
 	case "confirming":
 		if strings.Contains(llmResponse, "[REQUIREMENTS_CONFIRMED]") {
+			reqRef := req
 			req.Status = "confirmed"
 			req.UpdatedAt = time.Now().UnixMilli()
+			reqSnapshot := CloneTaskRequirements(req)
 			p.session.reqMu.Unlock()
-			go p.session.createPPTFromRequirements()
+			go p.session.createPPTFromSnapshot(reqRef, reqSnapshot)
 			return
 		}
 		req.Status = "collecting"
@@ -824,12 +853,13 @@ func (p *Pipeline) handleRequirementsTransition(llmResponse string) {
 			req.UpdatedAt = time.Now().UnixMilli()
 			req.RefreshCollectedFields()
 			summaryText := req.BuildSummaryText()
+			reqSnapshot := CloneTaskRequirements(req)
 			p.session.reqMu.Unlock()
 
 			p.session.SendJSON(WSMessage{
 				Type:         "requirements_summary",
 				SummaryText:  summaryText,
-				Requirements: req,
+				Requirements: reqSnapshot,
 			})
 			return
 		}

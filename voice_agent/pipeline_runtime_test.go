@@ -74,9 +74,18 @@ func (e *errorASRProvider) RecognizeStream(ctx context.Context, audioCh <-chan [
 	return nil, errors.New("asr start failed")
 }
 
-type closeDrivenASRProvider struct{}
+type closeDrivenASRProvider struct {
+	ready chan struct{}
+}
 
 func (c *closeDrivenASRProvider) RecognizeStream(ctx context.Context, audioCh <-chan []byte, resultBufSize int) (<-chan ASRResult, error) {
+	if c.ready != nil {
+		select {
+		case <-c.ready:
+		default:
+			close(c.ready)
+		}
+	}
 	ch := make(chan ASRResult, 1)
 	go func() {
 		defer close(ch)
@@ -239,7 +248,8 @@ func TestStartListening_VADEndPath(t *testing.T) {
 	p.smallLLM = newMockAgent(small.URL)
 	p.largeLLM = newMockAgent(large.URL)
 	p.ttsClient = &mockTTS{}
-	p.asrClient = &closeDrivenASRProvider{}
+	ready := make(chan struct{})
+	p.asrClient = &closeDrivenASRProvider{ready: ready}
 	s.SetState(StateListening)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -251,7 +261,11 @@ func TestStartListening_VADEndPath(t *testing.T) {
 		close(done)
 	}()
 
-	waitUntil(t, time.Second, func() bool { return p.audioCh != nil && p.vadEndCh != nil }, "listening channels not initialized")
+	select {
+	case <-ready:
+	case <-time.After(time.Second):
+		t.Fatal("listening channels not initialized in time")
+	}
 
 	// Send a tiny audio fragment; VAD end will flush remaining bytes.
 	p.OnAudioData([]byte{1, 2, 3, 4})
