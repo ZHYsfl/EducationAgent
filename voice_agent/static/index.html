@@ -193,6 +193,8 @@
       <span class="status-text" id="status-text">IDLE</span>
     </div>
     <button id="start-btn" onclick="toggleVoice()">Start</button>
+    <button id="test-btn" onclick="simulateSpeech()" style="display:none;margin-left:8px;padding:0.35rem 0.8rem;font-size:0.8rem;border:1px solid #94a3b8;border-radius:6px;background:#f8fafc;cursor:pointer">模拟</button>
+    <button id="record-btn" onclick="recordAndSend()" style="display:none;margin-left:4px;padding:0.35rem 0.8rem;font-size:0.8rem;border:1px solid #22c55e;border-radius:6px;background:#f0fdf4;cursor:pointer">录制3秒</button>
   </div>
 
   <div class="divider"></div>
@@ -209,8 +211,10 @@
     <div id="event-log"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.19/dist/bundle.min.js"></script>
+  <script src="ort.min.js"></script>
+  <script>ort.env.wasm.wasmPaths = "/";</script>
+  <script src="vad-web.min.js"></script>
+  <script>window.vad_web=window.vad_web||window.vad;</script>
   <script src="app.js"></script>
 </body>
 </html>

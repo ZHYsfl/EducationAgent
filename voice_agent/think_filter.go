@@ -63,6 +63,26 @@ func (f *thinkFilter) Flush() string {
 	return s
 }
 
+// stripThinkTags removes all <think>...</think> blocks from text.
+// Used for non-streaming responses (e.g. Small LLM ChatText) where the full
+// response arrives at once and we only want the visible label text.
+// If a <think> block is not closed, everything from <think> onward is dropped.
+func stripThinkTags(s string) string {
+	for {
+		start := strings.Index(s, "<think>")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start:], "</think>")
+		if end < 0 {
+			s = s[:start]
+			break
+		}
+		s = s[:start] + s[start+end+len("</think>"):]
+	}
+	return s
+}
+
 // longestSuffixPrefix returns the longest suffix of text that equals a prefix
 // of tag. For example, longestSuffixPrefix("abc<th", "<think>") returns "<th".
 func longestSuffixPrefix(text, tag string) string {
