@@ -27,6 +27,7 @@ type FileModel struct {
 	FileSize   int64   `gorm:"column:file_size;not null"`
 	StorageURL string  `gorm:"column:storage_url;size:1024;not null"`
 	ObjectKey  string  `gorm:"column:object_key;size:1024;not null"`
+	Checksum   string  `gorm:"column:checksum;size:128;not null;default:''"`
 	Purpose    string  `gorm:"column:purpose;size:32;default:'reference'"`
 	CreatedAt  int64   `gorm:"column:created_at;not null"`
 }

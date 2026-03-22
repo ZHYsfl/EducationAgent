@@ -36,6 +36,7 @@ func InitApp() (*App, error) {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
 	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
+	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS checksum VARCHAR(128) NOT NULL DEFAULT ''`)
 	_ = db.Exec(`ALTER TABLE file_delete_jobs ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
 	_ = db.Exec(`
 CREATE OR REPLACE FUNCTION trg_enqueue_file_delete_job() RETURNS TRIGGER AS $$

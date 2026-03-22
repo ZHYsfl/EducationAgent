@@ -1,9 +1,12 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -39,10 +42,13 @@ func (a *App) uploadFile(c *gin.Context) {
 	safeName := strings.ReplaceAll(filepath.Base(header.Filename), " ", "_")
 	objectKey := fmt.Sprintf("%s/%s/%s_%s", userID, purpose, fileID, safeName)
 
-	if err = a.storage.Upload(c, objectKey, file, header.Size); err != nil {
+	hasher := sha256.New()
+	teeReader := io.TeeReader(file, hasher)
+	if err = a.storage.Upload(c, objectKey, teeReader, header.Size); err != nil {
 		fail(c, 50000, "上传对象存储失败")
 		return
 	}
+	checksum := hex.EncodeToString(hasher.Sum(nil))
 
 	rec := FileModel{
 		ID:         fileID,
@@ -54,6 +60,7 @@ func (a *App) uploadFile(c *gin.Context) {
 		FileSize:   header.Size,
 		StorageURL: fmt.Sprintf("oss://%s", objectKey),
 		ObjectKey:  objectKey,
+		Checksum:   checksum,
 		Purpose:    purpose,
 		CreatedAt:  nowMs(),
 	}
@@ -68,6 +75,7 @@ func (a *App) uploadFile(c *gin.Context) {
 		"file_type":   rec.FileType,
 		"file_size":   rec.FileSize,
 		"storage_url": rec.StorageURL,
+		"checksum":    rec.Checksum,
 		"purpose":     rec.Purpose,
 	})
 }
@@ -89,6 +97,24 @@ func (a *App) getFile(c *gin.Context) {
 		return
 	}
 
+	reader, err := a.storage.Download(c, rec.ObjectKey)
+	if err != nil {
+		fail(c, 50000, "读取对象存储失败")
+		return
+	}
+	h := sha256.New()
+	if _, err = io.Copy(h, reader); err != nil {
+		reader.Close()
+		fail(c, 50000, "校验文件完整性失败")
+		return
+	}
+	_ = reader.Close()
+	actualChecksum := hex.EncodeToString(h.Sum(nil))
+	if rec.Checksum != "" && !strings.EqualFold(rec.Checksum, actualChecksum) {
+		fail(c, 50000, "文件校验失败，疑似被篡改")
+		return
+	}
+
 	downloadURL, err := a.storage.GenerateSignedURL(rec.ObjectKey, 10*time.Minute)
 	if err != nil {
 		fail(c, 50000, "生成下载地址失败")
@@ -101,6 +127,7 @@ func (a *App) getFile(c *gin.Context) {
 		"file_type":    rec.FileType,
 		"file_size":    rec.FileSize,
 		"storage_url":  rec.StorageURL,
+		"checksum":     rec.Checksum,
 		"download_url": downloadURL,
 		"purpose":      rec.Purpose,
 		"created_at":   rec.CreatedAt,

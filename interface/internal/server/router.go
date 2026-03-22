@@ -11,17 +11,17 @@ func setupRouter(app *App) *gin.Engine {
 		files.Use(AuthUserMiddleware())
 		{
 			files.POST("/upload", app.uploadFile)
-			files.GET(":file_id", app.getFile)
-			files.DELETE(":file_id", app.deleteFile)
+			files.GET("/:file_id", app.getFile)
+			files.DELETE("/:file_id", app.deleteFile)
 		}
 
 		sessions := v1.Group("/sessions")
 		sessions.Use(AuthUserMiddleware())
 		{
 			sessions.POST("", app.createSession)
-			sessions.GET(":session_id", app.getSession)
+			sessions.GET("/:session_id", app.getSession)
 			sessions.GET("", app.listSessions)
-			sessions.PUT(":session_id", app.updateSession)
+			sessions.PUT("/:session_id", app.updateSession)
 		}
 
 		search := v1.Group("/search")
