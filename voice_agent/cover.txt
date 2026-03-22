@@ -129,7 +129,7 @@ voiceagent/asr_local.go:87.20,89.32 2 1
 voiceagent/asr_local.go:94.53,98.19 3 1
 voiceagent/asr_local.go:98.19,100.3 1 1
 voiceagent/asr_local.go:102.2,103.16 2 1
-voiceagent/asr_local.go:103.16,105.3 1 1
+voiceagent/asr_local.go:103.16,105.3 1 0
 voiceagent/asr_local.go:106.2,107.14 2 1
 voiceagent/asr_local.go:113.126,114.44 1 1
 voiceagent/asr_local.go:114.44,116.3 1 0
@@ -384,7 +384,7 @@ voiceagent/pipeline.go:110.11,111.38 1 0
 voiceagent/pipeline.go:117.31,118.23 1 1
 voiceagent/pipeline.go:118.23,119.10 1 1
 voiceagent/pipeline.go:120.33,120.33 0 1
-voiceagent/pipeline.go:121.11,121.11 0 0
+voiceagent/pipeline.go:121.11,121.11 0 1
 voiceagent/pipeline.go:130.34,136.15 5 1
 voiceagent/pipeline.go:136.15,139.77 1 1
 voiceagent/pipeline.go:139.77,140.70 1 1
@@ -428,9 +428,9 @@ voiceagent/pipeline.go:261.59,262.12 1 1
 voiceagent/pipeline.go:263.34,263.34 0 1
 voiceagent/pipeline.go:264.13,264.13 0 0
 voiceagent/pipeline.go:267.4,275.22 5 1
-voiceagent/pipeline.go:275.22,277.5 1 0
+voiceagent/pipeline.go:275.22,277.5 1 1
 voiceagent/pipeline.go:278.4,278.22 1 1
-voiceagent/pipeline.go:278.22,281.5 2 0
+voiceagent/pipeline.go:278.22,281.5 2 1
 voiceagent/pipeline.go:282.4,282.23 1 1
 voiceagent/pipeline.go:282.23,284.5 1 1
 voiceagent/pipeline.go:285.4,286.10 2 1
@@ -467,7 +467,7 @@ voiceagent/pipeline.go:407.3,407.60 1 1
 voiceagent/pipeline.go:410.2,410.25 1 1
 voiceagent/pipeline.go:410.25,412.3 1 1
 voiceagent/pipeline.go:414.2,415.27 2 1
-voiceagent/pipeline.go:415.27,417.3 1 0
+voiceagent/pipeline.go:415.27,417.3 1 1
 voiceagent/pipeline.go:418.2,419.27 2 1
 voiceagent/pipeline.go:419.27,421.3 1 0
 voiceagent/pipeline.go:422.2,422.25 1 1
@@ -613,7 +613,7 @@ voiceagent/pipeline.go:913.4,916.18 3 1
 voiceagent/pipeline.go:916.18,918.13 2 1
 voiceagent/pipeline.go:920.4,920.31 1 1
 voiceagent/pipeline.go:920.31,921.25 1 1
-voiceagent/pipeline.go:921.25,923.6 1 0
+voiceagent/pipeline.go:921.25,923.6 1 1
 voiceagent/pipeline.go:924.5,924.31 1 1
 voiceagent/pipeline.go:927.21,928.10 1 1
 voiceagent/pipeline.go:933.81,934.22 1 1
@@ -891,7 +891,7 @@ voiceagent/session.go:176.101,178.5 1 1
 voiceagent/session.go:179.4,179.10 1 1
 voiceagent/session.go:182.3,182.18 1 1
 voiceagent/session.go:183.30,185.53 2 1
-voiceagent/session.go:185.53,187.13 2 0
+voiceagent/session.go:185.53,187.13 2 1
 voiceagent/session.go:189.4,189.28 1 1
 voiceagent/session.go:191.32,192.27 1 1
 voiceagent/session.go:197.31,198.6 1 1
@@ -902,7 +902,7 @@ voiceagent/session.go:205.17,206.10 1 1
 voiceagent/session.go:211.52,212.18 1 1
 voiceagent/session.go:213.19,214.17 1 1
 voiceagent/session.go:215.17,216.15 1 1
-voiceagent/session.go:217.20,218.25 1 0
+voiceagent/session.go:217.20,218.25 1 1
 voiceagent/session.go:219.23,220.28 1 1
 voiceagent/session.go:221.19,222.24 1 1
 voiceagent/session.go:223.30,224.35 1 1
