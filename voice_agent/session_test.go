@@ -45,7 +45,7 @@ func TestSession_StateConcurrency(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			if i%2 == 0 {
-				s.state = StateListening
+				s.SetState(StateListening)
 			} else {
 				_ = s.GetState()
 			}

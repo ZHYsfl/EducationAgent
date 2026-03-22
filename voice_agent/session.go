@@ -333,6 +333,7 @@ func (s *Session) handleTaskInit(msg WSMessage) {
 
 	s.prefillFromMemory(req)
 	req.RefreshCollectedFields()
+	reqSnapshot := CloneTaskRequirements(req)
 
 	s.reqMu.Lock()
 	s.Requirements = req
@@ -343,7 +344,7 @@ func (s *Session) handleTaskInit(msg WSMessage) {
 		Status:          req.Status,
 		CollectedFields: req.CollectedFields,
 		MissingFields:   req.GetMissingFields(),
-		Requirements:    req,
+		Requirements:    reqSnapshot,
 	})
 }
 
@@ -370,10 +371,12 @@ func (s *Session) handleRequirementsConfirm(msg WSMessage) {
 		return
 	}
 	if msg.Confirmed != nil && *msg.Confirmed {
+		reqRef := s.Requirements
 		s.Requirements.Status = "confirmed"
 		s.Requirements.UpdatedAt = time.Now().UnixMilli()
+		reqSnapshot := CloneTaskRequirements(s.Requirements)
 		s.reqMu.Unlock()
-		go s.createPPTFromRequirements()
+		go s.createPPTFromSnapshot(reqRef, reqSnapshot)
 		return
 	}
 	if msg.Modifications != "" {
@@ -388,8 +391,13 @@ func (s *Session) handleRequirementsConfirm(msg WSMessage) {
 
 func (s *Session) createPPTFromRequirements() {
 	s.reqMu.RLock()
-	req := s.Requirements
+	reqRef := s.Requirements
+	req := CloneTaskRequirements(reqRef)
 	s.reqMu.RUnlock()
+	s.createPPTFromSnapshot(reqRef, req)
+}
+
+func (s *Session) createPPTFromSnapshot(reqRef, req *TaskRequirements) {
 	if req == nil || s.clients == nil {
 		return
 	}
@@ -406,7 +414,10 @@ func (s *Session) createPPTFromRequirements() {
 	s.SetActiveTask(resp.TaskID)
 	registerTask(resp.TaskID, s.SessionID)
 	s.reqMu.Lock()
-	s.Requirements.Status = "generating"
+	if s.Requirements == reqRef && s.Requirements != nil {
+		s.Requirements.Status = "generating"
+		s.Requirements.UpdatedAt = time.Now().UnixMilli()
+	}
 	s.reqMu.Unlock()
 
 	s.SendJSON(WSMessage{
