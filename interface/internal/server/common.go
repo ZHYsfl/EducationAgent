@@ -151,3 +151,16 @@ func hostOf(raw string) string {
 	}
 	return u.Host
 }
+
+// Exported helpers for cross-package tests.
+func ParseUserID(auth string) string               { return parseUserID(auth) }
+func DetectFileType(name string) string            { return detectFileType(name) }
+func ParsePositiveInt(s string, def int) int       { return parsePositiveInt(s, def) }
+func HostOf(raw string) string                     { return hostOf(raw) }
+func TitleOrDefault(title, snippet string) string  { return titleOrDefault(title, snippet) }
+func IsAllowedPurpose(v string) bool               { return isAllowedPurpose(v) }
+func IsAllowedSessionStatus(v string) bool         { return isAllowedSessionStatus(v) }
+func RefineSnippet(snippet, query string) string   { return refineSnippet(snippet, query) }
+func BuildSummary(query string, items []SearchResultItem) string { return buildSummary(query, items) }
+func EmptyToNil(v string) *string                  { return emptyToNil(v) }
+func ToString(v interface{}) string                { return toString(v) }
