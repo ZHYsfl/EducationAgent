@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls /d/创业/myResearch/EducationAgent/voice_agent/*.go)",
-      "Bash(grep -n \"p\\\\.\\\\\\(getDraftOutput\\\\|appendDraftOutput\\\\|resetDraftOutput\\\\|drainASRResults\\\\|drainContextQueue\\\\|enqueueContextMessage\\\\|asyncQuery\\\\|asyncExtractMemory\\\\|highPriorityListener\\\\|startProcessing\\\\|startDraftThinking\\\\|postProcessResponse\\\\|tryDetectTaskInit\\\\|trySendPPTFeedback\\\\|tryResolveConflict\\\\|handleRequirementsTransition\\\\|buildTaskListContext\\\\|buildPendingQuestionsContext\\\\|launchAsyncContextQueries\\\\|ttsWorker\\\\\\)\\\\b\\\\|s\\\\.\\\\\\(onVADStart\\\\|onVADEnd\\\\|handleTextMessage\\\\|handleTextInput\\\\|handlePageNavigate\\\\|handleTaskInit\\\\|handleRequirementsConfirm\\\\|cancelCurrentPipeline\\\\|newPipelineContext\\\\|createPPTFromRequirements\\\\|handleAudioData\\\\|prefillFromMemory\\\\|publishVADEvent\\\\|speakText\\\\\\)\\\\b\" /d/创业/myResearch/EducationAgent/voice_agent/agent/*_test.go)"
-    ]
-  }
-}
