@@ -60,6 +60,18 @@ func findSessionByTaskID(taskID string) *Session {
 	return nil
 }
 
+// RegisterTask registers a task_id → session_id mapping in the global index.
+// Exported for use in tests from agent/test package.
+func RegisterTask(taskID, sessionID string) {
+	registerTask(taskID, sessionID)
+}
+
+// FindSessionByTaskID looks up a session by task ID from the global registry.
+// Exported for use in tests from agent/test package.
+func FindSessionByTaskID(taskID string) *Session {
+	return findSessionByTaskID(taskID)
+}
+
 // SetGlobalClients sets the global ExternalServices clients (exported for main.go).
 func SetGlobalClients(c ExternalServices) {
 	globalClientsMu.Lock()
@@ -71,6 +83,12 @@ func getGlobalClients() ExternalServices {
 	globalClientsMu.RLock()
 	defer globalClientsMu.RUnlock()
 	return globalClients
+}
+
+// GetGlobalClients returns the current global ExternalServices clients.
+// Exported for use in tests from agent/test package.
+func GetGlobalClients() ExternalServices {
+	return getGlobalClients()
 }
 
 // HandleUpload handles POST /api/v1/upload (exported for main.go).

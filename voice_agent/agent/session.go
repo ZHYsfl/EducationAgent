@@ -155,3 +155,124 @@ func RegisterSession(s *Session) {
 func UnregisterSession(s *Session) {
 	unregisterSession(s)
 }
+
+// ---------------------------------------------------------------------------
+// Exported accessors for testing (white-box access from agent/test package)
+// ---------------------------------------------------------------------------
+
+// GetRequirements returns the current TaskRequirements under reqMu.
+func (s *Session) GetRequirements() *TaskRequirements {
+	s.reqMu.RLock()
+	defer s.reqMu.RUnlock()
+	return s.Requirements
+}
+
+// SetRequirements sets the current TaskRequirements under reqMu.
+func (s *Session) SetRequirements(r *TaskRequirements) {
+	s.reqMu.Lock()
+	defer s.reqMu.Unlock()
+	s.Requirements = r
+}
+
+// GetPendingQuestions returns a snapshot copy of pending questions.
+func (s *Session) GetPendingQuestions() map[string]string {
+	s.pendingQMu.RLock()
+	defer s.pendingQMu.RUnlock()
+	out := make(map[string]string)
+	for k, v := range s.PendingQuestions {
+		out[k] = v
+	}
+	return out
+}
+
+// GetActiveTaskID returns the active task ID under activeTaskMu.
+func (s *Session) GetActiveTaskID() string {
+	s.activeTaskMu.RLock()
+	defer s.activeTaskMu.RUnlock()
+	return s.ActiveTaskID
+}
+
+// GetOwnedTasks returns a snapshot copy of owned tasks.
+func (s *Session) GetOwnedTasks() map[string]string {
+	s.activeTaskMu.RLock()
+	defer s.activeTaskMu.RUnlock()
+	out := make(map[string]string)
+	for k, v := range s.OwnedTasks {
+		out[k] = v
+	}
+	return out
+}
+
+// GetPipeline returns the current pipeline under pipelineMu.
+func (s *Session) GetPipeline() *Pipeline {
+	s.pipelineMu.Lock()
+	defer s.pipelineMu.Unlock()
+	return s.pipeline
+}
+
+// SetPipeline sets the current pipeline under pipelineMu.
+func (s *Session) SetPipeline(p *Pipeline) {
+	s.pipelineMu.Lock()
+	defer s.pipelineMu.Unlock()
+	s.pipeline = p
+}
+
+// GetPipelineCancel returns the current pipeline cancel func under pipelineMu.
+func (s *Session) GetPipelineCancel() context.CancelFunc {
+	s.pipelineMu.Lock()
+	defer s.pipelineMu.Unlock()
+	return s.pipelineCancel
+}
+
+// SetPipelineCancel sets the pipeline cancel func under pipelineMu.
+func (s *Session) SetPipelineCancel(c context.CancelFunc) {
+	s.pipelineMu.Lock()
+	defer s.pipelineMu.Unlock()
+	s.pipelineCancel = c
+}
+
+// GetWriteCh returns the write channel.
+func (s *Session) GetWriteCh() chan writeItem {
+	return s.writeCh
+}
+
+// SetViewingPageID sets the ViewingPageID field directly (for testing).
+func (s *Session) SetViewingPageID(id string) {
+	s.activeTaskMu.Lock()
+	s.ViewingPageID = id
+	s.activeTaskMu.Unlock()
+}
+
+// SetLastVADTimestamp sets the LastVADTimestamp field directly (for testing).
+func (s *Session) SetLastVADTimestamp(ts int64) {
+	s.activeTaskMu.Lock()
+	s.LastVADTimestamp = ts
+	s.activeTaskMu.Unlock()
+}
+
+// SetStateRaw sets the state directly without sending a WS message (for testing).
+func (s *Session) SetStateRaw(state SessionState) {
+	s.stateMu.Lock()
+	s.state = state
+	s.stateMu.Unlock()
+}
+
+// GetClients returns the ExternalServices clients.
+func (s *Session) GetClients() ExternalServices {
+	return s.clients
+}
+
+// GetConfig returns the Config.
+func (s *Session) GetConfig() *Config {
+	return s.config
+}
+
+// PrefillFromMemory calls the unexported prefillFromMemory method.
+func (s *Session) PrefillFromMemory(req *TaskRequirements) {
+	s.prefillFromMemory(req)
+}
+
+// CreatePPTFromSnapshot calls the unexported createPPTFromSnapshot method.
+func (s *Session) CreatePPTFromSnapshot(req *TaskRequirements, snapshot *TaskRequirements) {
+	s.createPPTFromSnapshot(req, snapshot)
+}
