@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /d/创业/myResearch/EducationAgent/voice_agent/*.go)"
+    ]
+  }
+}

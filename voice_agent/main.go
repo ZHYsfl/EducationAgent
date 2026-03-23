@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"voiceagent/agent"
+	cfgpkg "voiceagent/internal/config"
+	svcclients "voiceagent/internal/clients"
 )
 
 func init() {
@@ -33,9 +36,9 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
-	config := LoadConfig()
-	clients := NewServiceClients(config)
-	setGlobalClients(clients)
+	config := cfgpkg.LoadConfig()
+	clients := svcclients.NewServiceClients(config)
+	agent.SetGlobalClients(clients)
 
 	log.Printf("Voice Agent server starting on :%d", config.ServerPort)
 	if config.ASRMode == "remote" {
@@ -53,13 +56,13 @@ func main() {
 
 	http.Handle("/models/", http.StripPrefix("/models/", http.FileServer(http.Dir("../models"))))
 	http.Handle("/", noCacheHandler(http.FileServer(http.Dir("static"))))
-	http.HandleFunc("POST /api/v1/upload", withCORS(handleUpload))
+	http.HandleFunc("POST /api/v1/upload", withCORS(agent.HandleUpload))
 	http.HandleFunc("OPTIONS /api/v1/upload", withCORS(preflightOnly))
-	http.HandleFunc("GET /api/v1/tasks/{task_id}/preview", withCORS(handlePreview))
+	http.HandleFunc("GET /api/v1/tasks/{task_id}/preview", withCORS(agent.HandlePreview))
 	http.HandleFunc("OPTIONS /api/v1/tasks/{task_id}/preview", withCORS(preflightOnly))
-	http.HandleFunc("POST /api/v1/voice/ppt_message", withCORS(handlePPTMessage))
+	http.HandleFunc("POST /api/v1/voice/ppt_message", withCORS(agent.HandlePPTMessage))
 	http.HandleFunc("OPTIONS /api/v1/voice/ppt_message", withCORS(preflightOnly))
-	http.HandleFunc("POST /api/v1/voice/ppt_message_tool", withCORS(handlePPTMessage))
+	http.HandleFunc("POST /api/v1/voice/ppt_message_tool", withCORS(agent.HandlePPTMessage))
 	http.HandleFunc("OPTIONS /api/v1/voice/ppt_message_tool", withCORS(preflightOnly))
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -73,10 +76,10 @@ func main() {
 		userID := r.URL.Query().Get("user_id")
 		log.Printf("New client connected: %s (session_id=%s, user_id=%s)", r.RemoteAddr, sessionID, userID)
 
-		session := NewSession(conn, config, clients, sessionID, userID)
-		registerSession(session)
+		session := agent.NewSession(conn, config, clients, sessionID, userID)
+		agent.RegisterSession(session)
 		session.Run()
-		unregisterSession(session)
+		agent.UnregisterSession(session)
 
 		log.Printf("Client disconnected: %s (session_id=%s)", r.RemoteAddr, session.SessionID)
 	})

@@ -1,0 +1,324 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+)
+
+func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse string) bool {
+	if p.clients == nil {
+		return false
+	}
+	p.session.pendingQMu.RLock()
+	pendingCount := len(p.session.PendingQuestions)
+	if pendingCount == 0 {
+		p.session.pendingQMu.RUnlock()
+		return false
+	}
+
+	var contextID, taskID string
+	if pendingCount == 1 {
+		for cid, tid := range p.session.PendingQuestions {
+			contextID = cid
+			taskID = tid
+		}
+	} else {
+		contextID = p.extractContextIDFromResponse(llmResponse)
+		if contextID != "" {
+			taskID = p.session.PendingQuestions[contextID]
+		}
+		if contextID == "" || taskID == "" {
+			for cid, tid := range p.session.PendingQuestions {
+				contextID = cid
+				taskID = tid
+				break
+			}
+		}
+	}
+	p.session.pendingQMu.RUnlock()
+
+	if _, ok := p.session.ResolvePendingQuestion(contextID); !ok {
+		return false
+	}
+	log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, taskID)
+
+	viewingPageID := p.session.GetViewingPageID()
+	baseTS := p.session.GetLastVADTimestamp()
+	go func() {
+		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
+			TaskID:           taskID,
+			BaseTimestamp:    baseTS,
+			ViewingPageID:    viewingPageID,
+			ReplyToContextID: contextID,
+			RawText:          userText,
+			Intents: []Intent{{
+				ActionType: "resolve_conflict",
+				ContextID:  contextID,
+			}},
+		}); err != nil {
+			log.Printf("[pipeline] SendFeedback resolve_conflict failed: %v", err)
+		}
+	}()
+	return true
+}
+
+func (p *Pipeline) extractContextIDFromResponse(text string) string {
+	marker := "[RESOLVE_CONFLICT:"
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := text[idx+len(marker):]
+	end := strings.Index(rest, "]")
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func (p *Pipeline) trySendPPTFeedback(userText, llmResponse string) {
+	if p.clients == nil {
+		return
+	}
+	taskID, ok := p.session.ResolveTaskID()
+	if !ok || taskID == "" {
+		return
+	}
+
+	marker := "[PPT_FEEDBACK]"
+	idx := strings.Index(llmResponse, marker)
+	if idx < 0 {
+		return
+	}
+	jsonStr := llmResponse[idx+len(marker):]
+	jsonStr = strings.TrimSpace(jsonStr)
+
+	endIdx := strings.Index(jsonStr, "[/PPT_FEEDBACK]")
+	if endIdx > 0 {
+		jsonStr = jsonStr[:endIdx]
+	}
+
+	var parsed struct {
+		ActionType   string   `json:"action_type"`
+		PageID       string   `json:"page_id"`
+		TargetPageID string   `json:"target_page_id"`
+		Instruction  string   `json:"instruction"`
+		Scope        string   `json:"scope"`
+		Keywords     []string `json:"keywords"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		log.Printf("[pipeline] failed to parse PPT_FEEDBACK JSON: %v (raw: %s)", err, truncate(jsonStr, 200))
+		return
+	}
+
+	viewingPageID := p.session.GetViewingPageID()
+	pageID := parsed.PageID
+	if pageID == "" {
+		pageID = viewingPageID
+	}
+
+	baseTS := p.session.GetLastVADTimestamp()
+	go func() {
+		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
+			TaskID:        taskID,
+			BaseTimestamp: baseTS,
+			ViewingPageID: viewingPageID,
+			RawText:       userText,
+			Intents: []Intent{{
+				ActionType:   parsed.ActionType,
+				PageID:       pageID,
+				TargetPageID: parsed.TargetPageID,
+				Instruction:  parsed.Instruction,
+				Scope:        parsed.Scope,
+				Keywords:     parsed.Keywords,
+			}},
+		}); err != nil {
+			log.Printf("[pipeline] SendFeedback failed: %v", err)
+		}
+	}()
+}
+
+func (p *Pipeline) tryDetectTaskInit(llmResponse string) bool {
+	marker := "[TASK_INIT]"
+	idx := strings.Index(llmResponse, marker)
+	if idx < 0 {
+		return false
+	}
+
+	jsonStr := strings.TrimSpace(llmResponse[idx+len(marker):])
+	endIdx := strings.Index(jsonStr, "[/TASK_INIT]")
+	if endIdx > 0 {
+		jsonStr = jsonStr[:endIdx]
+	}
+
+	var initData struct {
+		Topic string `json:"topic"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &initData); err != nil {
+		log.Printf("[pipeline] failed to parse TASK_INIT JSON: %v (raw: %s)", err, truncate(jsonStr, 200))
+		return false
+	}
+
+	req := NewTaskRequirements(p.session.SessionID, p.session.UserID)
+	if initData.Topic != "" {
+		req.Topic = initData.Topic
+	}
+	p.session.prefillFromMemory(req)
+	req.RefreshCollectedFields()
+	reqSnapshot := CloneTaskRequirements(req)
+
+	p.session.reqMu.Lock()
+	p.session.Requirements = req
+	p.session.reqMu.Unlock()
+
+	p.session.SendJSON(WSMessage{
+		Type:            "requirements_progress",
+		Status:          req.Status,
+		CollectedFields: req.CollectedFields,
+		MissingFields:   req.GetMissingFields(),
+		Requirements:    reqSnapshot,
+	})
+
+	log.Printf("[pipeline] voice-initiated task_init, topic=%q", initData.Topic)
+	return true
+}
+
+func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
+	if p.clients == nil || (userText == "" && assistantText == "") {
+		return
+	}
+	sessionID := p.session.SessionID
+	userID := p.session.UserID
+	turns := make([]ConversationTurn, 0, 2)
+	if userText != "" {
+		turns = append(turns, ConversationTurn{Role: "user", Content: userText})
+	}
+	if assistantText != "" {
+		turns = append(turns, ConversationTurn{Role: "assistant", Content: assistantText})
+	}
+	go func() {
+		if _, err := p.clients.ExtractMemory(context.Background(), MemoryExtractRequest{
+			UserID:    userID,
+			SessionID: sessionID,
+			Messages:  turns,
+		}); err != nil {
+			log.Printf("[pipeline] ExtractMemory failed: %v", err)
+		}
+	}()
+}
+
+func (p *Pipeline) handleRequirementsTransition(llmResponse string) {
+	p.session.reqMu.Lock()
+	req := p.session.Requirements
+	if req == nil {
+		p.session.reqMu.Unlock()
+		return
+	}
+
+	switch req.Status {
+	case "confirming":
+		if strings.Contains(llmResponse, "[REQUIREMENTS_CONFIRMED]") {
+			reqRef := req
+			req.Status = "confirmed"
+			req.UpdatedAt = time.Now().UnixMilli()
+			reqSnapshot := CloneTaskRequirements(req)
+			p.session.reqMu.Unlock()
+			go p.session.createPPTFromSnapshot(reqRef, reqSnapshot)
+			return
+		}
+		req.Status = "collecting"
+		req.UpdatedAt = time.Now().UnixMilli()
+		req.RefreshCollectedFields()
+		collected := req.CollectedFields
+		missing := req.GetMissingFields()
+		p.session.reqMu.Unlock()
+
+		p.session.SendJSON(WSMessage{
+			Type:            "requirements_progress",
+			Status:          "collecting",
+			CollectedFields: collected,
+			MissingFields:   missing,
+		})
+		return
+
+	case "collecting":
+		if strings.Contains(llmResponse, "[REQUIREMENTS_CONFIRMED]") {
+			req.Status = "confirming"
+			req.UpdatedAt = time.Now().UnixMilli()
+			req.RefreshCollectedFields()
+			summaryText := req.BuildSummaryText()
+			reqSnapshot := CloneTaskRequirements(req)
+			p.session.reqMu.Unlock()
+
+			p.session.SendJSON(WSMessage{
+				Type:         "requirements_summary",
+				SummaryText:  summaryText,
+				Requirements: reqSnapshot,
+			})
+			return
+		}
+
+		req.RefreshCollectedFields()
+		req.UpdatedAt = time.Now().UnixMilli()
+		missing := req.GetMissingFields()
+		collected := req.CollectedFields
+		p.session.reqMu.Unlock()
+
+		p.session.SendJSON(WSMessage{
+			Type:            "requirements_progress",
+			Status:          "collecting",
+			CollectedFields: collected,
+			MissingFields:   missing,
+		})
+		return
+
+	default:
+		p.session.reqMu.Unlock()
+	}
+}
+
+func (p *Pipeline) buildTaskListContext() string {
+	p.session.activeTaskMu.RLock()
+	defer p.session.activeTaskMu.RUnlock()
+	if len(p.session.OwnedTasks) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n[系统提示 - 当前用户的 PPT 任务列表]\n")
+	for tid, topic := range p.session.OwnedTasks {
+		marker := ""
+		if tid == p.session.ActiveTaskID {
+			marker = " (当前活跃)"
+		}
+		sb.WriteString(fmt.Sprintf("- task_id=%s, 主题=\"%s\"%s\n", tid, topic, marker))
+	}
+	if len(p.session.OwnedTasks) > 1 {
+		sb.WriteString("\n用户可能用简称、缩写、别名来指代某个任务（例如用\"高数\"指\"高等数学\"）。\n")
+		sb.WriteString("请根据语义判断用户说的是哪个任务。如果确实无法判断，主动追问用户，绝不要猜。\n")
+		sb.WriteString("默认操作当前活跃的任务，除非用户明确提到了其他任务。\n")
+	}
+	return sb.String()
+}
+
+func (p *Pipeline) buildPendingQuestionsContext() string {
+	p.session.pendingQMu.RLock()
+	defer p.session.pendingQMu.RUnlock()
+	if len(p.session.PendingQuestions) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n[系统提示 - 待回答的冲突问题]\n")
+	sb.WriteString("以下是 PPT Agent 提出的需要用户确认的问题，请判断用户是否在回答这些问题：\n")
+	for cid, tid := range p.session.PendingQuestions {
+		sb.WriteString(fmt.Sprintf("- context_id=%s, task_id=%s\n", cid, tid))
+	}
+	if len(p.session.PendingQuestions) > 1 {
+		sb.WriteString("\n有多个待确认问题，请在回复末尾标注你判断用户回答的是哪个问题：")
+		sb.WriteString("[RESOLVE_CONFLICT:context_id值]\n")
+	}
+	return sb.String()
+}

@@ -3,8 +3,6 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -47,22 +45,5 @@ func TestNoCacheHandler_Root_HasNoCacheHeaders(t *testing.T) {
 
 	if rr.Header().Get("Cache-Control") == "" {
 		t.Fatal("expected Cache-Control for root")
-	}
-}
-
-func TestAdaptiveController_Save_ActualFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sizes.json")
-
-	sizes := DefaultChannelSizes()
-	ac := NewAdaptiveController(sizes)
-	ac.Save(path)
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("Read file: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("file should not be empty")
 	}
 }
