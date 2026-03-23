@@ -324,10 +324,9 @@ func TestStartProcessing_RequirementsMode(t *testing.T) {
 		},
 	}
 	s := agent.NewTestSession(m)
-	s.LockReqMu()
-	s.SetRequirements(agent.NewTaskRequirements(s.SessionID, s.UserID))
-	s.GetRequirements().Status = "collecting"
-	s.UnlockReqMu()
+	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
+	req.Status = "collecting"
+	s.SetRequirements(req)
 
 	p := agent.NewTestPipelineWithTTS(s, m)
 	p.SetLargeLLM(newMockAgent(llm.URL))
