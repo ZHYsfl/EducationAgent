@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -22,13 +25,25 @@ import (
 
 func main() {
 	cfg := config.Load()
-	if cfg.PostgresDSN == "" {
-		log.Fatal("POSTGRES_DSN is required")
+	if err := validateConfig(cfg); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	db, err := gorm.Open(postgres.Open(cfg.PostgresDSN), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("failed to initialize database pool: %v", err)
+	}
+	if err := sqlDB.PingContext(ctx); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
+
 	repo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
 	redisClient := redis.NewClient(&redis.Options{
@@ -36,6 +51,9 @@ func main() {
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
 	})
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("failed to ping redis: %v", err)
+	}
 	workingRepo := repository.NewWorkingMemoryRepository(redisClient, time.Duration(cfg.WorkingMemoryTTLHrs)*time.Hour)
 	tm := jwtinfra.NewTokenManager(cfg.JWTSecret, cfg.JWTTTLHours)
 	authService := service.NewAuthService(repo, tm, mailer.NoopMailer{}, cfg.VerifyTokenTTLHours, cfg.FrontendVerifyURL)
@@ -46,7 +64,27 @@ func main() {
 	r := transport.NewRouter(authHandler, authMW)
 	transport.AddMemoryRoutes(r, memoryHandler, authMW)
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
+	log.Printf("auth-memory service listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
+}
+
+func validateConfig(cfg config.Config) error {
+	if strings.TrimSpace(cfg.PostgresDSN) == "" {
+		return errors.New("POSTGRES_DSN is required")
+	}
+	if strings.TrimSpace(cfg.RedisAddr) == "" {
+		return errors.New("REDIS_ADDR is required")
+	}
+	if strings.TrimSpace(cfg.InternalKey) == "" {
+		return errors.New("INTERNAL_KEY is required")
+	}
+	if strings.TrimSpace(cfg.JWTSecret) == "" || cfg.JWTSecret == "change-me" {
+		return errors.New("JWT_SECRET must be set to a non-default value")
+	}
+	if cfg.ServerPort <= 0 {
+		return errors.New("AUTH_MEMORY_PORT must be a positive integer")
+	}
+	return nil
 }

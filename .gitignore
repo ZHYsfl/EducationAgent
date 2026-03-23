@@ -221,6 +221,7 @@ qwen_omni/
 
 # Local planning/agent instruction artifacts
 plans/
+tests/
 PLAN.md
 AGENTS.md
 system_interface_spec.md
