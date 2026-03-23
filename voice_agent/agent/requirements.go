@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// GetCollectedFields returns the CollectedFields slice.
+func (r *TaskRequirements) GetCollectedFields() []string { return r.CollectedFields }
+
+// SetCollectedFields sets the CollectedFields slice.
+func (r *TaskRequirements) SetCollectedFields(f []string) { r.CollectedFields = f }
+
 func NewTaskRequirements(sessionID, userID string) *TaskRequirements {
 	now := time.Now().UnixMilli()
 	return &TaskRequirements{
