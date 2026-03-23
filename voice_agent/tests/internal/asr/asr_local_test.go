@@ -1,4 +1,4 @@
-package asr
+package asr_test
 
 import (
 	"context"
@@ -11,15 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	asrpkg "voiceagent/internal/asr"
 )
 
-func wsURL(s *httptest.Server) string {
-	return "ws" + strings.TrimPrefix(s.URL, "http")
-}
-
-var wsUpgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-
-// mockASRServer simulates a Fun-ASR-Nano WebSocket server.
 func mockASRServer(handler func(conn *websocket.Conn)) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsUpgrader.Upgrade(w, r, nil)
@@ -31,20 +25,12 @@ func mockASRServer(handler func(conn *websocket.Conn)) *httptest.Server {
 	}))
 }
 
-// ---------------------------------------------------------------------------
-// NewASRClient
-// ---------------------------------------------------------------------------
-
 func TestNewASRClient(t *testing.T) {
-	c := NewASRClient("ws://localhost:9999")
-	if c == nil || c.url != "ws://localhost:9999" {
+	c := asrpkg.NewASRClient("ws://localhost:9999")
+	if c == nil || c.WebSocketURL() != "ws://localhost:9999" {
 		t.Fatal("NewASRClient failed")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// StartSession
-// ---------------------------------------------------------------------------
 
 func TestASRClient_StartSession_Success(t *testing.T) {
 	var gotConfig map[string]any
@@ -58,32 +44,28 @@ func TestASRClient_StartSession_Success(t *testing.T) {
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	err := c.StartSession(context.Background())
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	defer c.EndSession(context.Background())
 
-	if c.conn == nil {
-		t.Fatal("conn should not be nil after StartSession")
+	if err := c.SendAudio(context.Background(), []byte{0}); err != nil {
+		t.Fatalf("expected session active for SendAudio: %v", err)
 	}
 }
 
 func TestASRClient_StartSession_BadURL(t *testing.T) {
-	c := NewASRClient("ws://127.0.0.1:1") // port that won't accept connections
+	c := asrpkg.NewASRClient("ws://127.0.0.1:1")
 	err := c.StartSession(context.Background())
 	if err == nil {
 		t.Fatal("expected connection error")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// SendAudio
-// ---------------------------------------------------------------------------
-
 func TestASRClient_SendAudio_NoSession(t *testing.T) {
-	c := NewASRClient("ws://localhost:9999")
+	c := asrpkg.NewASRClient("ws://localhost:9999")
 	err := c.SendAudio(context.Background(), []byte{0x01})
 	if err == nil || !strings.Contains(err.Error(), "not started") {
 		t.Fatalf("expected 'not started' error, got: %v", err)
@@ -92,13 +74,13 @@ func TestASRClient_SendAudio_NoSession(t *testing.T) {
 
 func TestASRClient_SendAudio_Success(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
-		conn.ReadMessage() // audio
+		conn.ReadMessage()
+		conn.ReadMessage()
 		time.Sleep(100 * time.Millisecond)
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	c.StartSession(context.Background())
 	defer c.EndSession(context.Background())
 
@@ -109,12 +91,8 @@ func TestASRClient_SendAudio_Success(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// ReadResult
-// ---------------------------------------------------------------------------
-
 func TestASRClient_ReadResult_NoSession(t *testing.T) {
-	c := NewASRClient("ws://localhost:9999")
+	c := asrpkg.NewASRClient("ws://localhost:9999")
 	_, err := c.ReadResult(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "not started") {
 		t.Fatalf("expected 'not started' error, got: %v", err)
@@ -123,14 +101,14 @@ func TestASRClient_ReadResult_NoSession(t *testing.T) {
 
 func TestASRClient_ReadResult_Success(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
-		result := ASRResult{Text: "hello", IsFinal: true, Mode: "2pass-offline"}
+		conn.ReadMessage()
+		result := asrpkg.ASRResult{Text: "hello", IsFinal: true, Mode: "2pass-offline"}
 		conn.WriteJSON(result)
 		time.Sleep(100 * time.Millisecond)
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	c.StartSession(context.Background())
 	defer c.EndSession(context.Background())
 
@@ -145,12 +123,12 @@ func TestASRClient_ReadResult_Success(t *testing.T) {
 
 func TestASRClient_ReadResult_ContextCancel(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
-		time.Sleep(5 * time.Second) // block indefinitely
+		conn.ReadMessage()
+		time.Sleep(5 * time.Second)
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	c.StartSession(context.Background())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -162,13 +140,9 @@ func TestASRClient_ReadResult_ContextCancel(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// EndSession
-// ---------------------------------------------------------------------------
-
 func TestASRClient_EndSession_NilConn(t *testing.T) {
-	c := NewASRClient("ws://localhost:9999")
-	c.EndSession(context.Background()) // should not panic
+	c := asrpkg.NewASRClient("ws://localhost:9999")
+	c.EndSession(context.Background())
 }
 
 func TestASRClient_EndSession_SendsIsSpeakingFalse(t *testing.T) {
@@ -176,7 +150,7 @@ func TestASRClient_EndSession_SendsIsSpeakingFalse(t *testing.T) {
 	var mu sync.Mutex
 	done := make(chan struct{})
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
+		conn.ReadMessage()
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			return
@@ -188,7 +162,7 @@ func TestASRClient_EndSession_SendsIsSpeakingFalse(t *testing.T) {
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	c.StartSession(context.Background())
 	c.EndSession(context.Background())
 
@@ -208,19 +182,13 @@ func TestASRClient_EndSession_SendsIsSpeakingFalse(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RecognizeStream (integration)
-// ---------------------------------------------------------------------------
-
 func TestASRClient_RecognizeStream_Success(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
+		conn.ReadMessage()
 
-		// Immediately send a streaming result before audio arrives
-		result := ASRResult{Text: "recognized", IsFinal: false, Mode: "streaming"}
+		result := asrpkg.ASRResult{Text: "recognized", IsFinal: false, Mode: "streaming"}
 		conn.WriteJSON(result)
 
-		// Read until connection closes
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
@@ -230,7 +198,7 @@ func TestASRClient_RecognizeStream_Success(t *testing.T) {
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	audioCh := make(chan []byte, 2)
 
 	resultCh, err := c.RecognizeStream(context.Background(), audioCh, 10)
@@ -238,7 +206,6 @@ func TestASRClient_RecognizeStream_Success(t *testing.T) {
 		t.Fatalf("RecognizeStream: %v", err)
 	}
 
-	// Wait for the first result before closing audio
 	select {
 	case r := <-resultCh:
 		if r.Text != "recognized" {
@@ -249,19 +216,18 @@ func TestASRClient_RecognizeStream_Success(t *testing.T) {
 	}
 
 	close(audioCh)
-	// Drain remaining
 	for range resultCh {
 	}
 }
 
 func TestASRClient_RecognizeStream_ContextCancel(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
+		conn.ReadMessage()
 		time.Sleep(5 * time.Second)
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -272,18 +238,14 @@ func TestASRClient_RecognizeStream_ContextCancel(t *testing.T) {
 	}
 
 	for range resultCh {
-		// drain
 	}
-	// should complete without hanging
 }
 
 func TestASRClient_RecognizeStream_EmptyResults(t *testing.T) {
 	srv := mockASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
-		// Send empty-text result (should be skipped) then valid result
-		conn.WriteJSON(ASRResult{Text: "", IsFinal: false})
-		conn.WriteJSON(ASRResult{Text: "valid", IsFinal: true})
-		// Keep connection open for reader to finish
+		conn.ReadMessage()
+		conn.WriteJSON(asrpkg.ASRResult{Text: "", IsFinal: false})
+		conn.WriteJSON(asrpkg.ASRResult{Text: "valid", IsFinal: true})
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
@@ -293,7 +255,7 @@ func TestASRClient_RecognizeStream_EmptyResults(t *testing.T) {
 	})
 	defer srv.Close()
 
-	c := NewASRClient(wsURL(srv))
+	c := asrpkg.NewASRClient(wsURL(srv))
 	audioCh := make(chan []byte, 1)
 
 	resultCh, err := c.RecognizeStream(context.Background(), audioCh, 10)
@@ -301,7 +263,6 @@ func TestASRClient_RecognizeStream_EmptyResults(t *testing.T) {
 		t.Fatalf("RecognizeStream: %v", err)
 	}
 
-	// Wait for the valid result
 	select {
 	case r := <-resultCh:
 		if r.Text != "valid" {

@@ -1,15 +1,13 @@
-package think
+package think_test
 
 import (
 	"testing"
+
+	"voiceagent/internal/think"
 )
 
-// ===========================================================================
-// ThinkFilter (streaming)
-// ===========================================================================
-
 func TestThinkFilter_BasicBlock(t *testing.T) {
-	var tf ThinkFilter
+	var tf think.ThinkFilter
 	out := tf.Feed("<think>internal reasoning</think>visible text")
 	if out != "visible text" {
 		t.Errorf("got %q, want %q", out, "visible text")
@@ -21,7 +19,7 @@ func TestThinkFilter_BasicBlock(t *testing.T) {
 }
 
 func TestThinkFilter_SplitAcrossTokens(t *testing.T) {
-	var tf ThinkFilter
+	var tf think.ThinkFilter
 	tokens := []string{"<thi", "nk>", "hidden", "</thi", "nk>", "after"}
 	var result string
 	for _, tok := range tokens {
@@ -34,7 +32,7 @@ func TestThinkFilter_SplitAcrossTokens(t *testing.T) {
 }
 
 func TestThinkFilter_NoThinkTags(t *testing.T) {
-	var tf ThinkFilter
+	var tf think.ThinkFilter
 	out := tf.Feed("plain text no tags")
 	out += tf.Flush()
 	if out != "plain text no tags" {
@@ -43,7 +41,7 @@ func TestThinkFilter_NoThinkTags(t *testing.T) {
 }
 
 func TestThinkFilter_MultipleBlocks(t *testing.T) {
-	var tf ThinkFilter
+	var tf think.ThinkFilter
 	var result string
 	result += tf.Feed("before<think>aaa</think>middle<think>bbb</think>end")
 	result += tf.Flush()
@@ -53,17 +51,13 @@ func TestThinkFilter_MultipleBlocks(t *testing.T) {
 }
 
 func TestThinkFilter_UnclosedThinkDiscardedOnFlush(t *testing.T) {
-	var tf ThinkFilter
+	var tf think.ThinkFilter
 	result := tf.Feed("visible<think>unclosed")
 	result += tf.Flush()
 	if result != "visible" {
 		t.Errorf("got %q, want %q", result, "visible")
 	}
 }
-
-// ===========================================================================
-// StripThinkTags (non-streaming)
-// ===========================================================================
 
 func TestStripThinkTags(t *testing.T) {
 	tests := []struct {
@@ -79,17 +73,13 @@ func TestStripThinkTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := StripThinkTags(tt.input)
+			got := think.StripThinkTags(tt.input)
 			if got != tt.want {
 				t.Errorf("StripThinkTags(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
 }
-
-// ===========================================================================
-// LongestSuffixPrefix
-// ===========================================================================
 
 func TestLongestSuffixPrefix(t *testing.T) {
 	tests := []struct {
@@ -106,7 +96,7 @@ func TestLongestSuffixPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.text+"_"+tt.tag, func(t *testing.T) {
-			got := LongestSuffixPrefix(tt.text, tt.tag)
+			got := think.LongestSuffixPrefix(tt.text, tt.tag)
 			if got != tt.want {
 				t.Errorf("LongestSuffixPrefix(%q, %q) = %q, want %q", tt.text, tt.tag, got, tt.want)
 			}

@@ -1,95 +1,21 @@
-package tts
+package tts_test
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"voiceagent/internal/doubao"
+	ttspkg "voiceagent/internal/tts"
 )
 
-var ttsWsUpgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-
-func ttsSrvURL(s *httptest.Server) string {
-	return "ws" + strings.TrimPrefix(s.URL, "http")
-}
-
-// ttsDial dials the mock WebSocket server.
-func ttsDial(t *testing.T, srv *httptest.Server) *websocket.Conn {
-	t.Helper()
-	conn, _, err := websocket.DefaultDialer.Dial(ttsSrvURL(srv), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	return conn
-}
-
-// ttsSendConfigFrame sends a minimal config frame to the mock server.
-func ttsSendConfigFrame(t *testing.T, conn *websocket.Conn) {
-	t.Helper()
-	payload, _ := json.Marshal(map[string]any{"audio": map[string]any{"format": "pcm"}})
-	h := doubao.BuildHeader(doubao.MsgTypeFullClientReq, doubao.FlagNoSeq, doubao.SerJSON, doubao.CompNone)
-	frame := doubao.BuildFrame(h, payload)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
-		t.Fatalf("send config: %v", err)
-	}
-}
-
-func mockDouBaoTTSServer(handler func(conn *websocket.Conn)) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := ttsWsUpgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		handler(conn)
-	}))
-}
-
 func TestNewDouBaoTTSClient(t *testing.T) {
-	cfg := DouBaoTTSConfig{AppId: "id", Token: "tok", Cluster: "c", VoiceType: "v"}
-	c := NewDouBaoTTSClient(cfg)
-	if c.config.AppId != "id" {
+	cfg := ttspkg.DouBaoTTSConfig{AppId: "id", Token: "tok", Cluster: "c", VoiceType: "v"}
+	c := ttspkg.NewDouBaoTTSClient(cfg)
+	if c.Config().AppId != "id" {
 		t.Fatal("config not set")
 	}
-}
-
-// sendTTSAudioFrame sends a doubao TTS audio-only response frame to the client.
-func sendTTSAudioFrame(conn *websocket.Conn, audio []byte, isLast bool) error {
-	flags := byte(doubao.FlagNoSeq)
-	if isLast {
-		flags = doubao.FlagLastData
-	}
-	h := doubao.BuildHeader(doubao.MsgTypeAudioOnlyResp, flags, doubao.SerNone, doubao.CompNone)
-	data := make([]byte, 4+len(audio))
-	copy(data[0:4], h[:])
-	copy(data[4:], audio)
-	return conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
-// sendTTSErrorFrame sends a doubao TTS error frame.
-func sendTTSErrorFrame(conn *websocket.Conn, code uint32, msg string) error {
-	hdr := doubao.BuildHeader(doubao.MsgTypeError, 0, 0, 0)
-	data := make([]byte, 12+len(msg))
-	copy(data[0:4], hdr[:])
-	binary.BigEndian.PutUint32(data[4:8], code)
-	binary.BigEndian.PutUint32(data[8:12], uint32(len(msg)))
-	copy(data[12:], msg)
-	return conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
-// sendTTSServerAckFrame sends a JSON server ack that should be ignored.
-func sendTTSServerAckFrame(conn *websocket.Conn) error {
-	h := doubao.BuildHeader(doubao.MsgTypeFullServerResp, doubao.FlagNoSeq, doubao.SerJSON, doubao.CompNone)
-	payload := []byte(`{"status":"ok"}`)
-	frame := doubao.BuildFrame(h, payload)
-	return conn.WriteMessage(websocket.BinaryMessage, frame)
 }
 
 func TestDouBaoTTS_MultipleAudioChunks(t *testing.T) {
@@ -101,11 +27,9 @@ func TestDouBaoTTS_MultipleAudioChunks(t *testing.T) {
 	})
 	defer srv.Close()
 
-	// Simulate the TTS client reader logic since we can't redirect the const endpoint
 	wsConn := ttsDial(t, srv)
 	defer wsConn.Close()
 
-	// Send a request frame (mimic Synthesize)
 	ttsSendConfigFrame(t, wsConn)
 
 	var audioChunks [][]byte
@@ -158,8 +82,8 @@ func TestDouBaoTTS_ErrorResponse(t *testing.T) {
 func TestDouBaoTTS_ServerAckIgnored(t *testing.T) {
 	srv := mockDouBaoTTSServer(func(conn *websocket.Conn) {
 		conn.ReadMessage()
-		sendTTSServerAckFrame(conn)                  // should be skipped
-		sendTTSAudioFrame(conn, []byte{0xAA}, true)  // last
+		sendTTSServerAckFrame(conn)                 // should be skipped
+		sendTTSAudioFrame(conn, []byte{0xAA}, true) // last
 	})
 	defer srv.Close()
 
@@ -187,8 +111,8 @@ func TestDouBaoTTS_ServerAckIgnored(t *testing.T) {
 func TestDouBaoTTS_EmptyAudioChunk(t *testing.T) {
 	srv := mockDouBaoTTSServer(func(conn *websocket.Conn) {
 		conn.ReadMessage()
-		sendTTSAudioFrame(conn, nil, false)           // empty audio
-		sendTTSAudioFrame(conn, []byte{0xBB}, true)   // last with data
+		sendTTSAudioFrame(conn, nil, false)         // empty audio
+		sendTTSAudioFrame(conn, []byte{0xBB}, true) // last with data
 	})
 	defer srv.Close()
 
@@ -238,11 +162,9 @@ func TestDouBaoTTS_ConnectionClose(t *testing.T) {
 func TestDouBaoTTS_UnexpectedMsgType(t *testing.T) {
 	srv := mockDouBaoTTSServer(func(conn *websocket.Conn) {
 		conn.ReadMessage()
-		// Send a frame with unexpected msg type (0x0C = 12)
 		h := doubao.BuildHeader(0x0C, doubao.FlagNoSeq, doubao.SerNone, doubao.CompNone)
 		frame := doubao.BuildFrame(h, []byte{0x01})
 		conn.WriteMessage(websocket.BinaryMessage, frame)
-		// Then send valid last audio
 		sendTTSAudioFrame(conn, []byte{0xCC}, true)
 	})
 	defer srv.Close()
@@ -283,6 +205,5 @@ func TestDouBaoTTS_ContextCancelDuringRead(t *testing.T) {
 	ttsSendConfigFrame(t, wsConn)
 
 	<-ctx.Done()
-	// Connection should be closeable without hang
 	wsConn.Close()
 }

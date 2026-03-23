@@ -24,6 +24,9 @@ func NewTTSClient(baseURL string) *TTSClient {
 	}
 }
 
+// BaseURL returns the configured HTTP base URL (for tests).
+func (c *TTSClient) BaseURL() string { return c.baseURL }
+
 // Synthesize sends text to CosyVoice2 and returns a channel that yields
 // WAV audio chunks. The channel is closed when synthesis is complete.
 func (c *TTSClient) Synthesize(ctx context.Context, text string, bufSize int) (<-chan []byte, error) {

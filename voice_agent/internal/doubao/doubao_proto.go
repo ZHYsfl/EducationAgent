@@ -180,3 +180,7 @@ func gzipDecompress(data []byte) ([]byte, error) {
 	defer r.Close()
 	return io.ReadAll(r)
 }
+
+// GzipCompress and GzipDecompress expose gzip helpers for black-box tests.
+func GzipCompress(data []byte) ([]byte, error) { return gzipCompress(data) }
+func GzipDecompress(data []byte) ([]byte, error) { return gzipDecompress(data) }

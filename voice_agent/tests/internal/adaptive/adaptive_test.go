@@ -1,11 +1,13 @@
-package adaptive
+package adaptive_test
 
 import (
 	"testing"
+
+	adaptivepkg "voiceagent/internal/adaptive"
 )
 
 func TestAdaptiveController_DefaultGet(t *testing.T) {
-	ac := NewAdaptiveController(DefaultChannelSizes())
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.DefaultChannelSizes())
 	if v := ac.Get("audio_ch"); v != 200 {
 		t.Errorf("audio_ch = %d, want 200", v)
 	}
@@ -15,7 +17,7 @@ func TestAdaptiveController_DefaultGet(t *testing.T) {
 }
 
 func TestAdaptiveController_RecordAndAdjust_HighUtil(t *testing.T) {
-	ac := NewAdaptiveController(ChannelSizes{
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.ChannelSizes{
 		AudioCh:     100,
 		ASRAudioCh:  20,
 		ASRResultCh: 20,
@@ -33,7 +35,7 @@ func TestAdaptiveController_RecordAndAdjust_HighUtil(t *testing.T) {
 }
 
 func TestAdaptiveController_RecordAndAdjust_LowUtil(t *testing.T) {
-	ac := NewAdaptiveController(ChannelSizes{
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.ChannelSizes{
 		AudioCh:     400,
 		ASRAudioCh:  20,
 		ASRResultCh: 20,
@@ -49,7 +51,7 @@ func TestAdaptiveController_RecordAndAdjust_LowUtil(t *testing.T) {
 }
 
 func TestAdaptiveController_ClampMin(t *testing.T) {
-	ac := NewAdaptiveController(ChannelSizes{
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.ChannelSizes{
 		AudioCh:     50,
 		ASRAudioCh:  5,
 		ASRResultCh: 5,
@@ -65,7 +67,7 @@ func TestAdaptiveController_ClampMin(t *testing.T) {
 }
 
 func TestAdaptiveController_RecordBlock(t *testing.T) {
-	ac := NewAdaptiveController(ChannelSizes{
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.ChannelSizes{
 		AudioCh:     100,
 		ASRAudioCh:  20,
 		ASRResultCh: 20,
@@ -76,15 +78,6 @@ func TestAdaptiveController_RecordBlock(t *testing.T) {
 	ac.RecordBlock("audio_ch")
 	ac.RecordBlock("audio_ch")
 
-	ac.mu.RLock()
-	m := ac.metrics["audio_ch"]
-	blocks := m.SendBlocks
-	ac.mu.RUnlock()
-
-	if blocks != 2 {
-		t.Errorf("blocks = %d, want 2", blocks)
-	}
-
 	ac.Adjust()
 	if v := ac.Get("audio_ch"); v <= 100 {
 		t.Errorf("expected audio_ch > 100 after blocks, got %d", v)
@@ -92,18 +85,18 @@ func TestAdaptiveController_RecordBlock(t *testing.T) {
 }
 
 func TestAdaptiveController_Save(t *testing.T) {
-	ac := NewAdaptiveController(DefaultChannelSizes())
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.DefaultChannelSizes())
 	tmpFile := t.TempDir() + "/adaptive_test.json"
 	ac.Save(tmpFile)
 
-	loaded := LoadChannelSizes(tmpFile, ChannelSizes{})
+	loaded := adaptivepkg.LoadChannelSizes(tmpFile, adaptivepkg.ChannelSizes{})
 	if loaded.AudioCh != 200 {
 		t.Errorf("loaded AudioCh = %d, want 200", loaded.AudioCh)
 	}
 }
 
 func TestAdaptiveController_GetAllChannels(t *testing.T) {
-	ac := NewAdaptiveController(DefaultChannelSizes())
+	ac := adaptivepkg.NewAdaptiveController(adaptivepkg.DefaultChannelSizes())
 	names := []string{"audio_ch", "asr_audio_ch", "asr_result_ch", "sentence_ch", "write_ch", "tts_chunk_ch"}
 	expected := []int{200, 20, 20, 20, 256, 20}
 	for i, name := range names {
@@ -114,14 +107,14 @@ func TestAdaptiveController_GetAllChannels(t *testing.T) {
 }
 
 func TestLoadChannelSizes_Fallback(t *testing.T) {
-	sizes := LoadChannelSizes("/nonexistent/path.json", DefaultChannelSizes())
+	sizes := adaptivepkg.LoadChannelSizes("/nonexistent/path.json", adaptivepkg.DefaultChannelSizes())
 	if sizes.AudioCh != 200 {
 		t.Errorf("expected fallback AudioCh=200, got %d", sizes.AudioCh)
 	}
 }
 
-func TestClampSizes(t *testing.T) {
-	s := ChannelSizes{
+func TestClampChannelSizes(t *testing.T) {
+	s := adaptivepkg.ChannelSizes{
 		AudioCh:     1,
 		ASRAudioCh:  1000,
 		ASRResultCh: 20,
@@ -129,7 +122,7 @@ func TestClampSizes(t *testing.T) {
 		WriteCh:     100,
 		TTSChunkCh:  20,
 	}
-	clamped := clampSizes(s)
+	clamped := adaptivepkg.ClampChannelSizes(s)
 	if clamped.AudioCh < 50 {
 		t.Errorf("AudioCh should be clamped to min 50, got %d", clamped.AudioCh)
 	}

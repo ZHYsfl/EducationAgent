@@ -1,4 +1,4 @@
-package clients
+package clients_test
 
 import (
 	"context"
@@ -7,13 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"voiceagent/internal/clients"
 	cfg "voiceagent/internal/config"
 	types "voiceagent/internal/types"
 )
-
-// ===========================================================================
-// QueryKB
-// ===========================================================================
 
 func TestQueryKB(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.KBQueryResponse{
@@ -33,10 +30,6 @@ func TestQueryKB(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// RecallMemory
-// ===========================================================================
-
 func TestRecallMemory(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.MemoryRecallResponse{
 		ProfileSummary: "summary",
@@ -54,10 +47,6 @@ func TestRecallMemory(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// GetUserProfile
-// ===========================================================================
-
 func TestGetUserProfile(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.UserProfile{UserID: "u1", Subject: "数学"}))
 	defer srv.Close()
@@ -70,10 +59,6 @@ func TestGetUserProfile(t *testing.T) {
 		t.Errorf("subject = %q", profile.Subject)
 	}
 }
-
-// ===========================================================================
-// SearchWeb
-// ===========================================================================
 
 func TestSearchWeb(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.SearchResponse{
@@ -93,10 +78,6 @@ func TestSearchWeb(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// InitPPT
-// ===========================================================================
-
 func TestInitPPT(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.PPTInitResponse{TaskID: "task_new"}))
 	defer srv.Close()
@@ -112,10 +93,6 @@ func TestInitPPT(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// SendFeedback
-// ===========================================================================
-
 func TestSendFeedback(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(nil))
 	defer srv.Close()
@@ -127,10 +104,6 @@ func TestSendFeedback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// ===========================================================================
-// GetCanvasStatus
-// ===========================================================================
 
 func TestGetCanvasStatus(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.CanvasStatusResponse{
@@ -147,10 +120,6 @@ func TestGetCanvasStatus(t *testing.T) {
 		t.Errorf("task_id = %q", resp.TaskID)
 	}
 }
-
-// ===========================================================================
-// ExtractMemory
-// ===========================================================================
 
 func TestExtractMemory(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.MemoryExtractResponse{
@@ -169,10 +138,6 @@ func TestExtractMemory(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// SaveWorkingMemory
-// ===========================================================================
-
 func TestSaveWorkingMemory(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(nil))
 	defer srv.Close()
@@ -184,10 +149,6 @@ func TestSaveWorkingMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// ===========================================================================
-// GetWorkingMemory
-// ===========================================================================
 
 func TestGetWorkingMemory(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.WorkingMemory{
@@ -204,10 +165,6 @@ func TestGetWorkingMemory(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// NotifyVADEvent
-// ===========================================================================
-
 func TestNotifyVADEvent(t *testing.T) {
 	var received types.VADEvent
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +173,7 @@ func TestNotifyVADEvent(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
 
 	err := svcClients.NotifyVADEvent(context.Background(), types.VADEvent{
 		TaskID: "t1", Timestamp: 12345, ViewingPageID: "p1",
@@ -228,10 +185,6 @@ func TestNotifyVADEvent(t *testing.T) {
 		t.Errorf("task_id = %q", received.TaskID)
 	}
 }
-
-// ===========================================================================
-// IngestFromSearch
-// ===========================================================================
 
 func TestIngestFromSearch(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(nil))

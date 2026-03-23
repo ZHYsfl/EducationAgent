@@ -1,4 +1,4 @@
-package asr
+package asr_test
 
 import (
 	"encoding/json"
@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	asrpkg "voiceagent/internal/asr"
 	"voiceagent/internal/doubao"
 )
 
 func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 	srv := mockDouBaoASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
+		conn.ReadMessage()
 
-		// Partial result (no definite utterance)
 		partial := map[string]any{
 			"result": map[string]any{
 				"text":       "你好",
@@ -24,7 +24,6 @@ func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 		p1, _ := json.Marshal(partial)
 		sendServerResp(conn, p1, doubao.FlagNoSeq)
 
-		// Final result (definite)
 		final := map[string]any{
 			"result": map[string]any{
 				"text":       "你好世界",
@@ -34,7 +33,6 @@ func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 		p2, _ := json.Marshal(final)
 		sendServerResp(conn, p2, doubao.FlagNoSeq)
 
-		// Last empty
 		sendServerResp(conn, []byte(`{"result":{"text":""}}`), doubao.FlagLastData)
 	})
 	defer srv.Close()
@@ -44,7 +42,7 @@ func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 	sendConfigFrame(t, conn)
 
 	var prevText string
-	var results []ASRResult
+	var results []asrpkg.ASRResult
 
 	for i := 0; i < 5; i++ {
 		_, data, err := conn.ReadMessage()
@@ -83,7 +81,7 @@ func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 		}
 
 		if isLast || hasDefinite {
-			results = append(results, ASRResult{Text: fullText, IsFinal: true, Mode: "2pass-offline"})
+			results = append(results, asrpkg.ASRResult{Text: fullText, IsFinal: true, Mode: "2pass-offline"})
 			prevText = fullText
 			if isLast {
 				break
@@ -97,7 +95,7 @@ func TestDouBaoASR_PartialAndFinalResults(t *testing.T) {
 				continue
 			}
 			prevText = fullText
-			results = append(results, ASRResult{Text: delta, IsFinal: false, Mode: "streaming"})
+			results = append(results, asrpkg.ASRResult{Text: delta, IsFinal: false, Mode: "streaming"})
 		}
 	}
 
@@ -123,7 +121,7 @@ func TestDouBaoASR_EmptyDelta(t *testing.T) {
 		}
 		p, _ := json.Marshal(resp)
 		sendServerResp(conn, p, doubao.FlagNoSeq)
-		sendServerResp(conn, p, doubao.FlagNoSeq) // same text, delta="" → skip
+		sendServerResp(conn, p, doubao.FlagNoSeq)
 		sendServerResp(conn, []byte(`{"result":{"text":""}}`), doubao.FlagLastData)
 	})
 	defer srv.Close()
@@ -160,7 +158,6 @@ func TestDouBaoASR_EmptyDelta(t *testing.T) {
 	}
 }
 
-// Test context cancellation while waiting for audio
 func TestDouBaoASR_ContextCancelDuringAudioSend(t *testing.T) {
 	srv := mockDouBaoASRServer(func(conn *websocket.Conn) {
 		conn.ReadMessage()
