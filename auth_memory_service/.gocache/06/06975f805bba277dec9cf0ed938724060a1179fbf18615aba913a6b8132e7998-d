@@ -1,7 +1,0 @@
-./consumed_verification_token.go
-./issued_verification_token.go
-./memory_entry.go
-./pending_registration.go
-./session.go
-./user.go
-./working_memory.go
