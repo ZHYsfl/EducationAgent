@@ -61,13 +61,13 @@ func findSessionByTaskID(taskID string) *Session {
 }
 
 // RegisterTask registers a task_id → session_id mapping in the global index.
-// Exported for use in tests from agent/test package.
+// Exported for use in tests from tests/agent (package agent_test).
 func RegisterTask(taskID, sessionID string) {
 	registerTask(taskID, sessionID)
 }
 
 // FindSessionByTaskID looks up a session by task ID from the global registry.
-// Exported for use in tests from agent/test package.
+// Exported for use in tests from tests/agent (package agent_test).
 func FindSessionByTaskID(taskID string) *Session {
 	return findSessionByTaskID(taskID)
 }
@@ -86,7 +86,7 @@ func getGlobalClients() ExternalServices {
 }
 
 // GetGlobalClients returns the current global ExternalServices clients.
-// Exported for use in tests from agent/test package.
+// Exported for use in tests from tests/agent (package agent_test).
 func GetGlobalClients() ExternalServices {
 	return getGlobalClients()
 }

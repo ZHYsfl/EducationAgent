@@ -157,7 +157,7 @@ func UnregisterSession(s *Session) {
 }
 
 // ---------------------------------------------------------------------------
-// Exported accessors for testing (white-box access from agent/test package)
+// Exported accessors for testing (used from tests/agent, package agent_test)
 // ---------------------------------------------------------------------------
 
 // GetRequirements returns the current TaskRequirements under reqMu.

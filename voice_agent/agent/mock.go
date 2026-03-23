@@ -5,7 +5,7 @@ package agent
 // instances that require direct access to unexported fields.
 //
 // These helpers are only used by tests. The types and functions here are
-// exported so they are visible from agent/test.
+// exported so they are visible from tests/agent (package agent_test).
 
 import (
 	"context"

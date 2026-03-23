@@ -136,7 +136,7 @@ func (p *Pipeline) OnVADEnd() {
 }
 
 // ---------------------------------------------------------------------------
-// Exported accessors for testing (white-box access from agent/test package)
+// Exported accessors for testing (used from tests/agent, package agent_test)
 // ---------------------------------------------------------------------------
 
 // GetAudioBuffer returns the audio buffer.
