@@ -1,4 +1,4 @@
-package clients
+package clients_test
 
 import (
 	"context"
@@ -9,11 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"voiceagent/internal/clients"
 	cfg "voiceagent/internal/config"
 	types "voiceagent/internal/types"
 )
 
-func newTestServer(handler http.HandlerFunc) (*httptest.Server, *ServiceClients) {
+func newTestServer(handler http.HandlerFunc) (*httptest.Server, *clients.ServiceClients) {
 	srv := httptest.NewServer(handler)
 	config := &cfg.Config{
 		PPTAgentURL:  srv.URL,
@@ -22,7 +23,7 @@ func newTestServer(handler http.HandlerFunc) (*httptest.Server, *ServiceClients)
 		SearchURL:    srv.URL,
 		DBServiceURL: srv.URL,
 	}
-	return srv, NewServiceClients(config)
+	return srv, clients.NewServiceClients(config)
 }
 
 func apiOK(data any) http.HandlerFunc {
@@ -42,16 +43,12 @@ func apiError(code int, msg string) http.HandlerFunc {
 	}
 }
 
-// ===========================================================================
-// postJSON / getJSON
-// ===========================================================================
-
 func TestPostJSON_Success(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(map[string]string{"result": "ok"}))
 	defer srv.Close()
 
 	var out map[string]string
-	err := svcClients.postJSON(context.Background(), srv.URL+"/test", map[string]string{"a": "b"}, &out)
+	err := svcClients.PostJSON(context.Background(), srv.URL+"/test", map[string]string{"a": "b"}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +63,9 @@ func TestPostJSON_ServerError(t *testing.T) {
 		w.Write([]byte("internal error"))
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
 
-	err := svcClients.postJSON(context.Background(), srv.URL+"/test", nil, nil)
+	err := svcClients.PostJSON(context.Background(), srv.URL+"/test", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for 500")
 	}
@@ -79,7 +76,7 @@ func TestPostJSON_APIError(t *testing.T) {
 	defer srv.Close()
 
 	var out map[string]string
-	err := svcClients.postJSON(context.Background(), srv.URL+"/test", nil, &out)
+	err := svcClients.PostJSON(context.Background(), srv.URL+"/test", nil, &out)
 	if err == nil {
 		t.Fatal("expected error for API error code")
 	}
@@ -89,7 +86,7 @@ func TestPostJSON_NilOut(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(nil))
 	defer srv.Close()
 
-	err := svcClients.postJSON(context.Background(), srv.URL+"/test", nil, nil)
+	err := svcClients.PostJSON(context.Background(), srv.URL+"/test", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +97,7 @@ func TestGetJSON_Success(t *testing.T) {
 	defer srv.Close()
 
 	var out types.UserProfile
-	err := svcClients.getJSON(context.Background(), srv.URL+"/test", &out)
+	err := svcClients.GetJSON(context.Background(), srv.URL+"/test", &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,21 +111,17 @@ func TestGetJSON_ServerError(t *testing.T) {
 		w.WriteHeader(404)
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{PPTAgentURL: srv.URL})
 
 	var out types.UserProfile
-	err := svcClients.getJSON(context.Background(), srv.URL+"/test", &out)
+	err := svcClients.GetJSON(context.Background(), srv.URL+"/test", &out)
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
 }
 
-// ===========================================================================
-// UploadFile
-// ===========================================================================
-
 func TestUploadFile_NilBody(t *testing.T) {
-	svcClients := NewServiceClients(&cfg.Config{DBServiceURL: "http://localhost:1"})
+	svcClients := clients.NewServiceClients(&cfg.Config{DBServiceURL: "http://localhost:1"})
 	r := httptest.NewRequest(http.MethodPost, "/upload", nil)
 	r.Body = nil
 	_, err := svcClients.UploadFile(r)
@@ -152,7 +145,7 @@ func TestUploadFile_Success(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
 
 	r := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("fake file data"))
 	r.Header.Set("Content-Type", "multipart/form-data")
@@ -175,7 +168,7 @@ func TestUploadFile_UpstreamError(t *testing.T) {
 		w.Write([]byte("error"))
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
 
 	r := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("data"))
 	_, err := svcClients.UploadFile(r)
@@ -190,7 +183,7 @@ func TestUploadFile_APIError(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
 
 	r := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("data"))
 	_, err := svcClients.UploadFile(r)
@@ -204,7 +197,7 @@ func TestUploadFile_RawResponse(t *testing.T) {
 		w.Write([]byte(`{"file_id":"raw_response"}`))
 	}))
 	defer srv.Close()
-	svcClients := NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
+	svcClients := clients.NewServiceClients(&cfg.Config{DBServiceURL: srv.URL})
 
 	r := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("data"))
 	data, err := svcClients.UploadFile(r)
@@ -216,10 +209,6 @@ func TestUploadFile_RawResponse(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// NewServiceClients
-// ===========================================================================
-
 func TestNewServiceClients(t *testing.T) {
 	config := &cfg.Config{
 		PPTAgentURL:  "http://ppt:9100/",
@@ -228,8 +217,12 @@ func TestNewServiceClients(t *testing.T) {
 		SearchURL:    "http://search:9400/",
 		DBServiceURL: "http://db:9500/",
 	}
-	c := NewServiceClients(config)
-	if c.pptBaseURL != "http://ppt:9100" {
-		t.Errorf("trailing slash not trimmed: %q", c.pptBaseURL)
+	c := clients.NewServiceClients(config)
+	ppt, kb, mem, search, db := c.BaseURLs()
+	if ppt != "http://ppt:9100" {
+		t.Errorf("ppt trailing slash not trimmed: %q", ppt)
+	}
+	if kb != "http://kb:9200" || mem != "http://mem:9300" || search != "http://search:9400" || db != "http://db:9500" {
+		t.Errorf("base urls = %q %q %q %q %q", ppt, kb, mem, search, db)
 	}
 }

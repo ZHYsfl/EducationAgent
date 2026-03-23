@@ -22,6 +22,9 @@ func NewASRClient(url string) *ASRClient {
 	return &ASRClient{url: url}
 }
 
+// WebSocketURL returns the configured ASR WebSocket URL (for tests).
+func (c *ASRClient) WebSocketURL() string { return c.url }
+
 // StartSession opens a WebSocket to Fun-ASR-Nano and sends config.
 func (c *ASRClient) StartSession(ctx context.Context) error {
 	c.mu.Lock()

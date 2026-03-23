@@ -29,6 +29,9 @@ func NewDouBaoASRClient(cfg DouBaoASRConfig) *DouBaoASRClient {
 	return &DouBaoASRClient{config: cfg}
 }
 
+// Config returns the client configuration (for tests).
+func (c *DouBaoASRClient) Config() DouBaoASRConfig { return c.config }
+
 func (c *DouBaoASRClient) RecognizeStream(ctx context.Context, audioCh <-chan []byte, resultBufSize int) (<-chan ASRResult, error) {
 	connectId := uuid.New().String()
 

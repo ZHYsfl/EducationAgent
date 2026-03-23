@@ -1,68 +1,29 @@
-package asr
+package asr_test
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gorilla/websocket"
+	asrpkg "voiceagent/internal/asr"
 	"voiceagent/internal/doubao"
 )
 
-func mockDouBaoASRServer(handler func(conn *websocket.Conn)) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := wsUpgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		handler(conn)
-	}))
-}
-
 func TestNewDouBaoASRClient(t *testing.T) {
-	cfg := DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "res"}
-	c := NewDouBaoASRClient(cfg)
-	if c.config.AppKey != "ak" {
+	cfg := asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "res"}
+	c := asrpkg.NewDouBaoASRClient(cfg)
+	if c.Config().AppKey != "ak" {
 		t.Fatal("config not set")
 	}
 }
 
-// sendServerResp sends a mock doubao server response frame.
-func sendServerResp(conn *websocket.Conn, payload []byte, flags byte) error {
-	h := doubao.BuildHeader(doubao.MsgTypeFullServerResp, flags, doubao.SerJSON, doubao.CompNone)
-	frame := doubao.BuildFrame(h, payload)
-	return conn.WriteMessage(websocket.BinaryMessage, frame)
-}
-
-// sendAudioResp sends a mock doubao audio-only response frame.
-func sendAudioResp(conn *websocket.Conn, audio []byte, flags byte) error {
-	h := doubao.BuildHeader(doubao.MsgTypeAudioOnlyResp, flags, doubao.SerNone, doubao.CompNone)
-	data := make([]byte, 4+len(audio))
-	copy(data[0:4], h[:])
-	copy(data[4:], audio)
-	return conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
-// sendErrorResp sends a mock doubao error frame.
-func sendErrorResp(conn *websocket.Conn, code uint32, msg string) error {
-	hdr := doubao.BuildHeader(doubao.MsgTypeError, 0, 0, 0)
-	data := make([]byte, 12+len(msg))
-	copy(data[0:4], hdr[:])
-	binary.BigEndian.PutUint32(data[4:8], code)
-	binary.BigEndian.PutUint32(data[8:12], uint32(len(msg)))
-	copy(data[12:], msg)
-	return conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
 func TestDouBaoASR_RecognizeStream_FinalResult(t *testing.T) {
 	srv := mockDouBaoASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config frame
+		conn.ReadMessage()
 
-		// Send a server response with definite utterance
 		resp := map[string]any{
 			"result": map[string]any{
 				"text": "你好世界",
@@ -74,25 +35,24 @@ func TestDouBaoASR_RecognizeStream_FinalResult(t *testing.T) {
 		payload, _ := json.Marshal(resp)
 		sendServerResp(conn, payload, doubao.FlagNoSeq)
 
-		// Send last frame
 		sendServerResp(conn, []byte(`{"result":{"text":""}}`), doubao.FlagLastData)
 	})
 	defer srv.Close()
 
-	cfg := DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "res"}
-	c := &DouBaoASRClient{config: cfg}
+	cfg := asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "res"}
+	c := asrpkg.NewDouBaoASRClient(cfg)
 	testDouBaoASRFlow(t, srv, c)
 }
 
-// testDouBaoASRFlow tests the DouBao ASR client by patching the WebSocket endpoint.
-func testDouBaoASRFlow(t *testing.T, srv *httptest.Server, c *DouBaoASRClient) {
+func testDouBaoASRFlow(t *testing.T, srv *httptest.Server, c *asrpkg.DouBaoASRClient) {
 	t.Helper()
 
 	endpoint := wsURL(srv)
 	header := http.Header{}
-	header.Set("X-Api-App-Key", c.config.AppKey)
-	header.Set("X-Api-Access-Key", c.config.AccessKey)
-	header.Set("X-Api-Resource-Id", c.config.ResourceId)
+	cfg := c.Config()
+	header.Set("X-Api-App-Key", cfg.AppKey)
+	header.Set("X-Api-Access-Key", cfg.AccessKey)
+	header.Set("X-Api-Resource-Id", cfg.ResourceId)
 
 	dialer := websocket.Dialer{}
 	conn, _, err := dialer.DialContext(context.Background(), endpoint, header)
@@ -109,7 +69,6 @@ func testDouBaoASRFlow(t *testing.T, srv *httptest.Server, c *DouBaoASRClient) {
 	frame := doubao.BuildFrame(h, cfgPayload)
 	conn.WriteMessage(websocket.BinaryMessage, frame)
 
-	// Read results
 	var finalText string
 	for i := 0; i < 5; i++ {
 		_, data, err := conn.ReadMessage()
@@ -144,7 +103,7 @@ func testDouBaoASRFlow(t *testing.T, srv *httptest.Server, c *DouBaoASRClient) {
 
 func TestDouBaoASR_ErrorResponse(t *testing.T) {
 	srv := mockDouBaoASRServer(func(conn *websocket.Conn) {
-		conn.ReadMessage() // config
+		conn.ReadMessage()
 		sendErrorResp(conn, 10001, "auth failed")
 	})
 	defer srv.Close()
@@ -214,40 +173,5 @@ func TestDouBaoASR_AudioOnlyRespIgnored(t *testing.T) {
 	}
 	if len(results) != 1 || results[0] != "hello" {
 		t.Errorf("results = %v", results)
-	}
-}
-
-func TestDouBaoASR_ConnectError(t *testing.T) {
-	cfg := DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "res"}
-	c := &DouBaoASRClient{config: cfg}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer srv.Close()
-
-	audioCh := make(chan []byte)
-	close(audioCh)
-	_ = c
-}
-
-// dialMockWS dials the mock WebSocket server.
-func dialMockWS(t *testing.T, srv *httptest.Server) *websocket.Conn {
-	t.Helper()
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL(srv), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	return conn
-}
-
-// sendConfigFrame sends a minimal config frame to the mock server.
-func sendConfigFrame(t *testing.T, conn *websocket.Conn) {
-	t.Helper()
-	payload, _ := json.Marshal(map[string]any{"audio": map[string]any{"format": "pcm"}})
-	h := doubao.BuildHeader(doubao.MsgTypeFullClientReq, doubao.FlagNoSeq, doubao.SerJSON, doubao.CompNone)
-	frame := doubao.BuildFrame(h, payload)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
-		t.Fatalf("send config: %v", err)
 	}
 }

@@ -38,6 +38,21 @@ func NewServiceClients(config *cfg.Config) *ServiceClients {
 	}
 }
 
+// PostJSON and GetJSON expose the internal HTTP helpers for black-box tests.
+func (c *ServiceClients) PostJSON(ctx context.Context, url string, body any, out any) error {
+	return c.postJSON(ctx, url, body, out)
+}
+
+// GetJSON sends GET and decodes JSON (exported for tests).
+func (c *ServiceClients) GetJSON(ctx context.Context, url string, out any) error {
+	return c.getJSON(ctx, url, out)
+}
+
+// BaseURLs returns trimmed service base URLs (for tests).
+func (c *ServiceClients) BaseURLs() (ppt, kb, memory, search, db string) {
+	return c.pptBaseURL, c.kbBaseURL, c.memoryBaseURL, c.searchBaseURL, c.dbBaseURL
+}
+
 func (c *ServiceClients) QueryKB(ctx context.Context, req types.KBQueryRequest) (types.KBQueryResponse, error) {
 	var out types.KBQueryResponse
 	err := c.postJSON(ctx, c.kbBaseURL+"/api/v1/kb/query", req, &out)

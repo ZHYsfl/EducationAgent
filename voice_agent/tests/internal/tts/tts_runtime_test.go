@@ -1,4 +1,4 @@
-package tts
+package tts_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"voiceagent/internal/doubao"
+	ttspkg "voiceagent/internal/tts"
 )
 
 func TestDouBaoTTSClient_Synthesize_EndToEnd(t *testing.T) {
@@ -30,11 +31,10 @@ func TestDouBaoTTSClient_Synthesize_EndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoTTSEndpoint
-	doubaoTTSEndpoint = ttsSrvURL(srv)
-	defer func() { doubaoTTSEndpoint = old }()
+	restore := ttspkg.SetDouBaoTTSEndpointForTest(ttsSrvURL(srv))
+	defer restore()
 
-	c := NewDouBaoTTSClient(DouBaoTTSConfig{
+	c := ttspkg.NewDouBaoTTSClient(ttspkg.DouBaoTTSConfig{
 		AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice",
 	})
 	ch, err := c.Synthesize(context.Background(), "你好", 8)
@@ -63,11 +63,10 @@ func TestDouBaoTTSClient_Synthesize_ErrorFrame(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoTTSEndpoint
-	doubaoTTSEndpoint = ttsSrvURL(srv)
-	defer func() { doubaoTTSEndpoint = old }()
+	restore := ttspkg.SetDouBaoTTSEndpointForTest(ttsSrvURL(srv))
+	defer restore()
 
-	c := NewDouBaoTTSClient(DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
+	c := ttspkg.NewDouBaoTTSClient(ttspkg.DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
 	ch, err := c.Synthesize(context.Background(), "hello", 4)
 	if err != nil {
 		t.Fatalf("Synthesize error: %v", err)
@@ -78,16 +77,14 @@ func TestDouBaoTTSClient_Synthesize_ErrorFrame(t *testing.T) {
 }
 
 func TestDouBaoTTSClient_Synthesize_ConnectError(t *testing.T) {
-	old := doubaoTTSEndpoint
-	doubaoTTSEndpoint = "ws://127.0.0.1:1/unreachable"
-	defer func() { doubaoTTSEndpoint = old }()
+	restore := ttspkg.SetDouBaoTTSEndpointForTest("ws://127.0.0.1:1/unreachable")
+	defer restore()
 
-	c := NewDouBaoTTSClient(DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
+	c := ttspkg.NewDouBaoTTSClient(ttspkg.DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
 	ch, err := c.Synthesize(context.Background(), "hello", 2)
 	if err == nil {
 		t.Fatal("expected connect error")
 	}
-	// error path returns a closed channel
 	for range ch {
 		t.Fatal("channel should be closed on connect error")
 	}
@@ -102,7 +99,6 @@ func TestDouBaoTTSClient_Synthesize_InvalidHeaderThenValid(t *testing.T) {
 		defer conn.Close()
 		_, _, _ = conn.ReadMessage() // request
 
-		// invalid frame (parse header error)
 		_ = conn.WriteMessage(websocket.BinaryMessage, []byte{0x00})
 
 		h := doubao.BuildHeader(doubao.MsgTypeAudioOnlyResp, doubao.FlagLastData, doubao.SerNone, doubao.CompNone)
@@ -110,11 +106,10 @@ func TestDouBaoTTSClient_Synthesize_InvalidHeaderThenValid(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoTTSEndpoint
-	doubaoTTSEndpoint = ttsSrvURL(srv)
-	defer func() { doubaoTTSEndpoint = old }()
+	restore := ttspkg.SetDouBaoTTSEndpointForTest(ttsSrvURL(srv))
+	defer restore()
 
-	c := NewDouBaoTTSClient(DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
+	c := ttspkg.NewDouBaoTTSClient(ttspkg.DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
 	ch, err := c.Synthesize(context.Background(), "hello", 4)
 	if err != nil {
 		t.Fatalf("Synthesize error: %v", err)
@@ -137,17 +132,15 @@ func TestDouBaoTTSClient_Synthesize_AudioParseError(t *testing.T) {
 		defer conn.Close()
 		_, _, _ = conn.ReadMessage() // request
 
-		// malformed audio frame: flagPosSeq but no sequence bytes
 		h := doubao.BuildHeader(doubao.MsgTypeAudioOnlyResp, doubao.FlagPosSeq, doubao.SerNone, doubao.CompNone)
 		_ = conn.WriteMessage(websocket.BinaryMessage, h[:])
 	}))
 	defer srv.Close()
 
-	old := doubaoTTSEndpoint
-	doubaoTTSEndpoint = ttsSrvURL(srv)
-	defer func() { doubaoTTSEndpoint = old }()
+	restore := ttspkg.SetDouBaoTTSEndpointForTest(ttsSrvURL(srv))
+	defer restore()
 
-	c := NewDouBaoTTSClient(DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
+	c := ttspkg.NewDouBaoTTSClient(ttspkg.DouBaoTTSConfig{AppId: "app", Token: "tok", Cluster: "clu", VoiceType: "voice"})
 	ch, err := c.Synthesize(context.Background(), "hello", 4)
 	if err != nil {
 		t.Fatalf("Synthesize error: %v", err)

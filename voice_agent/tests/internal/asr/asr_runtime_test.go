@@ -1,4 +1,4 @@
-package asr
+package asr_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	asrpkg "voiceagent/internal/asr"
 	"voiceagent/internal/doubao"
 )
 
@@ -20,7 +21,7 @@ func TestDouBaoASRClient_RecognizeStream_EndToEnd(t *testing.T) {
 		}
 		defer conn.Close()
 
-		_, _, _ = conn.ReadMessage() // config frame
+		_, _, _ = conn.ReadMessage()
 
 		resp1 := map[string]any{
 			"result": map[string]any{
@@ -47,11 +48,10 @@ func TestDouBaoASRClient_RecognizeStream_EndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoASREndpoint
-	doubaoASREndpoint = wsURL(srv)
-	defer func() { doubaoASREndpoint = old }()
+	restore := asrpkg.SetDouBaoASRWebSocketURLForTest(wsURL(srv))
+	defer restore()
 
-	c := NewDouBaoASRClient(DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
+	c := asrpkg.NewDouBaoASRClient(asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
 	audioCh := make(chan []byte, 1)
 	audioCh <- []byte{1, 2, 3}
 	close(audioCh)
@@ -60,7 +60,7 @@ func TestDouBaoASRClient_RecognizeStream_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecognizeStream error: %v", err)
 	}
-	var got []ASRResult
+	var got []asrpkg.ASRResult
 	for r := range resultCh {
 		got = append(got, r)
 	}
@@ -79,16 +79,15 @@ func TestDouBaoASRClient_RecognizeStream_ErrorFrame(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		_, _, _ = conn.ReadMessage() // config
+		_, _, _ = conn.ReadMessage()
 		_ = sendErrorResp(conn, 401, "bad auth")
 	}))
 	defer srv.Close()
 
-	old := doubaoASREndpoint
-	doubaoASREndpoint = wsURL(srv)
-	defer func() { doubaoASREndpoint = old }()
+	restore := asrpkg.SetDouBaoASRWebSocketURLForTest(wsURL(srv))
+	defer restore()
 
-	c := NewDouBaoASRClient(DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
+	c := asrpkg.NewDouBaoASRClient(asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
 	audioCh := make(chan []byte)
 	close(audioCh)
 	resultCh, err := c.RecognizeStream(context.Background(), audioCh, 4)
@@ -101,11 +100,10 @@ func TestDouBaoASRClient_RecognizeStream_ErrorFrame(t *testing.T) {
 }
 
 func TestDouBaoASRClient_RecognizeStream_ConnectError(t *testing.T) {
-	old := doubaoASREndpoint
-	doubaoASREndpoint = "ws://127.0.0.1:1/unreachable"
-	defer func() { doubaoASREndpoint = old }()
+	restore := asrpkg.SetDouBaoASRWebSocketURLForTest("ws://127.0.0.1:1/unreachable")
+	defer restore()
 
-	c := NewDouBaoASRClient(DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
+	c := asrpkg.NewDouBaoASRClient(asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
 	audioCh := make(chan []byte)
 	close(audioCh)
 	_, err := c.RecognizeStream(context.Background(), audioCh, 4)
@@ -121,9 +119,8 @@ func TestDouBaoASRClient_RecognizeStream_InvalidHeaderThenValid(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		_, _, _ = conn.ReadMessage() // config
+		_, _, _ = conn.ReadMessage()
 
-		// invalid frame (header parse should fail and continue)
 		_ = conn.WriteMessage(websocket.BinaryMessage, []byte{0x01})
 
 		resp := map[string]any{
@@ -138,18 +135,17 @@ func TestDouBaoASRClient_RecognizeStream_InvalidHeaderThenValid(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoASREndpoint
-	doubaoASREndpoint = wsURL(srv)
-	defer func() { doubaoASREndpoint = old }()
+	restore := asrpkg.SetDouBaoASRWebSocketURLForTest(wsURL(srv))
+	defer restore()
 
-	c := NewDouBaoASRClient(DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
+	c := asrpkg.NewDouBaoASRClient(asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
 	audioCh := make(chan []byte)
 	close(audioCh)
 	resultCh, err := c.RecognizeStream(context.Background(), audioCh, 4)
 	if err != nil {
 		t.Fatalf("RecognizeStream error: %v", err)
 	}
-	var got []ASRResult
+	var got []asrpkg.ASRResult
 	for r := range resultCh {
 		got = append(got, r)
 	}
@@ -165,9 +161,8 @@ func TestDouBaoASRClient_RecognizeStream_IgnoreNonFullServerResp(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		_, _, _ = conn.ReadMessage() // config
+		_, _, _ = conn.ReadMessage()
 
-		// audio-only response should be ignored by ASR reader
 		h := doubao.BuildHeader(doubao.MsgTypeAudioOnlyResp, doubao.FlagNoSeq, doubao.SerNone, doubao.CompNone)
 		_ = conn.WriteMessage(websocket.BinaryMessage, append(h[:], []byte{0x11, 0x22}...))
 
@@ -182,18 +177,17 @@ func TestDouBaoASRClient_RecognizeStream_IgnoreNonFullServerResp(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	old := doubaoASREndpoint
-	doubaoASREndpoint = wsURL(srv)
-	defer func() { doubaoASREndpoint = old }()
+	restore := asrpkg.SetDouBaoASRWebSocketURLForTest(wsURL(srv))
+	defer restore()
 
-	c := NewDouBaoASRClient(DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
+	c := asrpkg.NewDouBaoASRClient(asrpkg.DouBaoASRConfig{AppKey: "ak", AccessKey: "sk", ResourceId: "rid"})
 	audioCh := make(chan []byte)
 	close(audioCh)
 	resultCh, err := c.RecognizeStream(context.Background(), audioCh, 4)
 	if err != nil {
 		t.Fatalf("RecognizeStream error: %v", err)
 	}
-	var got []ASRResult
+	var got []asrpkg.ASRResult
 	for r := range resultCh {
 		got = append(got, r)
 	}

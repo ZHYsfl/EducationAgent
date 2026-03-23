@@ -182,6 +182,11 @@ func LoadChannelSizes(path string, fallback ChannelSizes) ChannelSizes {
 	return sizes
 }
 
+// ClampChannelSizes applies per-channel min/max bounds (same as LoadChannelSizes).
+func ClampChannelSizes(s ChannelSizes) ChannelSizes {
+	return clampSizes(s)
+}
+
 func clampSizes(s ChannelSizes) ChannelSizes {
 	clamp := func(val int, name string) int {
 		spec := channelSpecs[name]

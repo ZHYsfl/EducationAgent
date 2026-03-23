@@ -1,18 +1,15 @@
-package tts
+package tts_test
 
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-)
 
-// ===========================================================================
-// AddWAVHeader
-// ===========================================================================
+	ttspkg "voiceagent/internal/tts"
+)
 
 func TestAddWAVHeader_Basic(t *testing.T) {
 	pcm := make([]byte, 100)
@@ -20,7 +17,7 @@ func TestAddWAVHeader_Basic(t *testing.T) {
 		pcm[i] = byte(i)
 	}
 
-	wav := AddWAVHeader(pcm, 16000, 16, 1)
+	wav := ttspkg.AddWAVHeader(pcm, 16000, 16, 1)
 	if len(wav) != 44+100 {
 		t.Fatalf("expected %d bytes, got %d", 44+100, len(wav))
 	}
@@ -56,7 +53,7 @@ func TestAddWAVHeader_Basic(t *testing.T) {
 
 func TestAddWAVHeader_Stereo(t *testing.T) {
 	pcm := make([]byte, 200)
-	wav := AddWAVHeader(pcm, 44100, 16, 2)
+	wav := ttspkg.AddWAVHeader(pcm, 44100, 16, 2)
 
 	channels := binary.LittleEndian.Uint16(wav[22:24])
 	if channels != 2 {
@@ -76,7 +73,7 @@ func TestAddWAVHeader_Stereo(t *testing.T) {
 }
 
 func TestAddWAVHeader_EmptyPCM(t *testing.T) {
-	wav := AddWAVHeader(nil, 16000, 16, 1)
+	wav := ttspkg.AddWAVHeader(nil, 16000, 16, 1)
 	if len(wav) != 44 {
 		t.Errorf("expected header only (44 bytes), got %d", len(wav))
 	}
@@ -86,17 +83,10 @@ func TestAddWAVHeader_EmptyPCM(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// TTSClient
-// ===========================================================================
-
 func TestNewTTSClient(t *testing.T) {
-	c := NewTTSClient("http://localhost:50000")
-	if c.baseURL != "http://localhost:50000" {
-		t.Errorf("baseURL = %q", c.baseURL)
-	}
-	if c.client == nil {
-		t.Error("client should not be nil")
+	c := ttspkg.NewTTSClient("http://localhost:50000")
+	if c.BaseURL() != "http://localhost:50000" {
+		t.Errorf("baseURL = %q", c.BaseURL())
 	}
 }
 
@@ -117,7 +107,7 @@ func TestTTSClient_Synthesize_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewTTSClient(srv.URL)
+	c := ttspkg.NewTTSClient(srv.URL)
 	ch, err := c.Synthesize(context.Background(), "测试文本", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +129,7 @@ func TestTTSClient_Synthesize_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewTTSClient(srv.URL)
+	c := ttspkg.NewTTSClient(srv.URL)
 	ch, err := c.Synthesize(context.Background(), "test", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +151,7 @@ func TestTTSClient_Synthesize_ContextCancel(t *testing.T) {
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	c := NewTTSClient(srv.URL)
+	c := ttspkg.NewTTSClient(srv.URL)
 	ch, err := c.Synthesize(ctx, "test", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -184,13 +174,11 @@ func TestTTSClient_Synthesize_ContextCancel(t *testing.T) {
 }
 
 func TestTTSClient_Synthesize_ConnectionRefused(t *testing.T) {
-	c := NewTTSClient("http://localhost:1")
+	c := ttspkg.NewTTSClient("http://localhost:1")
 	ch, err := c.Synthesize(context.Background(), "test", 10)
 	if err != nil {
-		// Error during request build is also acceptable
 		return
 	}
 	for range ch {
 	}
-	fmt.Println("channel closed as expected on connection refused")
 }

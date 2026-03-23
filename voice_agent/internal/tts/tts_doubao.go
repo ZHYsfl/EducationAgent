@@ -29,6 +29,9 @@ func NewDouBaoTTSClient(cfg DouBaoTTSConfig) *DouBaoTTSClient {
 	return &DouBaoTTSClient{config: cfg}
 }
 
+// Config returns the client configuration (for tests).
+func (c *DouBaoTTSClient) Config() DouBaoTTSConfig { return c.config }
+
 func (c *DouBaoTTSClient) Synthesize(ctx context.Context, text string, bufSize int) (<-chan []byte, error) {
 	ch := make(chan []byte, bufSize)
 
