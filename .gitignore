@@ -224,7 +224,7 @@ plans/
 tests/
 PLAN.md
 AGENTS.md
-system_interface_spec.md
+memory_tech.md
 
 # Cursor project files
 .cursor/
