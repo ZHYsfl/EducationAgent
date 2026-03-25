@@ -841,10 +841,8 @@ func (p *Pipeline) prefillFromMemory(ctx context.Context, req *TaskRequirements)
     profile, err := memClient.GetProfile(req.UserID)
     if err != nil { return }
 
-    if profile.Subject != "" && req.TargetAudience == "" {
-        req.TargetAudience = profile.Subject + " major students"
-        req.CollectedFields = append(req.CollectedFields, "target_audience")
-    }
+    // target_audience should come from explicit user input
+    // or dedicated audience-related memory fields when available.
     if style, ok := profile.VisualPreferences["color_scheme"]; ok && req.GlobalStyle == "" {
         req.GlobalStyle = style
         req.CollectedFields = append(req.CollectedFields, "global_style")
@@ -1579,6 +1577,18 @@ Referencing the three-layer memory capability in Berger's article:
 | L2 | Factual Memory | PostgreSQL | Permanent | User's objective facts: name, school, teaching subject, frequently used textbook |
 | L3 | Preference Memory | PostgreSQL | Permanent (with confidence decay) | User's subjective preferences: teaching style, color preference, content depth |
 
+Extension (compatible with existing three-layer design):
+
+- The Memory Service supports a dual-layer long-term memory view:
+  1. Structured memory (Advanced JSON Cards) for stable core facts/preferences.
+  2. Evidence memory (retrievable historical dialogue chunks) for on-demand context verification.
+- Dialogue history may be indexed as retrievable long-term evidence across sessions.
+- Retrieved evidence should preserve contextual meaning (for example, with a context prefix summary).
+- Long-term memory persistence follows a layered approach:
+  1. PostgreSQL stores retrieval metadata, structured filtering fields, and conflict-resolution signals.
+  2. OSS/object storage stores large unstructured memory payloads (evidence bodies, chunk objects, card snapshots, archived bundles).
+- Recall should prefer metadata-first and excerpt-first responses, and load full OSS payloads only when needed.
+
 
 ### 5.2 Data Models
 
@@ -1613,6 +1623,7 @@ type MemoryEntry struct {
     MemoryID   string  `json:"memory_id"`    // mem_<uuid>
     UserID     string  `json:"user_id"`
     Category   string  `json:"category"`     // fact | preference | summary
+    Status     string  `json:"status"`       // active | superseded | inactive
     Key        string  `json:"key"`          // e.g. "name", "teaching_style", "color_preference"
     Value      string  `json:"value"`        // Value
     Context    string  `json:"context"`      // Context where this memory applies (e.g. "mathematics courseware", "general")
@@ -1641,6 +1652,61 @@ type UserProfile struct {
 }
 ```
 
+#### 5.2.4 Advanced JSON Card (Extension)
+
+Role clarification:
+
+- `MemoryEntry` is the canonical source for stable profile aggregation and deterministic key-based updates.
+- `MemoryCard` is primarily for recall context and long-term reasoning, rather than direct profile field replacement.
+
+```go
+type MemoryCard struct {
+    CardID          string  `json:"card_id"`                    // mem_<uuid>
+    UserID          string  `json:"user_id"`
+    Category        string  `json:"category"`                   // fact | preference | event | plan (extensible)
+    Status          string  `json:"status"`                     // active | superseded | inactive
+    Excerpt         string  `json:"excerpt,omitempty"`          // Default lightweight recall content
+    Content         string  `json:"content,omitempty"`          // Full content (inline when small, or hydrated when requested)
+    ContentRef      *MemoryObjectRef `json:"content_ref,omitempty"` // Reference for large payloads in object storage
+    Backstory       string  `json:"backstory,omitempty"`        // Source/context summary
+    Person          string  `json:"person,omitempty"`           // Related person
+    Relationship    string  `json:"relationship,omitempty"`     // self | spouse | colleague ...
+    Context         string  `json:"context"`                    // general | teaching | travel ...
+    Confidence      float64 `json:"confidence"`
+    SourceSessionID string  `json:"source_session_id,omitempty"`
+    CreatedAt       int64   `json:"created_at"`
+    UpdatedAt       int64   `json:"updated_at"`
+}
+```
+
+#### 5.2.5 Dialogue Memory Chunk (Extension)
+
+```go
+type MemoryDialogueChunk struct {
+    ChunkID       string   `json:"chunk_id"`                     // mem_<uuid>
+    UserID        string   `json:"user_id"`
+    SessionID     string   `json:"session_id,omitempty"`
+    TurnStart     int      `json:"turn_start"`                   // Inclusive turn index
+    TurnEnd       int      `json:"turn_end"`                     // Inclusive turn index
+    ContextPrefix string   `json:"context_prefix"`               // Context summary (time/person/intent/background)
+    Excerpt       string   `json:"excerpt,omitempty"`            // Default lightweight recall content
+    Content       string   `json:"content,omitempty"`            // Full content (inline when small, or hydrated when requested)
+    ContentRef    *MemoryObjectRef `json:"content_ref,omitempty"`// Reference for large payloads in object storage
+    Participants  []string `json:"participants,omitempty"`
+    IntentTags    []string `json:"intent_tags,omitempty"`
+    CreatedAt     int64    `json:"created_at"`
+    UpdatedAt     int64    `json:"updated_at"`
+}
+```
+
+```go
+type MemoryObjectRef struct {
+    ObjectID   string `json:"object_id,omitempty"`   // Stable primary reference: memory_objects.id
+    ObjectKey  string `json:"object_key,omitempty"`  // Stable storage key reference
+    StorageURL string `json:"storage_url,omitempty"` // Optional derived URL (policy/signed URL dependent)
+}
+```
+
 ### 5.3 HTTP API
 
 #### 5.3.1 Extract Memory (from Dialogue)
@@ -1654,6 +1720,9 @@ type MemoryExtractRequest struct {
     UserID       string   `json:"user_id"`
     SessionID    string   `json:"session_id"`
     Messages     []ConversationTurn `json:"messages"` // Most recent N turns of dialogue
+    WindowTurns  int      `json:"window_turns,omitempty"`             // Optional chunking window for dialogue indexing (suggested default: 20 turns)
+    EnableCardUpsert bool `json:"enable_card_upsert,omitempty"`       // Optional: generate/upsert structured memory cards
+    EnableDialogueIndex bool `json:"enable_dialogue_index,omitempty"` // Optional: index dialogue chunks as evidence memory
 }
 
 type ConversationTurn struct {
@@ -1669,6 +1738,8 @@ type MemoryExtractResponse struct {
     ExtractedFacts       []MemoryEntry `json:"extracted_facts"`
     ExtractedPreferences []MemoryEntry `json:"extracted_preferences"`
     ConversationSummary  string        `json:"conversation_summary"`
+    Cards                []MemoryCard  `json:"cards,omitempty"`              // Generated/updated cards when enabled
+    IndexedChunkCount    int           `json:"indexed_chunk_count,omitempty"` // Number of indexed dialogue chunks
 }
 ```
 
@@ -1679,6 +1750,21 @@ System Prompt: Extract the user's factual information and preference information
 Facts: objective information explicitly stated by the user (name, school, subject, etc.)
 Preferences: subjective inclinations expressed by the user (style preference, content preference, etc.), with confidence annotated
 ```
+
+Compatibility note: existing extraction behavior remains valid. Card upsert and dialogue chunk indexing are the compatible long-term memory extensions for this chapter; request switches are kept optional for backward compatibility.
+
+Persistence behavior (compatible with asynchronous architecture):
+
+1. Extraction may persist retrieval metadata/index fields to PostgreSQL first.
+2. Large evidence payloads may be uploaded to OSS asynchronously through the existing Database Service / shared storage integration path.
+3. After upload succeeds, object references are backfilled in PostgreSQL metadata records.
+4. This flow should not block the Voice Agent recall path.
+
+Persistence mapping note:
+
+- Chapter 5 defines memory business behavior and APIs.
+- Chapter 7 (`7.2.6`, `7.2.6A`, `7.2.6B`, `7.2.6C`) defines backend persistence schemas used by Memory Service and does not transfer memory business ownership.
+- Database Service owners handle schema migration and generic persistence/storage support for these schemas.
 
 #### 5.3.2 Recall Memory
 
@@ -1692,6 +1778,12 @@ type MemoryRecallRequest struct {
     SessionID string `json:"session_id"` // Optional: if empty, working memory is not included
     Query     string `json:"query"`      // Required: current user utterance
     TopK      int    `json:"top_k"`      // Number of returned results, default 10
+    IncludeCards    bool `json:"include_cards,omitempty"`    // Optional: include structured memory cards
+    IncludeEvidence bool `json:"include_evidence,omitempty"` // Optional: include dialogue evidence chunks
+    IncludeHints    bool `json:"include_hints,omitempty"`    // Optional: include proactive hints
+    IncludeInactive bool `json:"include_inactive,omitempty"` // Optional: include superseded and inactive memory for history/evidence review
+    EvidenceDetailLevel string `json:"evidence_detail_level,omitempty"` // none | excerpt | full (default excerpt)
+    HydrateEvidence bool `json:"hydrate_evidence,omitempty"` // Optional hydration switch for full evidence payloads
 }
 ```
 
@@ -1699,12 +1791,91 @@ type MemoryRecallRequest struct {
 
 ```go
 type MemoryRecallResponse struct {
-    Facts           []MemoryEntry   `json:"facts"`            // Relevant facts
-    Preferences     []MemoryEntry   `json:"preferences"`      // Relevant preferences
-    WorkingMemory   *WorkingMemory  `json:"working_memory"`   // Working memory (if session_id is provided)
-    ProfileSummary  string          `json:"profile_summary"`  // User profile summary text
+    Facts           []MemoryEntry         `json:"facts"`                     // Relevant facts
+    Preferences     []MemoryEntry         `json:"preferences"`               // Relevant preferences
+    Cards           []MemoryCard          `json:"cards,omitempty"`           // Structured core memory cards
+    EvidenceChunks  []MemoryDialogueChunk `json:"evidence_chunks,omitempty"` // Context-aware dialogue evidence
+    ProactiveHints  []MemoryHint          `json:"proactive_hints,omitempty"` // Hidden association / risk hints
+    WorkingMemory   *WorkingMemory        `json:"working_memory"`            // Working memory (if session_id is provided)
+    ProfileSummary  string                `json:"profile_summary"`           // User profile summary text
+}
+
+type MemoryHint struct {
+    Title       string   `json:"title"`
+    Description string   `json:"description"`
+    Severity    string   `json:"severity"`               // info | warning
+    EvidenceIDs []string `json:"evidence_ids,omitempty"` // Related card/chunk IDs
 }
 ```
+
+Conflict-handling principle (for multi-session memory recall):
+
+- When conflicting updates exist for the same user memory key/context, the service should prefer recent, explicit, context-matching updates and provide supporting evidence when available.
+
+Memory correction/conflict rule:
+
+- Newer explicit user statements may overwrite or deactivate older inferred/conflicting memory on the same semantic key/context.
+- Older items may be retained as evidence history, but should not remain the default active memory when superseded.
+
+Recall behavior note:
+
+- Default recall is low-latency and excerpt-oriented for asynchronous calls.
+- Default recall returns active memory only; superseded/inactive memory is returned only when explicitly requested.
+- Full evidence hydration from OSS is performed only when explicitly requested (`evidence_detail_level=full` or `hydrate_evidence=true`).
+- `TopK` applies primarily to recall-oriented long-term memory items, especially `cards` and `evidence_chunks`.
+- Structured profile fields such as `facts` and `preferences` may use separate internal limits.
+- Ranking should prefer recent + explicit + context-matching memory over weaker inferred or stale memory.
+
+#### 5.3.2A Tool Alias Compatibility (Extension)
+
+For Voice Agent tool-calling compatibility, `search_user_memory` is the canonical tool alias mapped to:
+
+- `POST /api/v1/memory/recall`
+- Input/Output remain `MemoryRecallRequest` and `MemoryRecallResponse`
+
+#### 5.3.2B Memory Correction / Revocation (Extension)
+
+`**POST /api/v1/memory/corrections**` - Internal interface for correction/revocation of conflicting memory
+
+**Request Body:**
+
+```go
+type MemoryCorrectionRequest struct {
+    UserID          string `json:"user_id"`            // Required
+    TargetType      string `json:"target_type"`        // memory_entry | memory_card
+    TargetID        string `json:"target_id,omitempty"`// Optional direct target ID
+    SemanticKey     string `json:"semantic_key,omitempty"` // Optional semantic target key when target_id is unknown
+    Context         string `json:"context,omitempty"`  // Optional semantic context
+    Action          string `json:"action"`             // overwrite | deactivate
+    NewValue        string `json:"new_value,omitempty"`// Required when action=overwrite
+    Source          string `json:"source"`             // explicit | inferred
+    SourceSessionID string `json:"source_session_id,omitempty"`
+    Reason          string `json:"reason,omitempty"`
+}
+```
+
+**Response Body:**
+
+```go
+type MemoryCorrectionResponse struct {
+    CorrectionID    string `json:"correction_id"`     // corr_<uuid>
+    TargetType      string `json:"target_type"`
+    TargetID        string `json:"target_id,omitempty"`
+    SemanticKey     string `json:"semantic_key,omitempty"`
+    Context         string `json:"context,omitempty"`
+    PreviousStatus  string `json:"previous_status"`   // active | superseded | inactive
+    CurrentStatus   string `json:"current_status"`    // active | superseded | inactive
+    UpdatedAt       int64  `json:"updated_at"`
+}
+```
+
+Correction behavior:
+
+- Newer explicit user statements can overwrite or deactivate older inferred/conflicting memory.
+- Correction/revocation keeps historical evidence by default (status transition), instead of physical deletion.
+- Corrected active memory becomes the default recall target unless inactive/superseded history is explicitly requested.
+- For `memory_entry`, correction is normally applied to the canonical active structured record (in-place overwrite/deactivation by semantic key/context), while historical evidence is preserved through card/chunk/object layers.
+- For `memory_card`, correction may be applied by deactivating/superseding the old card and creating/regenerating a corrected card representation.
 
 #### 5.3.3 Get User Profile
 
@@ -1731,7 +1902,7 @@ type MemoryRecallResponse struct {
 
 #### 5.3.4 Update User Profile
 
-`**PUT /api/v1/memory/profile/{user_id}**`
+`**PATCH /api/v1/memory/profile/{user_id}**`
 
 **Request Body:** Pass only the fields that need to be updated (partial update)
 
@@ -1785,6 +1956,7 @@ p.asyncQuery(ctx, "memory", func() (string, error) {
         SessionID: session.SessionID,
         Query:     partialASRText,
         TopK:      10,
+        EvidenceDetailLevel: "excerpt",
     })
     if err != nil { return "", err }
     return formatMemoryForLLM(resp), nil
@@ -1799,6 +1971,7 @@ go func() {
     })
 }()
 ```
+`formatMemoryForLLM(resp)` may format returned cards, evidence_chunks, proactive_hints, and hydrated/full evidence when requested.
 
 ---
 
@@ -2112,6 +2285,7 @@ CREATE TABLE memory_entries (
     id                VARCHAR(64) PRIMARY KEY,   -- mem_<uuid>
     user_id           VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category          VARCHAR(16) NOT NULL,      -- fact | preference | summary
+    status            VARCHAR(16) NOT NULL DEFAULT 'active', -- active | superseded | inactive
     key               VARCHAR(128) NOT NULL,
     value             TEXT NOT NULL,
     context           VARCHAR(128) DEFAULT 'general',
@@ -2123,7 +2297,89 @@ CREATE TABLE memory_entries (
 );
 CREATE INDEX idx_memory_user ON memory_entries(user_id);
 CREATE INDEX idx_memory_user_category ON memory_entries(user_id, category);
+CREATE INDEX idx_memory_user_status ON memory_entries(user_id, status);
 CREATE UNIQUE INDEX idx_memory_user_key_context ON memory_entries(user_id, key, context);
+```
+
+With the unique index on `(user_id, key, context)`, `memory_entries` remains the canonical current structured store: active canonical updates are normally in-place for that semantic key/context, while history is preserved in evidence/card/chunk/object layers.
+
+#### 7.2.6A Memory Cards Table (Extension)
+
+Boundary note:
+
+- The memory tables in `7.2.6A` / `7.2.6B` / `7.2.6C` are persistence schemas used by Memory Service.
+- Database Service provides persistence/storage infrastructure only.
+- Database Service owners are responsible for schema migration and generic persistence/storage support for these tables.
+- Database Service does **not** own memory extraction, recall semantics/ranking, correction/revocation semantics, conflict resolution, profile aggregation, or memory-specific lifecycle semantics.
+- Memory state-transition semantics and correction/revocation behavior must be driven by Memory Service APIs/rules defined in Chapter 5.
+- These memory business behaviors are defined in Chapter 5 and remain Memory Service responsibilities.
+
+```sql
+CREATE TABLE memory_cards (
+    id                VARCHAR(64) PRIMARY KEY,   -- mem_<uuid>
+    user_id           VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category          VARCHAR(16) NOT NULL,      -- fact | preference | event | plan (extensible)
+    status            VARCHAR(16) NOT NULL DEFAULT 'active', -- active | superseded | inactive
+    content           TEXT DEFAULT '',
+    excerpt           TEXT DEFAULT '',
+    backstory         TEXT DEFAULT '',
+    person            VARCHAR(128) DEFAULT '',
+    relationship      VARCHAR(64) DEFAULT '',
+    context           VARCHAR(128) DEFAULT 'general',
+    confidence        REAL DEFAULT 1.0,
+    object_id         VARCHAR(64) REFERENCES memory_objects(id) ON DELETE SET NULL,
+    source_session_id VARCHAR(64) REFERENCES sessions(id) ON DELETE SET NULL,
+    created_at        BIGINT NOT NULL,
+    updated_at        BIGINT NOT NULL
+);
+CREATE INDEX idx_memory_cards_user ON memory_cards(user_id);
+CREATE INDEX idx_memory_cards_user_category ON memory_cards(user_id, category);
+CREATE INDEX idx_memory_cards_user_status ON memory_cards(user_id, status);
+CREATE INDEX idx_memory_cards_user_context ON memory_cards(user_id, context);
+```
+
+#### 7.2.6B Memory Dialogue Chunks Table (Extension)
+
+```sql
+CREATE TABLE memory_dialogue_chunks (
+    id              VARCHAR(64) PRIMARY KEY,   -- mem_<uuid>
+    user_id         VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_id      VARCHAR(64) REFERENCES sessions(id) ON DELETE SET NULL,
+    turn_start      INT NOT NULL,
+    turn_end        INT NOT NULL,
+    context_prefix  TEXT NOT NULL,
+    content         TEXT DEFAULT '',
+    excerpt         TEXT DEFAULT '',
+    object_id       VARCHAR(64) REFERENCES memory_objects(id) ON DELETE SET NULL,
+    participants    JSONB DEFAULT '[]'::jsonb,
+    intent_tags     JSONB DEFAULT '[]'::jsonb,
+    created_at      BIGINT NOT NULL,
+    updated_at      BIGINT NOT NULL
+);
+CREATE INDEX idx_mem_chunks_user ON memory_dialogue_chunks(user_id);
+CREATE INDEX idx_mem_chunks_user_session ON memory_dialogue_chunks(user_id, session_id);
+CREATE INDEX idx_mem_chunks_user_updated ON memory_dialogue_chunks(user_id, updated_at);
+```
+
+#### 7.2.6C Memory Object Metadata Table (Extension)
+
+```sql
+CREATE TABLE memory_objects (
+    id                VARCHAR(64) PRIMARY KEY,   -- memobj_<uuid> (or mem_<uuid> by unified ID policy)
+    user_id           VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    object_type       VARCHAR(32) NOT NULL,      -- dialogue_chunk | card_snapshot | evidence_bundle | other
+    storage_key       VARCHAR(512) NOT NULL,
+    storage_url       VARCHAR(1024) DEFAULT '',  -- Optional cached/derived URL, not the primary stable identifier
+    size_bytes        BIGINT DEFAULT 0,
+    checksum          VARCHAR(128) DEFAULT '',
+    compression       VARCHAR(32) DEFAULT '',    -- gzip | zstd | none
+    source_session_id VARCHAR(64) REFERENCES sessions(id) ON DELETE SET NULL,
+    created_at        BIGINT NOT NULL,
+    updated_at        BIGINT NOT NULL
+);
+CREATE INDEX idx_memory_objects_user ON memory_objects(user_id);
+CREATE INDEX idx_memory_objects_type ON memory_objects(object_type);
+CREATE INDEX idx_memory_objects_session ON memory_objects(source_session_id);
 ```
 
 ### 7.3 HTTP API
@@ -2406,7 +2662,7 @@ type UpdateTaskStatusRequest struct {
 
 | Operation | Cascade Impact |
 | ---- | ------------------------------------------------------------------------------------------------------------------ |
-| Delete user | → delete all sessions → delete all tasks → delete `files` records (`files.user_id ON DELETE CASCADE`) → delete `memory_entries` → delete `kb_documents` |
+| Delete user | → delete all sessions → delete all tasks → delete `files` records (`files.user_id ON DELETE CASCADE`) → delete `memory_entries` / `memory_cards` / `memory_dialogue_chunks` / `memory_objects` → delete `kb_documents` |
 | Delete session | → delete all tasks → `SET NULL` for `session_id` in `files` |
 | Delete task | → `SET NULL` for `task_id` in `files` |
 | Delete file | → delete the file from object storage → `SET NULL` for `file_id` in `kb_documents` |
@@ -2416,6 +2672,9 @@ Trigger requirements (to prevent garbage files in object storage):
 1. When a `files` record is deleted (whether by explicit `DELETE /api/v1/files/{file_id}` or triggered by cascade deletion from `users`), `file_delete_jobs` must be written through a database trigger or Outbox mechanism.
 2. The background cleanup Worker consumes `file_delete_jobs` and calls the object storage SDK to delete the object corresponding to `storage_url`.
 3. Cleanup failures must be retried and alerted on, to avoid deleting only the database record while leaving stale data in object storage.
+4. For memory object cleanup, when a `memory_objects` record is deleted (explicitly or by cascade), `memory_object_delete_jobs` should be written through trigger or Outbox mechanism.
+5. A background cleanup Worker consumes `memory_object_delete_jobs` and deletes the corresponding OSS object by `storage_key`/`storage_url`.
+6. Memory object cleanup failures must be retried and alerted on to avoid orphaned OSS evidence payloads.
 
 
 ---
