@@ -225,6 +225,7 @@ tests/
 PLAN.md
 AGENTS.md
 memory_tech.md
+postgresql_ddl.sql:Zone.Identifier
 
 # Cursor project files
 .cursor/
