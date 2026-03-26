@@ -151,15 +151,11 @@ func TestTrySendPPTFeedback_WithMarker(t *testing.T) {
 	if fb.ViewingPageID != "page_fb" {
 		t.Errorf("viewing_page_id = %q", fb.ViewingPageID)
 	}
-	if len(fb.Intents) != 1 {
-		t.Fatalf("expected 1 intent, got %d", len(fb.Intents))
+	if fb.RawText != "把字体改大一点" {
+		t.Errorf("raw_text = %q", fb.RawText)
 	}
-	intent := fb.Intents[0]
-	if intent.ActionType != "modify" {
-		t.Errorf("action_type = %q", intent.ActionType)
-	}
-	if intent.Instruction != "字体改大" {
-		t.Errorf("instruction = %q", intent.Instruction)
+	if fb.Intents != nil {
+		t.Errorf("Intents should be nil, got %v", fb.Intents)
 	}
 }
 
@@ -230,7 +226,10 @@ func TestTrySendPPTFeedback_FallbackPageID(t *testing.T) {
 	if len(calls) == 0 {
 		t.Fatal("expected feedback call")
 	}
-	if calls[0].Intents[0].PageID != "current_page" {
-		t.Errorf("should fallback to viewing page, got %q", calls[0].Intents[0].PageID)
+	if calls[0].RawText != "改背景" {
+		t.Errorf("RawText = %q, want %q", calls[0].RawText, "改背景")
+	}
+	if calls[0].Intents != nil {
+		t.Errorf("Intents should be nil, got %v", calls[0].Intents)
 	}
 }

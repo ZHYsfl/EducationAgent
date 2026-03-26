@@ -50,15 +50,11 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse s
 	baseTS := p.session.GetLastVADTimestamp()
 	go func() {
 		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
-			TaskID:           taskID,
-			BaseTimestamp:    baseTS,
-			ViewingPageID:    viewingPageID,
-			ReplyToContextID: contextID,
-			RawText:          userText,
-			Intents: []Intent{{
-				ActionType: "resolve_conflict",
-				ContextID:  contextID,
-			}},
+			TaskID:        taskID,
+			BaseTimestamp: baseTS,
+			ViewingPageID: viewingPageID,
+			RawText:       userText,
+			Intents:       nil, // PPT Agent 负责解析
 		}); err != nil {
 			log.Printf("[pipeline] SendFeedback resolve_conflict failed: %v", err)
 		}
@@ -103,22 +99,13 @@ func (p *Pipeline) trySendPPTFeedback(userText, llmResponse string) {
 	}
 
 	var parsed struct {
-		ActionType   string   `json:"action_type"`
-		PageID       string   `json:"page_id"`
-		TargetPageID string   `json:"target_page_id"`
-		Instruction  string   `json:"instruction"`
-		Scope        string   `json:"scope"`
-		Keywords     []string `json:"keywords"`
+		ActionType   string `json:"action_type"`
+		TargetPageID string `json:"target_page_id"`
+		Instruction  string `json:"instruction"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 		log.Printf("[pipeline] failed to parse PPT_FEEDBACK JSON: %v (raw: %s)", err, truncate(jsonStr, 200))
 		return
-	}
-
-	viewingPageID := p.session.GetViewingPageID()
-	pageID := parsed.PageID
-	if pageID == "" {
-		pageID = viewingPageID
 	}
 
 	baseTS := p.session.GetLastVADTimestamp()
@@ -126,16 +113,9 @@ func (p *Pipeline) trySendPPTFeedback(userText, llmResponse string) {
 		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
 			TaskID:        taskID,
 			BaseTimestamp: baseTS,
-			ViewingPageID: viewingPageID,
+			ViewingPageID: p.session.GetViewingPageID(),
 			RawText:       userText,
-			Intents: []Intent{{
-				ActionType:   parsed.ActionType,
-				PageID:       pageID,
-				TargetPageID: parsed.TargetPageID,
-				Instruction:  parsed.Instruction,
-				Scope:        parsed.Scope,
-				Keywords:     parsed.Keywords,
-			}},
+			Intents:       nil, // PPT Agent 负责解析
 		}); err != nil {
 			log.Printf("[pipeline] SendFeedback failed: %v", err)
 		}
