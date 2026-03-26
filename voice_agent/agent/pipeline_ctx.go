@@ -204,6 +204,12 @@ func formatSearchForLLM(resp SearchResponse) string {
 
 // EnqueueContext adds a context message to the queue and triggers active push if idle
 func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
+	// Handle requirements updates immediately
+	if msg.MsgType == "requirements_updated" {
+		p.handleRequirementsUpdate(msg.Content)
+		return
+	}
+
 	if msg.Priority == "high" {
 		select {
 		case p.highPriorityQueue <- msg:

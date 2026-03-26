@@ -58,23 +58,22 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 内部思考使用: #{思考内容}（可选，不显示给用户）
 
 支持的动作:
-- task_init: @{task_init|topic:主题} - 初始化课件任务
-- update_requirements: @{update_requirements|字段:值} - 更新需求信息
+- update_requirements: @{update_requirements|字段:值} - 更新需求信息（包括初始化topic）
 - ppt_init: @{ppt_init|topic:主题|desc:描述} - 开始制作PPT（需先收集完所有必填信息）
 - ppt_mod: @{ppt_mod|task:任务ID|page:页面ID|action:操作|ins:指令}
 - kb_query: @{kb_query|q:查询内容}
 - web_search: @{web_search|query:搜索关键词}
 
 ## 需求收集流程
-1. 用户提出制作PPT需求 → @{task_init|topic:主题}
+1. 用户提出制作PPT需求 → @{update_requirements|topic:主题}
 2. 逐步询问用户（每次1-2个问题），收集信息后 → @{update_requirements|字段:值}
 3. 所有必填信息收集完成 → @{ppt_init|topic:主题|desc:描述}
 
-必填字段（10个）: audience, total_pages, knowledge_points, teaching_goals, teaching_logic, key_difficulties, duration, global_style, interaction_design, output_formats
+必填字段（11个）: topic, audience, total_pages, knowledge_points, teaching_goals, teaching_logic, key_difficulties, duration, global_style, interaction_design, output_formats
 
 示例:
 用户: "帮我做个高等数学的PPT"
-你: 好的。@{task_init|topic:高等数学} 请问目标听众是谁？
+你: 好的。@{update_requirements|topic:高等数学} 请问目标听众是谁？
 用户: "大学生"
 你: 明白了。@{update_requirements|audience:大学生} 需要多少页？
 `
@@ -148,6 +147,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 				ActiveTaskID:      p.session.ActiveTaskID,
 				ViewingPageID:     p.session.ViewingPageID,
 				BaseTimestamp:     p.session.LastVADTimestamp,
+				Topic:             reqs.Topic,
 				TotalPages:        reqs.TotalPages,
 				Audience:          reqs.TargetAudience,
 				GlobalStyle:       reqs.GlobalStyle,
@@ -251,8 +251,6 @@ func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmRespons
 	if p.tryResolveConflict(ctx, userText, llmResponse) {
 		return
 	}
-
-	p.tryUpdateRequirements(llmResponse)
 
 	if inRequirementsMode {
 		p.handleRequirementsTransition(llmResponse)

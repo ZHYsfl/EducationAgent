@@ -21,6 +21,7 @@ type SessionContext struct {
 	ActiveTaskID      string
 	ViewingPageID     string
 	BaseTimestamp     int64
+	Topic             string
 	TotalPages        int
 	Audience          string
 	GlobalStyle       string
