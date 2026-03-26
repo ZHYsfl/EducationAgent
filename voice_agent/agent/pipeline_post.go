@@ -9,6 +9,70 @@ import (
 	"time"
 )
 
+func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
+	var updates map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &updates); err != nil {
+		log.Printf("[pipeline] failed to parse requirements update: %v", err)
+		return
+	}
+
+	p.session.reqMu.Lock()
+	req := p.session.Requirements
+	if req == nil {
+		req = NewTaskRequirements(p.session.SessionID, p.session.UserID)
+		p.session.Requirements = req
+	}
+
+	if v, ok := updates["topic"].(string); ok && v != "" {
+		req.Topic = v
+	}
+	if v, ok := updates["audience"].(string); ok && v != "" {
+		req.TargetAudience = v
+	}
+	if v, ok := updates["total_pages"].(float64); ok && v > 0 {
+		req.TotalPages = int(v)
+	}
+	if v, ok := updates["knowledge_points"].(string); ok && v != "" {
+		req.KnowledgePoints = strings.Split(v, ",")
+	}
+	if v, ok := updates["teaching_goals"].(string); ok && v != "" {
+		req.TeachingGoals = strings.Split(v, ",")
+	}
+	if v, ok := updates["teaching_logic"].(string); ok && v != "" {
+		req.TeachingLogic = v
+	}
+	if v, ok := updates["key_difficulties"].(string); ok && v != "" {
+		req.KeyDifficulties = strings.Split(v, ",")
+	}
+	if v, ok := updates["duration"].(string); ok && v != "" {
+		req.Duration = v
+	}
+	if v, ok := updates["global_style"].(string); ok && v != "" {
+		req.GlobalStyle = v
+	}
+	if v, ok := updates["interaction_design"].(string); ok && v != "" {
+		req.InteractionDesign = v
+	}
+	if v, ok := updates["output_formats"].(string); ok && v != "" {
+		req.OutputFormats = strings.Split(v, ",")
+	}
+
+	req.RefreshCollectedFields()
+	req.UpdatedAt = time.Now().UnixMilli()
+	reqSnapshot := CloneTaskRequirements(req)
+	p.session.reqMu.Unlock()
+
+	p.session.SendJSON(WSMessage{
+		Type:            "requirements_progress",
+		Status:          req.Status,
+		CollectedFields: req.CollectedFields,
+		MissingFields:   req.GetMissingFields(),
+		Requirements:    reqSnapshot,
+	})
+
+	log.Printf("[pipeline] requirements updated: %v", updates)
+}
+
 func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse string) bool {
 	if p.clients == nil {
 		return false

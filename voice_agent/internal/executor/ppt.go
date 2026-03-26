@@ -43,7 +43,7 @@ func (e *Executor) executePPTInit(ctx context.Context, params map[string]string,
 	req := types.PPTInitRequest{
 		UserID:           sessionCtx.UserID,
 		SessionID:        sessionCtx.SessionID,
-		Topic:            params["topic"],
+		Topic:            sessionCtx.Topic,
 		Description:      params["desc"],
 		TotalPages:       sessionCtx.TotalPages,
 		Audience:         sessionCtx.Audience,
@@ -85,6 +85,9 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 
 func checkRequiredFields(ctx SessionContext) []string {
 	var missing []string
+	if ctx.Topic == "" {
+		missing = append(missing, "topic")
+	}
 	if ctx.Audience == "" {
 		missing = append(missing, "target_audience")
 	}
