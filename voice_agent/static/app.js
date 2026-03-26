@@ -25,7 +25,8 @@ let preSpeechBuffer = [];
 let audioQueue = [];
 let isPlaying = false;
 let currentSource = null;
-let audioContext = null;
+let micAudioContext = null;
+let playbackAudioContext = null;
 
 let currentUserBubble = null;
 let currentAIBubble = null;
@@ -261,11 +262,11 @@ async function startVAD() {
   stream.getTracks().forEach((t) => t.stop());
   logEvent("VAD", "step3: mic permission granted");
 
-  audioContext = new AudioContext({ sampleRate: 16000 });
-  logEvent("VAD", "step4: AudioContext created (state=" + audioContext.state + ")");
+  micAudioContext = new AudioContext({ sampleRate: 16000 });
+  logEvent("VAD", "step4: AudioContext created (state=" + micAudioContext.state + ")");
 
-  if (audioContext.state === "suspended") {
-    await audioContext.resume();
+  if (micAudioContext.state === "suspended") {
+    await micAudioContext.resume();
     logEvent("VAD", "step4b: AudioContext resumed");
   }
 
@@ -332,9 +333,9 @@ function stopVAD() {
     try { vad.destroy(); } catch (_) {}
     vad = null;
   }
-  if (audioContext) {
-    try { audioContext.close(); } catch (_) {}
-    audioContext = null;
+  if (micAudioContext) {
+    try { micAudioContext.close(); } catch (_) {}
+    micAudioContext = null;
   }
   isSpeaking = false;
   preSpeechBuffer = [];
@@ -359,17 +360,17 @@ async function playNext() {
   const data = audioQueue.shift();
 
   try {
-    if (!audioContext || audioContext.state === "closed") {
-      audioContext = new AudioContext({ sampleRate: 24000 });
+    if (!playbackAudioContext || playbackAudioContext.state === "closed") {
+      playbackAudioContext = new AudioContext({ sampleRate: 24000 });
     }
-    if (audioContext.state === "suspended") {
-      await audioContext.resume();
+    if (playbackAudioContext.state === "suspended") {
+      await playbackAudioContext.resume();
     }
 
-    const audioBuffer = await audioContext.decodeAudioData(data.slice(0));
-    const source = audioContext.createBufferSource();
+    const audioBuffer = await playbackAudioContext.decodeAudioData(data.slice(0));
+    const source = playbackAudioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioContext.destination);
+    source.connect(playbackAudioContext.destination);
     source.onended = () => playNext();
     currentSource = source;
     source.start();
