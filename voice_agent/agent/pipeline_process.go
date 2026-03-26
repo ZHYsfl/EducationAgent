@@ -60,6 +60,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 - ppt_init: @{ppt_init|topic:主题|desc:描述}
 - ppt_mod: @{ppt_mod|task:任务ID|page:页面ID|action:操作|ins:指令}
 - kb_query: @{kb_query|q:查询内容}
+- web_search: @{web_search|query:搜索关键词}
 
 示例: #{用户想做PPT}好的，我来帮您创建。@{ppt_init|topic:AI}
 `
