@@ -37,10 +37,6 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
 	}
 
-	if !inRequirementsMode {
-		systemPrompt += pptIntentDetectionPrompt
-	}
-
 	taskListContext := p.buildTaskListContext()
 	if taskListContext != "" {
 		systemPrompt += taskListContext
@@ -52,6 +48,21 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	if contextPrompt != "" {
 		systemPrompt += contextPrompt
 	}
+
+	// Add protocol instructions
+	systemPrompt += `
+
+## 动作协议
+执行操作时使用: @{type|key:value|key:value}
+内部思考使用: #{思考内容}（可选，不显示给用户）
+
+支持的动作:
+- ppt_init: @{ppt_init|topic:主题|desc:描述}
+- ppt_mod: @{ppt_mod|task:任务ID|page:页面ID|action:操作|ins:指令}
+- kb_query: @{kb_query|q:查询内容}
+
+示例: #{用户想做PPT}好的，我来帮您创建。@{ppt_init|topic:AI}
+`
 
 	log.Printf("Processing user input: %s", truncate(userText, 100))
 	if previousThought != "" {
@@ -71,15 +82,15 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		p.ttsWorker(ctx, sentenceCh)
 	}()
 
-	// Stream tokens from Large LLM (with accumulated thought if available).
+	// Stream tokens from Large LLM
 	messages := p.history.ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
-	totalTokens := 0 // ALL tokens (including <think>) for budget accounting
+	totalTokens := 0
 	var sentenceBuf strings.Builder
 	var allTokens strings.Builder
 	firstSentenceSent := false
-	nextFillerAt := p.config.TokenBudget // first filler fires at TokenBudget
+	nextFillerAt := p.config.TokenBudget
 	fillerCount := 0
 
 	var tf think.ThinkFilter
@@ -109,6 +120,14 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		// Strip <think>...</think> blocks — only pass visible content through
 		visible := tf.Feed(token)
+
+		// Parse actions from the accumulated buffer
+		result := p.parser.Feed(token)
+
+		// Execute any detected actions asynchronously
+		for _, action := range result.Actions {
+			p.executor.Execute(action, p.EnqueueContext)
+		}
 
 		if visible != "" {
 			allTokens.WriteString(visible)
@@ -204,9 +223,5 @@ func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmRespons
 		return
 	}
 
-	if p.tryDetectTaskInit(llmResponse) {
-		return
-	}
-
-	p.trySendPPTFeedback(userText, llmResponse)
+	// Tool calling 已在流式输出过程中自动处理
 }

@@ -124,6 +124,13 @@ func (p *Pipeline) CancelDraft() {
 	p.cancelDraft()
 }
 
+// AppendRawToken appends a token to rawGeneratedTokens (for testing race conditions).
+func (p *Pipeline) AppendRawToken(token string) {
+	p.tokensMu.Lock()
+	p.rawGeneratedTokens.WriteString(token)
+	p.tokensMu.Unlock()
+}
+
 // EnqueueContextMessage calls the unexported enqueueContextMessage method.
 func (p *Pipeline) EnqueueContextMessage(ctx context.Context, msg ContextMessage) {
 	p.enqueueContextMessage(ctx, msg)
