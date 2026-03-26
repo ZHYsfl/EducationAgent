@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	adaptivepkg "voiceagent/internal/adaptive"
@@ -12,12 +14,15 @@ import (
 	types "voiceagent/internal/types"
 )
 
-func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.ExternalServices, sessionID, userID string) *Session {
+// ErrUserIDRequired is returned when NewSession is called with an empty user_id.
+var ErrUserIDRequired = errors.New("session: user_id is required")
+
+func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.ExternalServices, sessionID, userID string) (*Session, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, ErrUserIDRequired
+	}
 	if sessionID == "" {
 		sessionID = types.NewID("sess_")
-	}
-	if userID == "" {
-		userID = config.DefaultUserID
 	}
 	sizes := adaptivepkg.LoadChannelSizes(config.AdaptiveSizesFile, adaptivepkg.DefaultChannelSizes())
 	s := &Session{
@@ -33,7 +38,7 @@ func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.
 		PendingQuestions: make(map[string]string),
 	}
 	s.pipeline = NewPipeline(s, config, clients)
-	return s
+	return s, nil
 }
 
 func (s *Session) Run() {

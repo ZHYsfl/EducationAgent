@@ -41,18 +41,10 @@ func main() {
 	agent.SetGlobalClients(clients)
 
 	log.Printf("Voice Agent server starting on :%d", config.ServerPort)
-	if config.ASRMode == "remote" {
-		log.Printf("  ASR:       remote (Doubao, resource=%s)", config.DouBaoASRResourceId)
-	} else {
-		log.Printf("  ASR:       local (%s)", config.ASRWSURL)
-	}
+	log.Printf("  ASR:       %s", config.ASRWSURL)
 	log.Printf("  Small LLM: %s (%s)", config.SmallLLMBaseURL, config.SmallLLMModel)
 	log.Printf("  Large LLM: %s (%s)", config.LargeLLMBaseURL, config.LargeLLMModel)
-	if config.TTSMode == "remote" {
-		log.Printf("  TTS:       remote (Doubao, voice=%s)", config.DouBaoTTSVoiceType)
-	} else {
-		log.Printf("  TTS:       local (%s)", config.TTSURL)
-	}
+	log.Printf("  TTS:       %s", config.TTSURL)
 
 	http.Handle("/models/", http.StripPrefix("/models/", http.FileServer(http.Dir("../models"))))
 	http.Handle("/", noCacheHandler(http.FileServer(http.Dir("static"))))
@@ -66,17 +58,27 @@ func main() {
 	http.HandleFunc("OPTIONS /api/v1/voice/ppt_message_tool", withCORS(preflightOnly))
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+		if userID == "" {
+			http.Error(w, "user_id query parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("WebSocket upgrade failed: %v", err)
 			return
 		}
 
-		sessionID := r.URL.Query().Get("session_id")
-		userID := r.URL.Query().Get("user_id")
 		log.Printf("New client connected: %s (session_id=%s, user_id=%s)", r.RemoteAddr, sessionID, userID)
 
-		session := agent.NewSession(conn, config, clients, sessionID, userID)
+		session, err := agent.NewSession(conn, config, clients, sessionID, userID)
+		if err != nil {
+			log.Printf("NewSession: %v", err)
+			_ = conn.Close()
+			return
+		}
 		agent.RegisterSession(session)
 		session.Run()
 		agent.UnregisterSession(session)

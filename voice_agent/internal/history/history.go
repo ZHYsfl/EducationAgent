@@ -57,10 +57,13 @@ func (h *ConversationHistory) Messages() []HistoryMessage {
 func (h *ConversationHistory) ToOpenAI() []openai.ChatCompletionMessageParamUnion {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	return h.messagesWithSystemLocked(h.systemPrompt)
+}
 
+// messagesWithSystemLocked returns [system, ...history]. Caller must hold h.mu (read lock).
+func (h *ConversationHistory) messagesWithSystemLocked(system string) []openai.ChatCompletionMessageParamUnion {
 	msgs := make([]openai.ChatCompletionMessageParamUnion, 0, len(h.messages)+1)
-	msgs = append(msgs, openai.SystemMessage(h.systemPrompt))
-
+	msgs = append(msgs, openai.SystemMessage(system))
 	for _, m := range h.messages {
 		switch m.Role {
 		case "user":
@@ -83,6 +86,14 @@ func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previou
 	return msgs
 }
 
+// ToOpenAIWithThoughtAndPrompt builds the main reply request after the user turn is finalized.
+//
+//   - previousThought: streaming "draft thinking" text accumulated before this turn (may be empty).
+//   - systemPrompt: full runtime system string for this turn (requirements mode, RAG, task list, etc.).
+//     When non-empty it replaces the stored h.systemPrompt for this call only; when empty, h.systemPrompt is used.
+//
+// previousThought is appended to the system message (not a separate role) so the model sees it as
+// non-authoritative context, not as user or assistant dialogue.
 func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -94,16 +105,5 @@ func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, syst
 	if previousThought != "" {
 		prompt += "\n\n[预思考草稿 - 基于用户部分输入生成，可能方向有误，仅供参考，以用户完整输入为准]\n" + previousThought
 	}
-
-	msgs := make([]openai.ChatCompletionMessageParamUnion, 0, len(h.messages)+1)
-	msgs = append(msgs, openai.SystemMessage(prompt))
-	for _, m := range h.messages {
-		switch m.Role {
-		case "user":
-			msgs = append(msgs, openai.UserMessage(m.Content))
-		case "assistant":
-			msgs = append(msgs, openai.AssistantMessage(m.Content))
-		}
-	}
-	return msgs
+	return h.messagesWithSystemLocked(prompt)
 }
