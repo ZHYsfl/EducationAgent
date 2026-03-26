@@ -69,7 +69,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 2. 逐步询问用户（每次1-2个问题），收集信息后 → @{update_requirements|字段:值}
 3. 所有必填信息收集完成 → @{ppt_init|topic:主题|desc:描述}
 
-必填字段（11个）: topic, audience, total_pages, knowledge_points, teaching_goals, teaching_logic, key_difficulties, duration, global_style, interaction_design, output_formats
+必填字段（12个）: topic, subject, audience, total_pages, knowledge_points, teaching_goals, teaching_logic, key_difficulties, duration, global_style, interaction_design, output_formats
 
 示例:
 用户: "帮我做个高等数学的PPT"
@@ -148,6 +148,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 				ViewingPageID:     p.session.ViewingPageID,
 				BaseTimestamp:     p.session.LastVADTimestamp,
 				Topic:             reqs.Topic,
+				Subject:           reqs.Subject,
 				TotalPages:        reqs.TotalPages,
 				Audience:          reqs.TargetAudience,
 				GlobalStyle:       reqs.GlobalStyle,
