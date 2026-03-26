@@ -61,3 +61,22 @@ func TestParserIncremental(t *testing.T) {
 		t.Fatalf("third feed: expected 0 actions, got %d", len(result3.Actions))
 	}
 }
+
+func TestParserDuplicateActions(t *testing.T) {
+	parser := NewParser()
+
+	// 第一次相同的 action
+	result1 := parser.Feed("@{kb_query|q:test}")
+	if len(result1.Actions) != 1 {
+		t.Fatalf("first: expected 1 action, got %d", len(result1.Actions))
+	}
+
+	// 第二次相同的 action - 应该被检测到（位置不同）
+	result2 := parser.Feed("@{kb_query|q:test}")
+	if len(result2.Actions) != 1 {
+		t.Fatalf("second: expected 1 action, got %d", len(result2.Actions))
+	}
+	if result2.Actions[0].Type != "kb_query" {
+		t.Errorf("expected kb_query, got %s", result2.Actions[0].Type)
+	}
+}
