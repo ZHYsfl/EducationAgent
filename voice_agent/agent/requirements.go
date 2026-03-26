@@ -7,6 +7,33 @@ import (
 	"time"
 )
 
+// TaskRequirements represents the collected requirements for a teaching task.
+type TaskRequirements struct {
+	SessionID string `json:"session_id"`
+	UserID    string `json:"user_id"`
+
+	Topic           string   `json:"topic"`
+	KnowledgePoints []string `json:"knowledge_points"`
+	TeachingGoals   []string `json:"teaching_goals"`
+	TeachingLogic   string   `json:"teaching_logic"`
+	TargetAudience  string   `json:"target_audience"`
+
+	KeyDifficulties   []string `json:"key_difficulties"`
+	Duration          string   `json:"duration"`
+	TotalPages        int      `json:"total_pages"`
+	GlobalStyle       string   `json:"global_style"`
+	InteractionDesign string   `json:"interaction_design"`
+	OutputFormats     []string `json:"output_formats"`
+	AdditionalNotes   string   `json:"additional_notes"`
+
+	ReferenceFiles []ReferenceFileReq `json:"reference_files"`
+
+	CollectedFields []string `json:"collected_fields"`
+	Status          string   `json:"status"`
+	CreatedAt       int64    `json:"created_at"`
+	UpdatedAt       int64    `json:"updated_at"`
+}
+
 // GetCollectedFields returns the CollectedFields slice.
 func (r *TaskRequirements) GetCollectedFields() []string { return r.CollectedFields }
 
@@ -114,7 +141,7 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 		sb.WriteString("- 暂无\n")
 	} else {
 		for _, f := range r.CollectedFields {
-			sb.WriteString(fmt.Sprintf("- %s\n", f))
+			fmt.Fprintf(&sb, "- %s\n", f)
 		}
 	}
 
@@ -123,7 +150,7 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 		sb.WriteString("- 所有 P0 字段已收集完成，可进入确认\n")
 	} else {
 		for _, f := range missing {
-			sb.WriteString(fmt.Sprintf("- [待收集] %s\n", f))
+			fmt.Fprintf(&sb, "- [待收集] %s\n", f)
 		}
 	}
 
@@ -206,28 +233,28 @@ func (r *TaskRequirements) BuildSummaryText() string {
 	var sb strings.Builder
 	sb.WriteString("我整理一下您的需求：\n")
 	if r.Topic != "" {
-		sb.WriteString(fmt.Sprintf("- 主题：%s\n", r.Topic))
+		fmt.Fprintf(&sb, "- 主题：%s\n", r.Topic)
 	}
 	if len(r.KnowledgePoints) > 0 {
-		sb.WriteString(fmt.Sprintf("- 知识点：%s\n", strings.Join(r.KnowledgePoints, "、")))
+		fmt.Fprintf(&sb, "- 知识点：%s\n", strings.Join(r.KnowledgePoints, "、"))
 	}
 	if len(r.TeachingGoals) > 0 {
-		sb.WriteString(fmt.Sprintf("- 教学目标：%s\n", strings.Join(r.TeachingGoals, "；")))
+		fmt.Fprintf(&sb, "- 教学目标：%s\n", strings.Join(r.TeachingGoals, "；"))
 	}
 	if r.TeachingLogic != "" {
-		sb.WriteString(fmt.Sprintf("- 讲授逻辑：%s\n", r.TeachingLogic))
+		fmt.Fprintf(&sb, "- 讲授逻辑：%s\n", r.TeachingLogic)
 	}
 	if r.TargetAudience != "" {
-		sb.WriteString(fmt.Sprintf("- 目标受众：%s\n", r.TargetAudience))
+		fmt.Fprintf(&sb, "- 目标受众：%s\n", r.TargetAudience)
 	}
 	if len(r.KeyDifficulties) > 0 {
-		sb.WriteString(fmt.Sprintf("- 重点难点：%s\n", strings.Join(r.KeyDifficulties, "、")))
+		fmt.Fprintf(&sb, "- 重点难点：%s\n", strings.Join(r.KeyDifficulties, "、"))
 	}
 	if r.TotalPages > 0 {
-		sb.WriteString(fmt.Sprintf("- 页数：%d 页\n", r.TotalPages))
+		fmt.Fprintf(&sb, "- 页数：%d 页\n", r.TotalPages)
 	}
 	if r.GlobalStyle != "" {
-		sb.WriteString(fmt.Sprintf("- 风格：%s\n", r.GlobalStyle))
+		fmt.Fprintf(&sb, "- 风格：%s\n", r.GlobalStyle)
 	}
 	sb.WriteString("\n您看这样理解对吗？有需要调整的地方吗？")
 	return sb.String()
@@ -275,45 +302,45 @@ func buildDetailedDescription(r *TaskRequirements) string {
 	}
 	var sb strings.Builder
 	if r.Topic != "" {
-		sb.WriteString(fmt.Sprintf("【课程主题】%s\n", r.Topic))
+		fmt.Fprintf(&sb, "【课程主题】%s\n", r.Topic)
 	}
 	if len(r.TeachingGoals) > 0 {
-		sb.WriteString(fmt.Sprintf("【教学目标】%s\n", strings.Join(r.TeachingGoals, "；")))
+		fmt.Fprintf(&sb, "【教学目标】%s\n", strings.Join(r.TeachingGoals, "；"))
 	}
 	if len(r.KnowledgePoints) > 0 {
-		sb.WriteString(fmt.Sprintf("【核心知识点】%s\n", strings.Join(r.KnowledgePoints, "、")))
+		fmt.Fprintf(&sb, "【核心知识点】%s\n", strings.Join(r.KnowledgePoints, "、"))
 	}
 	if r.TeachingLogic != "" {
-		sb.WriteString(fmt.Sprintf("【讲授逻辑】%s\n", r.TeachingLogic))
+		fmt.Fprintf(&sb, "【讲授逻辑】%s\n", r.TeachingLogic)
 	}
 	if r.TargetAudience != "" {
-		sb.WriteString(fmt.Sprintf("【目标受众】%s\n", r.TargetAudience))
+		fmt.Fprintf(&sb, "【目标受众】%s\n", r.TargetAudience)
 	}
 	if len(r.KeyDifficulties) > 0 {
-		sb.WriteString(fmt.Sprintf("【重点难点】%s\n", strings.Join(r.KeyDifficulties, "；")))
+		fmt.Fprintf(&sb, "【重点难点】%s\n", strings.Join(r.KeyDifficulties, "；"))
 	}
 	if r.Duration != "" {
-		sb.WriteString(fmt.Sprintf("【课时长度】%s\n", r.Duration))
+		fmt.Fprintf(&sb, "【课时长度】%s\n", r.Duration)
 	}
 	if r.TotalPages > 0 {
-		sb.WriteString(fmt.Sprintf("【期望页数】%d 页\n", r.TotalPages))
+		fmt.Fprintf(&sb, "【期望页数】%d 页\n", r.TotalPages)
 	}
 	if r.GlobalStyle != "" {
-		sb.WriteString(fmt.Sprintf("【风格偏好】%s\n", r.GlobalStyle))
+		fmt.Fprintf(&sb, "【风格偏好】%s\n", r.GlobalStyle)
 	}
 	if r.InteractionDesign != "" {
-		sb.WriteString(fmt.Sprintf("【互动设计】%s\n", r.InteractionDesign))
+		fmt.Fprintf(&sb, "【互动设计】%s\n", r.InteractionDesign)
 	}
 	if len(r.OutputFormats) > 0 {
-		sb.WriteString(fmt.Sprintf("【输出格式】%s\n", strings.Join(r.OutputFormats, ", ")))
+		fmt.Fprintf(&sb, "【输出格式】%s\n", strings.Join(r.OutputFormats, ", "))
 	}
 	if r.AdditionalNotes != "" {
-		sb.WriteString(fmt.Sprintf("【补充要求】%s\n", r.AdditionalNotes))
+		fmt.Fprintf(&sb, "【补充要求】%s\n", r.AdditionalNotes)
 	}
 	if len(r.ReferenceFiles) > 0 {
 		sb.WriteString("【参考资料】\n")
 		for _, f := range r.ReferenceFiles {
-			sb.WriteString(fmt.Sprintf("- %s (%s): %s\n", f.FileID, f.FileType, f.Instruction))
+			fmt.Fprintf(&sb, "- %s (%s): %s\n", f.FileID, f.FileType, f.Instruction)
 		}
 	}
 	return strings.TrimSpace(sb.String())

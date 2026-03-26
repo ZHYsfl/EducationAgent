@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__ide__getDiagnostics",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(cd:*)",
+      "Bash(go build:*)"
     ]
   }
 }
