@@ -18,13 +18,13 @@ type ParseResult struct {
 
 type Parser struct {
 	buffer           strings.Builder
-	lastParsedLen    int             // 上次解析到的位置
-	processedActions map[string]bool // 已处理的 action（用完整匹配文本作为key）
+	lastParsedLen    int          // 上次解析到的位置
+	processedIndexes map[int]bool // 已处理的 action 起始位置
 }
 
 func NewParser() *Parser {
 	return &Parser{
-		processedActions: make(map[string]bool),
+		processedIndexes: make(map[int]bool),
 	}
 }
 
@@ -39,18 +39,16 @@ func (p *Parser) Feed(token string) ParseResult {
 
 	result := ParseResult{}
 
-	// 只检测新增部分的 action（使用 FindAllStringSubmatchIndex 获取位置）
 	actionMatches := actionRegex.FindAllStringSubmatchIndex(text, -1)
 	for _, match := range actionMatches {
 		start, end := match[0], match[1]
 
-		// 跳过已处理位置之前的 action
-		if start < p.lastParsedLen {
+		// 优化：跳过已扫描过的位置（整个匹配已在之前处理过）
+		if end <= p.lastParsedLen {
 			continue
 		}
 
-		fullMatch := text[start:end]
-		if p.processedActions[fullMatch] {
+		if p.processedIndexes[start] {
 			continue
 		}
 
@@ -59,7 +57,7 @@ func (p *Parser) Feed(token string) ParseResult {
 		action := parseAction(actionStr)
 		if action != nil {
 			result.Actions = append(result.Actions, *action)
-			p.processedActions[fullMatch] = true
+			p.processedIndexes[start] = true
 		}
 	}
 
