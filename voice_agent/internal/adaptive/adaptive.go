@@ -188,7 +188,11 @@ func ClampChannelSizes(s ChannelSizes) ChannelSizes {
 }
 
 func clampSizes(s ChannelSizes) ChannelSizes {
-	clamp := func(val int, name string) int {
+	defaults := DefaultChannelSizes()
+	clamp := func(val, defaultVal int, name string) int {
+		if val == 0 {
+			val = defaultVal
+		}
 		spec := channelSpecs[name]
 		if val < spec.Min {
 			return spec.Min
@@ -196,16 +200,13 @@ func clampSizes(s ChannelSizes) ChannelSizes {
 		if val > spec.Max {
 			return spec.Max
 		}
-		if val == 0 {
-			return DefaultChannelSizes().AudioCh // will be overridden below
-		}
 		return val
 	}
-	s.AudioCh = clamp(s.AudioCh, "audio_ch")
-	s.ASRAudioCh = clamp(s.ASRAudioCh, "asr_audio_ch")
-	s.ASRResultCh = clamp(s.ASRResultCh, "asr_result_ch")
-	s.SentenceCh = clamp(s.SentenceCh, "sentence_ch")
-	s.WriteCh = clamp(s.WriteCh, "write_ch")
-	s.TTSChunkCh = clamp(s.TTSChunkCh, "tts_chunk_ch")
+	s.AudioCh = clamp(s.AudioCh, defaults.AudioCh, "audio_ch")
+	s.ASRAudioCh = clamp(s.ASRAudioCh, defaults.ASRAudioCh, "asr_audio_ch")
+	s.ASRResultCh = clamp(s.ASRResultCh, defaults.ASRResultCh, "asr_result_ch")
+	s.SentenceCh = clamp(s.SentenceCh, defaults.SentenceCh, "sentence_ch")
+	s.WriteCh = clamp(s.WriteCh, defaults.WriteCh, "write_ch")
+	s.TTSChunkCh = clamp(s.TTSChunkCh, defaults.TTSChunkCh, "tts_chunk_ch")
 	return s
 }

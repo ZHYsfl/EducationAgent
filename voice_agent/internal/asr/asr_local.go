@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -65,7 +66,11 @@ func (c *ASRClient) SendAudio(ctx context.Context, audio []byte) error {
 
 // ReadResult blocks until the next ASR result arrives.
 func (c *ASRClient) ReadResult(ctx context.Context) (ASRResult, error) {
-	if c.conn == nil {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
 		return ASRResult{}, fmt.Errorf("asr session not started")
 	}
 
@@ -76,7 +81,7 @@ func (c *ASRClient) ReadResult(ctx context.Context) (ASRResult, error) {
 
 	go func() {
 		defer close(done)
-		_, msg, err := c.conn.ReadMessage()
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			readErr = err
 			return
@@ -88,7 +93,11 @@ func (c *ASRClient) ReadResult(ctx context.Context) (ASRResult, error) {
 	case <-done:
 		return result, readErr
 	case <-ctx.Done():
-		c.conn.Close()
+		c.mu.Lock()
+		if c.conn != nil {
+			c.conn.Close()
+		}
+		c.mu.Unlock()
 		return ASRResult{}, ctx.Err()
 	}
 }
@@ -126,7 +135,10 @@ func (c *ASRClient) RecognizeStream(ctx context.Context, audioCh <-chan []byte, 
 			select {
 			case audio, ok := <-audioCh:
 				if !ok {
-					c.EndSession(ctx)
+					// Use a fresh context for cleanup
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					c.EndSession(cleanupCtx)
+					cancel()
 					return
 				}
 				if err := c.SendAudio(ctx, audio); err != nil {
