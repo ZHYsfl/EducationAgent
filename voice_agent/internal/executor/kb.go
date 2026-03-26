@@ -9,13 +9,16 @@ import (
 	"voiceagent/internal/types"
 )
 
-func (e *Executor) executeKBQuery(ctx context.Context, params map[string]string) string {
+func (e *Executor) executeKBQuery(ctx context.Context, params map[string]string, sessionCtx SessionContext) string {
 	if e.clients == nil {
 		return "Error: KB service not available"
 	}
 
 	req := types.KBQueryRequest{
-		Query: params["q"],
+		UserID:         sessionCtx.UserID,
+		Query:          params["q"],
+		TopK:           5,
+		ScoreThreshold: 0.5,
 	}
 
 	results, err := e.clients.QueryKB(ctx, req)

@@ -54,6 +54,11 @@ func TestExecutorConcurrent(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{})
 
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
+
 	var wg sync.WaitGroup
 	results := make(chan types.ContextMessage, 100)
 
@@ -71,7 +76,7 @@ func TestExecutorConcurrent(t *testing.T) {
 
 	wg.Add(len(actions))
 	for _, action := range actions {
-		exec.Execute(action, callback)
+		exec.Execute(action, sessionCtx, callback)
 	}
 
 	wg.Wait()
@@ -91,6 +96,11 @@ func TestExecutorErrors(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{failInit: true, failFeedback: true, failKB: true, failSearch: true})
 
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
+
 	var wg sync.WaitGroup
 	results := make(chan types.ContextMessage, 10)
 
@@ -108,7 +118,7 @@ func TestExecutorErrors(t *testing.T) {
 
 	wg.Add(len(actions))
 	for _, action := range actions {
-		exec.Execute(action, callback)
+		exec.Execute(action, sessionCtx, callback)
 	}
 
 	wg.Wait()
@@ -124,6 +134,11 @@ func TestExecutorErrors(t *testing.T) {
 func TestExecutorNilClients(t *testing.T) {
 	b := bus.New()
 	exec := New(b, nil)
+
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
 
 	var wg sync.WaitGroup
 	results := make(chan types.ContextMessage, 10)
@@ -141,7 +156,7 @@ func TestExecutorNilClients(t *testing.T) {
 
 	wg.Add(len(actions))
 	for _, action := range actions {
-		exec.Execute(action, callback)
+		exec.Execute(action, sessionCtx, callback)
 	}
 
 	wg.Wait()
@@ -158,8 +173,13 @@ func TestExecutorUnknownAction(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{})
 
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
+
 	done := make(chan types.ContextMessage, 1)
-	exec.Execute(protocol.Action{Type: "unknown"}, func(msg types.ContextMessage) {
+	exec.Execute(protocol.Action{Type: "unknown"}, sessionCtx, func(msg types.ContextMessage) {
 		done <- msg
 	})
 
@@ -173,11 +193,16 @@ func TestExecutorHighPriority(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{})
 
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
+
 	done := make(chan types.ContextMessage, 1)
 	exec.Execute(protocol.Action{
 		Type:   "ppt_init",
 		Params: map[string]string{"topic": "AI", "p": "h"},
-	}, func(msg types.ContextMessage) {
+	}, sessionCtx, func(msg types.ContextMessage) {
 		done <- msg
 	})
 

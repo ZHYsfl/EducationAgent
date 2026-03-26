@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"voiceagent/internal/executor"
 	"voiceagent/internal/think"
 )
 
@@ -127,7 +128,26 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		// Execute any detected actions asynchronously
 		for _, action := range result.Actions {
-			p.executor.Execute(action, p.EnqueueContext)
+			reqs := p.session.GetRequirements()
+			sessionCtx := executor.SessionContext{
+				UserID:            p.session.UserID,
+				SessionID:         p.session.SessionID,
+				ActiveTaskID:      p.session.ActiveTaskID,
+				ViewingPageID:     p.session.ViewingPageID,
+				BaseTimestamp:     p.session.LastVADTimestamp,
+				TotalPages:        reqs.TotalPages,
+				Audience:          reqs.TargetAudience,
+				GlobalStyle:       reqs.GlobalStyle,
+				KnowledgePoints:   reqs.KnowledgePoints,
+				TeachingGoals:     reqs.TeachingGoals,
+				TeachingLogic:     reqs.TeachingLogic,
+				KeyDifficulties:   reqs.KeyDifficulties,
+				Duration:          reqs.Duration,
+				InteractionDesign: reqs.InteractionDesign,
+				OutputFormats:     reqs.OutputFormats,
+				ReferenceFiles:    reqs.ReferenceFiles,
+			}
+			p.executor.Execute(action, sessionCtx, p.EnqueueContext)
 		}
 
 		if visible != "" {
