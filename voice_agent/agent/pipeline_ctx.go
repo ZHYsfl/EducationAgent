@@ -60,7 +60,7 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 		kbScoreReadyOnce.Do(func() { close(kbScoreReady) })
 	}
 
-	p.asyncQuery(ctx, "knowledge_base", "rag_chunks", func() (string, error) {
+	p.asyncQuery(ctx, "knowledge_base", "kb_summary", func() (string, error) {
 		defer markKBReady()
 		resp, err := p.clients.QueryKB(ctx, KBQueryRequest{
 			UserID:         userID,
@@ -71,12 +71,7 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 		if err != nil {
 			return "", err
 		}
-		if len(resp.Chunks) > 0 {
-			kbTopScoreMu.Lock()
-			kbTopScore = resp.Chunks[0].Score
-			kbTopScoreMu.Unlock()
-		}
-		return formatChunksForLLM(resp.Chunks), nil
+		return resp.Summary, nil
 	})
 
 	p.asyncQuery(ctx, "memory", "memory_recall", func() (string, error) {
@@ -136,18 +131,6 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 		}
 		return formatSearchForLLM(resp), nil
 	})
-}
-
-func formatChunksForLLM(chunks []RetrievedChunk) string {
-	if len(chunks) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("知识库检索结果：\n")
-	for i, c := range chunks {
-		sb.WriteString(fmt.Sprintf("%d) [%s] %s (score=%.2f)\n", i+1, c.DocTitle, c.Content, c.Score))
-	}
-	return strings.TrimSpace(sb.String())
 }
 
 func formatMemoryForLLM(resp MemoryRecallResponse) string {

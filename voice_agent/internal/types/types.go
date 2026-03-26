@@ -104,17 +104,7 @@ type KBQueryRequest struct {
 }
 
 type KBQueryResponse struct {
-	Chunks []RetrievedChunk `json:"chunks"`
-	Total  int              `json:"total"`
-}
-
-type RetrievedChunk struct {
-	ChunkID  string         `json:"chunk_id"`
-	DocID    string         `json:"doc_id"`
-	DocTitle string         `json:"doc_title"`
-	Content  string         `json:"content"`
-	Score    float64        `json:"score"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Summary string `json:"summary"`
 }
 
 type MemoryRecallRequest struct {

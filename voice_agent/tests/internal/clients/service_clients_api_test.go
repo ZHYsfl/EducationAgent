@@ -14,8 +14,7 @@ import (
 
 func TestQueryKB(t *testing.T) {
 	srv, svcClients := newTestServer(apiOK(types.KBQueryResponse{
-		Chunks: []types.RetrievedChunk{{ChunkID: "c1", Content: "data", Score: 0.9}},
-		Total:  1,
+		Summary: "知识库总结内容",
 	}))
 	defer srv.Close()
 
@@ -25,8 +24,8 @@ func TestQueryKB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Chunks) != 1 {
-		t.Errorf("chunks = %d", len(resp.Chunks))
+	if resp.Summary == "" {
+		t.Error("expected non-empty summary")
 	}
 }
 

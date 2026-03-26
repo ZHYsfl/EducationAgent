@@ -23,7 +23,6 @@ type CanvasStatusResponse = types.CanvasStatusResponse
 type PageStatusInfo = types.PageStatusInfo
 type KBQueryRequest = types.KBQueryRequest
 type KBQueryResponse = types.KBQueryResponse
-type RetrievedChunk = types.RetrievedChunk
 type MemoryRecallRequest = types.MemoryRecallRequest
 type MemoryRecallResponse = types.MemoryRecallResponse
 type MemoryEntry = types.MemoryEntry

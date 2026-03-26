@@ -271,11 +271,6 @@ func FormatProfileSummary(profile *UserProfile) string {
 	return formatProfileSummary(profile)
 }
 
-// FormatChunksForLLM calls the unexported formatChunksForLLM function.
-func FormatChunksForLLM(chunks []RetrievedChunk) string {
-	return formatChunksForLLM(chunks)
-}
-
 // FormatMemoryForLLM calls the unexported formatMemoryForLLM function.
 func FormatMemoryForLLM(resp MemoryRecallResponse) string {
 	return formatMemoryForLLM(resp)
