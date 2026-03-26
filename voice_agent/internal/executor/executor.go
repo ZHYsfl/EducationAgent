@@ -22,6 +22,7 @@ type SessionContext struct {
 	ViewingPageID     string
 	BaseTimestamp     int64
 	Topic             string
+	Subject           string
 	TotalPages        int
 	Audience          string
 	GlobalStyle       string

@@ -13,6 +13,7 @@ type TaskRequirements struct {
 	UserID    string `json:"user_id"`
 
 	Topic           string   `json:"topic"`
+	Subject         string   `json:"subject"`
 	KnowledgePoints []string `json:"knowledge_points"`
 	TeachingGoals   []string `json:"teaching_goals"`
 	TeachingLogic   string   `json:"teaching_logic"`

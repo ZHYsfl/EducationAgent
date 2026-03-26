@@ -96,12 +96,11 @@ type PageStatusInfo struct {
 }
 
 type KBQueryRequest struct {
-	CollectionID   string            `json:"collection_id,omitempty"`
-	UserID         string            `json:"user_id"`
-	Query          string            `json:"query"`
-	TopK           int               `json:"top_k"`
-	ScoreThreshold float64           `json:"score_threshold,omitempty"`
-	Filters        map[string]string `json:"filters,omitempty"`
+	Subject        string  `json:"subject,omitempty"`
+	UserID         string  `json:"user_id"`
+	Query          string  `json:"query"`
+	TopK           int     `json:"top_k"`
+	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 }
 
 type KBQueryResponse struct {

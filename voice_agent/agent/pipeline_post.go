@@ -26,6 +26,9 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	if v, ok := updates["topic"].(string); ok && v != "" {
 		req.Topic = v
 	}
+	if v, ok := updates["subject"].(string); ok && v != "" {
+		req.Subject = v
+	}
 	if v, ok := updates["audience"].(string); ok && v != "" {
 		req.TargetAudience = v
 	}
