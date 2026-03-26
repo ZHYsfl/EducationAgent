@@ -130,3 +130,25 @@ func TestClampChannelSizes(t *testing.T) {
 		t.Errorf("ASRAudioCh should be clamped to max 80, got %d", clamped.ASRAudioCh)
 	}
 }
+
+func TestClampChannelSizes_ZeroValues(t *testing.T) {
+	s := adaptivepkg.ChannelSizes{
+		AudioCh:     0,
+		ASRAudioCh:  0,
+		ASRResultCh: 0,
+		SentenceCh:  0,
+		WriteCh:     0,
+		TTSChunkCh:  0,
+	}
+	clamped := adaptivepkg.ClampChannelSizes(s)
+	defaults := adaptivepkg.DefaultChannelSizes()
+	if clamped.AudioCh != defaults.AudioCh {
+		t.Errorf("AudioCh = %d, want %d", clamped.AudioCh, defaults.AudioCh)
+	}
+	if clamped.ASRAudioCh != defaults.ASRAudioCh {
+		t.Errorf("ASRAudioCh = %d, want %d", clamped.ASRAudioCh, defaults.ASRAudioCh)
+	}
+	if clamped.WriteCh != defaults.WriteCh {
+		t.Errorf("WriteCh = %d, want %d", clamped.WriteCh, defaults.WriteCh)
+	}
+}

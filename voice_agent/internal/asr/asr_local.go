@@ -13,10 +13,13 @@ import (
 
 // ASRClient streams audio to Fun-ASR-Nano and returns recognized text.
 // One session per user utterance: Start → send audio blocks → End.
+// Note: ReadResult is NOT safe for concurrent calls - only one goroutine
+// should read from the connection at a time.
 type ASRClient struct {
-	url  string
-	conn *websocket.Conn
-	mu   sync.Mutex
+	url     string
+	conn    *websocket.Conn
+	mu      sync.Mutex
+	readMu  sync.Mutex // protects concurrent ReadResult calls
 }
 
 func NewASRClient(url string) *ASRClient {
@@ -65,7 +68,11 @@ func (c *ASRClient) SendAudio(ctx context.Context, audio []byte) error {
 }
 
 // ReadResult blocks until the next ASR result arrives.
+// This method is safe for concurrent calls - only one goroutine will read at a time.
 func (c *ASRClient) ReadResult(ctx context.Context) (ASRResult, error) {
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
+
 	c.mu.Lock()
 	conn := c.conn
 	c.mu.Unlock()
@@ -74,7 +81,6 @@ func (c *ASRClient) ReadResult(ctx context.Context) (ASRResult, error) {
 		return ASRResult{}, fmt.Errorf("asr session not started")
 	}
 
-	// Set a read deadline from context
 	done := make(chan struct{})
 	var result ASRResult
 	var readErr error
