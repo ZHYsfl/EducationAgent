@@ -15,9 +15,12 @@ func (e *Executor) executeWebSearch(ctx context.Context, params map[string]strin
 	}
 
 	req := types.SearchRequest{
-		RequestID: types.NewID("search_"),
-		UserID:    sessionCtx.UserID,
-		Query:     params["query"],
+		RequestID:  types.NewID("search_"),
+		UserID:     sessionCtx.UserID,
+		Query:      params["query"],
+		MaxResults: 10,
+		Language:   "zh",
+		SearchType: "general",
 	}
 
 	results, err := e.clients.SearchWeb(ctx, req)

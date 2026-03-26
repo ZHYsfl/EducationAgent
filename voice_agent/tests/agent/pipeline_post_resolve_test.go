@@ -36,14 +36,14 @@ func TestTryResolveConflict_SinglePending(t *testing.T) {
 	if fb.TaskID != "task_c1" {
 		t.Errorf("task_id = %q", fb.TaskID)
 	}
-	if fb.ReplyToContextID != "ctx_conflict_1" {
-		t.Errorf("reply_to_context_id = %q", fb.ReplyToContextID)
-	}
 	if fb.BaseTimestamp != 99999 {
 		t.Errorf("base_timestamp = %d", fb.BaseTimestamp)
 	}
-	if fb.Intents[0].ActionType != "resolve_conflict" {
-		t.Errorf("action_type = %q", fb.Intents[0].ActionType)
+	if fb.RawText != "选方案A" {
+		t.Errorf("raw_text = %q", fb.RawText)
+	}
+	if fb.Intents != nil {
+		t.Errorf("Intents should be nil, got %v", fb.Intents)
 	}
 
 	// Pending question should be removed
@@ -71,8 +71,8 @@ func TestTryResolveConflict_MultiplePending_WithMarker(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1, got %d", len(calls))
 	}
-	if calls[0].ReplyToContextID != "ctx_b" {
-		t.Errorf("should resolve ctx_b, got %q", calls[0].ReplyToContextID)
+	if calls[0].TaskID != "task_2" {
+		t.Errorf("should resolve ctx_b's task (task_2), got %q", calls[0].TaskID)
 	}
 }
 

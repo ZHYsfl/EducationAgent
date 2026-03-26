@@ -63,12 +63,8 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 		TaskID:        sessionCtx.ActiveTaskID,
 		BaseTimestamp: sessionCtx.BaseTimestamp,
 		ViewingPageID: sessionCtx.ViewingPageID,
-		RawText:       params["ins"],
-		Intents: []types.Intent{{
-			ActionType:   params["action"],
-			TargetPageID: params["page"],
-			Instruction:  params["ins"],
-		}},
+		RawText:       params["raw_text"],
+		Intents:       nil, // PPT Agent 负责解析
 	}
 
 	err := e.clients.SendFeedback(ctx, req)

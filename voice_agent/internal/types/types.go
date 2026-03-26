@@ -68,22 +68,17 @@ type PPTInitResponse struct {
 }
 
 type PPTFeedbackRequest struct {
-	TaskID           string   `json:"task_id"`
-	BaseTimestamp    int64    `json:"base_timestamp"`
-	ViewingPageID    string   `json:"viewing_page_id"`
-	ReplyToContextID string   `json:"reply_to_context_id,omitempty"`
-	RawText          string   `json:"raw_text"`
-	Intents          []Intent `json:"intents"`
+	TaskID        string   `json:"task_id"`
+	BaseTimestamp int64    `json:"base_timestamp"`
+	ViewingPageID string   `json:"viewing_page_id"`
+	RawText       string   `json:"raw_text"`
+	Intents       []Intent `json:"intents"`
 }
 
 type Intent struct {
-	ActionType   string   `json:"action_type"`
-	PageID       string   `json:"page_id,omitempty"`
-	TargetPageID string   `json:"target_page_id,omitempty"`
-	Instruction  string   `json:"instruction,omitempty"`
-	Scope        string   `json:"scope,omitempty"`
-	Keywords     []string `json:"keywords,omitempty"`
-	ContextID    string   `json:"context_id,omitempty"`
+	ActionType   string `json:"action_type"`
+	TargetPageID string `json:"target_page_id"`
+	Instruction  string `json:"instruction"`
 }
 
 type CanvasStatusResponse struct {
