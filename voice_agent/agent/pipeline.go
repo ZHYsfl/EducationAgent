@@ -93,7 +93,7 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 		contextQueue:      make(chan types.ContextMessage, 64),
 		highPriorityQueue: make(chan types.ContextMessage, 16),
 		msgBus:            bus.New(),
-		parser:            &protocol.Parser{},
+		parser:            protocol.NewParser(),
 	}
 
 	p.executor = executor.New(p.msgBus, clients)

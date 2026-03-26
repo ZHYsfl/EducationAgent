@@ -17,7 +17,15 @@ type ParseResult struct {
 }
 
 type Parser struct {
-	buffer strings.Builder
+	buffer           strings.Builder
+	lastParsedLen    int             // 上次解析到的位置
+	processedActions map[string]bool // 已处理的 action（用完整匹配文本作为key）
+}
+
+func NewParser() *Parser {
+	return &Parser{
+		processedActions: make(map[string]bool),
+	}
 }
 
 var (
@@ -31,22 +39,31 @@ func (p *Parser) Feed(token string) ParseResult {
 
 	result := ParseResult{}
 
-	thinkMatches := thinkRegex.FindAllStringSubmatch(text, -1)
-	for _, match := range thinkMatches {
-		if len(match) > 1 {
-			result.ThinkText += match[1]
+	// 只检测新增部分的 action（使用 FindAllStringSubmatchIndex 获取位置）
+	actionMatches := actionRegex.FindAllStringSubmatchIndex(text, -1)
+	for _, match := range actionMatches {
+		start, end := match[0], match[1]
+
+		// 跳过已处理位置之前的 action
+		if start < p.lastParsedLen {
+			continue
+		}
+
+		fullMatch := text[start:end]
+		if p.processedActions[fullMatch] {
+			continue
+		}
+
+		innerStart, innerEnd := match[2], match[3]
+		actionStr := text[innerStart:innerEnd]
+		action := parseAction(actionStr)
+		if action != nil {
+			result.Actions = append(result.Actions, *action)
+			p.processedActions[fullMatch] = true
 		}
 	}
 
-	actionMatches := actionRegex.FindAllStringSubmatch(text, -1)
-	for _, match := range actionMatches {
-		if len(match) > 1 {
-			action := parseAction(match[1])
-			if action != nil {
-				result.Actions = append(result.Actions, *action)
-			}
-		}
-	}
+	p.lastParsedLen = len(text)
 
 	visible := thinkRegex.ReplaceAllString(text, "")
 	visible = actionRegex.ReplaceAllString(visible, "")
