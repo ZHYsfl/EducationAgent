@@ -43,6 +43,19 @@ func isAllowedSessionStatus(v string) bool {
 	}
 }
 
+func normalizeSearchType(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "general":
+		return "general"
+	case "academic":
+		return "academic"
+	case "teaching_resource", "teaching-resources", "teaching":
+		return "teaching_resource"
+	default:
+		return "general"
+	}
+}
+
 func detectFileType(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
@@ -160,6 +173,7 @@ func HostOf(raw string) string                     { return hostOf(raw) }
 func TitleOrDefault(title, snippet string) string  { return titleOrDefault(title, snippet) }
 func IsAllowedPurpose(v string) bool               { return isAllowedPurpose(v) }
 func IsAllowedSessionStatus(v string) bool         { return isAllowedSessionStatus(v) }
+func NormalizeSearchType(v string) string          { return normalizeSearchType(v) }
 func RefineSnippet(snippet, query string) string   { return refineSnippet(snippet, query) }
 func BuildSummary(query string, items []SearchResultItem) string { return buildSummary(query, items) }
 func EmptyToNil(v string) *string                  { return emptyToNil(v) }

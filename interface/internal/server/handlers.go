@@ -44,11 +44,16 @@ func (a *App) uploadFile(c *gin.Context) {
 
 	hasher := sha256.New()
 	teeReader := io.TeeReader(file, hasher)
-	if err = a.storage.Upload(c, objectKey, teeReader, header.Size); err != nil {
+	if err = a.storage.Upload(c.Request.Context(), objectKey, teeReader, header.Size); err != nil {
 		fail(c, 50000, "上传对象存储失败")
 		return
 	}
 	checksum := hex.EncodeToString(hasher.Sum(nil))
+	storageURL := a.publicObjectURL(objectKey)
+	if storageURL == "" {
+		fail(c, 50000, "生成 storage_url 失败")
+		return
+	}
 
 	rec := FileModel{
 		ID:         fileID,
@@ -58,7 +63,7 @@ func (a *App) uploadFile(c *gin.Context) {
 		Filename:   header.Filename,
 		FileType:   detectFileType(header.Filename),
 		FileSize:   header.Size,
-		StorageURL: fmt.Sprintf("oss://%s", objectKey),
+		StorageURL: storageURL,
 		ObjectKey:  objectKey,
 		Checksum:   checksum,
 		Purpose:    purpose,
@@ -97,7 +102,12 @@ func (a *App) getFile(c *gin.Context) {
 		return
 	}
 
-	reader, err := a.storage.Download(c, rec.ObjectKey)
+	// Ensure storage_url is always a usable URL (older records may have "oss://").
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(rec.StorageURL)), "oss://") || strings.TrimSpace(rec.StorageURL) == "" {
+		rec.StorageURL = a.publicObjectURL(rec.ObjectKey)
+	}
+
+	reader, err := a.storage.Download(c.Request.Context(), rec.ObjectKey)
 	if err != nil {
 		fail(c, 50000, "读取对象存储失败")
 		return
@@ -331,9 +341,7 @@ func (a *App) searchQuery(c *gin.Context) {
 	if req.Language == "" {
 		req.Language = "zh"
 	}
-	if req.SearchType == "" {
-		req.SearchType = "general"
-	}
+	req.SearchType = normalizeSearchType(req.SearchType)
 
 	n := nowMs()
 	rec := SearchRequestModel{RequestID: req.RequestID, UserID: req.UserID, Query: req.Query, Status: "pending", Duration: 0, CreatedAt: n, UpdatedAt: n}

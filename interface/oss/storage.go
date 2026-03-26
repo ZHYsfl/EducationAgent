@@ -44,6 +44,8 @@ type Config struct {
 	SigningKey string // Key for signing URLs
 	BaseURL    string // For local storage or custom domain
 	LocalPath  string // For local storage only
+	Endpoint   string // For S3/MinIO endpoint, e.g. "127.0.0.1:9000"
+	UseSSL     bool   // For S3/MinIO endpoint
 }
 
 // New creates a new Storage instance based on configuration.
@@ -51,6 +53,8 @@ func New(cfg Config) (Storage, error) {
 	switch cfg.Provider {
 	case "", "local":
 		return NewLocalStorage(cfg.LocalPath, cfg.BaseURL, cfg.SigningKey)
+	case "minio", "s3":
+		return NewS3Storage(cfg)
 	case "tencent":
 		return NewTencentCOS(cfg)
 	default:

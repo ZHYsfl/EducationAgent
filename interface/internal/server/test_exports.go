@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"net/http"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"multimodal-teaching-agent/oss"
@@ -8,7 +12,15 @@ import (
 
 // NewAppForTest builds app with injectable dependencies for tests.
 func NewAppForTest(db *gorm.DB, storage oss.Storage) *App {
-	return &App{db: db, storage: storage, searchProvider: "serpapi"}
+	a := &App{
+		db:             db,
+		storage:        storage,
+		searchProvider: "serpapi",
+		searchStrategy: "merge",
+		searchTimeout:  15 * time.Second,
+	}
+	a.searchProviders, _ = buildSearchProviders("", a.searchProvider, "", "", "https://metaso.cn/api/open/search")
+	return a
 }
 
 // Exported handler wrappers for cross-package tests.
@@ -24,9 +36,16 @@ func (a *App) SearchResult(c *gin.Context) { a.searchResult(c) }
 
 // Exported service wrappers for tests.
 func (a *App) FetchSearchResults(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
-	return a.fetchSearchResults(query, maxResults, language, searchType)
+	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
+	defer cancel()
+	return a.fetchSearchResults(ctx, query, maxResults, language, searchType)
 }
 
 func (a *App) SearchBySerpAPI(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
-	return a.searchBySerpAPI(query, maxResults, language, searchType)
+	p := SerpAPIProvider{apiKey: a.serpAPIKey, client: &http.Client{Timeout: 15 * time.Second}}
+	items, err := p.Search(context.Background(), query, maxResults, language, searchType)
+	if err != nil {
+		return nil, "", err
+	}
+	return items, buildSummary(query, items), nil
 }

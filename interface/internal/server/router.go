@@ -5,6 +5,9 @@ import "github.com/gin-gonic/gin"
 func SetupRouter(app *App) *gin.Engine {
 	r := gin.Default()
 
+	// Local OSS object serving (used by local storage signed URLs).
+	r.GET("/oss/*object_key", app.serveOSSObject)
+
 	v1 := r.Group("/api/v1")
 	{
 		files := v1.Group("/files")

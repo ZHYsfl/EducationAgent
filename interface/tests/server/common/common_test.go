@@ -82,6 +82,25 @@ func TestAllowedEnums(t *testing.T) {
 	}
 }
 
+func TestNormalizeSearchType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"":                   "general",
+		"general":            "general",
+		"academic":           "academic",
+		"teaching_resource":  "teaching_resource",
+		"teaching-resources": "teaching_resource",
+		"teaching":           "teaching_resource",
+		"unknown":            "general",
+	}
+	for in, want := range cases {
+		if got := server.NormalizeSearchType(in); got != want {
+			t.Fatalf("NormalizeSearchType(%q)=%q want=%q", in, got, want)
+		}
+	}
+}
+
 func TestRefineSnippetAndSummary(t *testing.T) {
 	t.Parallel()
 
