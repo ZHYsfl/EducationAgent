@@ -15,6 +15,25 @@ type Executor struct {
 	clients ClientProvider
 }
 
+type SessionContext struct {
+	UserID            string
+	SessionID         string
+	ActiveTaskID      string
+	ViewingPageID     string
+	BaseTimestamp     int64
+	TotalPages        int
+	Audience          string
+	GlobalStyle       string
+	KnowledgePoints   []string
+	TeachingGoals     []string
+	TeachingLogic     string
+	KeyDifficulties   []string
+	Duration          string
+	InteractionDesign string
+	OutputFormats     []string
+	ReferenceFiles    []types.ReferenceFileReq
+}
+
 type ClientProvider interface {
 	InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error)
 	SendFeedback(ctx context.Context, req types.PPTFeedbackRequest) error
@@ -31,7 +50,7 @@ func New(b *bus.Bus, clients ClientProvider) *Executor {
 	}
 }
 
-func (e *Executor) Execute(action protocol.Action, callback ResultCallback) {
+func (e *Executor) Execute(action protocol.Action, sessionCtx SessionContext, callback ResultCallback) {
 	go func() {
 		var result string
 		var priority string = "normal"
@@ -39,16 +58,16 @@ func (e *Executor) Execute(action protocol.Action, callback ResultCallback) {
 
 		switch action.Type {
 		case "ppt_init":
-			result = e.executePPTInit(context.Background(), action.Params)
+			result = e.executePPTInit(context.Background(), action.Params, sessionCtx)
 			msgType = "ppt_status"
 		case "ppt_mod":
-			result = e.executePPTModify(context.Background(), action.Params)
+			result = e.executePPTModify(context.Background(), action.Params, sessionCtx)
 			msgType = "ppt_status"
 		case "kb_query":
-			result = e.executeKBQuery(context.Background(), action.Params)
+			result = e.executeKBQuery(context.Background(), action.Params, sessionCtx)
 			msgType = "rag_chunks"
 		case "web_search":
-			result = e.executeWebSearch(context.Background(), action.Params)
+			result = e.executeWebSearch(context.Background(), action.Params, sessionCtx)
 			msgType = "search_result"
 		default:
 			result = fmt.Sprintf("Unknown action: %s", action.Type)

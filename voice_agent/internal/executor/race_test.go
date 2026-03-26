@@ -13,6 +13,11 @@ func TestExecutorRaceCondition(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{})
 
+	sessionCtx := SessionContext{
+		UserID:    "test_user",
+		SessionID: "test_session",
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	results := []types.ContextMessage{}
@@ -31,7 +36,7 @@ func TestExecutorRaceCondition(t *testing.T) {
 		go exec.Execute(protocol.Action{
 			Type:   "ppt_init",
 			Params: map[string]string{"topic": "AI"},
-		}, callback)
+		}, sessionCtx, callback)
 	}
 
 	wg.Wait()

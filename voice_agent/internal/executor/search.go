@@ -9,13 +9,15 @@ import (
 	"voiceagent/internal/types"
 )
 
-func (e *Executor) executeWebSearch(ctx context.Context, params map[string]string) string {
+func (e *Executor) executeWebSearch(ctx context.Context, params map[string]string, sessionCtx SessionContext) string {
 	if e.clients == nil {
 		return "Error: Search service not available"
 	}
 
 	req := types.SearchRequest{
-		Query: params["query"],
+		RequestID: types.NewID("search_"),
+		UserID:    sessionCtx.UserID,
+		Query:     params["query"],
 	}
 
 	results, err := e.clients.SearchWeb(ctx, req)
