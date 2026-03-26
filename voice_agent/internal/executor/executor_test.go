@@ -15,6 +15,7 @@ type mockClients struct {
 	failInit     bool
 	failFeedback bool
 	failKB       bool
+	failSearch   bool
 }
 
 func (m *mockClients) InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error) {
@@ -41,6 +42,14 @@ func (m *mockClients) QueryKB(ctx context.Context, req types.KBQueryRequest) (ty
 	return types.KBQueryResponse{}, nil
 }
 
+func (m *mockClients) SearchWeb(ctx context.Context, req types.SearchRequest) (types.SearchResponse, error) {
+	time.Sleep(10 * time.Millisecond)
+	if m.failSearch {
+		return types.SearchResponse{}, context.DeadlineExceeded
+	}
+	return types.SearchResponse{}, nil
+}
+
 func TestExecutorConcurrent(t *testing.T) {
 	b := bus.New()
 	exec := New(b, &mockClients{})
@@ -57,6 +66,7 @@ func TestExecutorConcurrent(t *testing.T) {
 		{Type: "ppt_init", Params: map[string]string{"topic": "AI"}},
 		{Type: "ppt_mod", Params: map[string]string{"task": "t1", "page": "p1", "action": "modify", "ins": "test"}},
 		{Type: "kb_query", Params: map[string]string{"q": "test"}},
+		{Type: "web_search", Params: map[string]string{"query": "test"}},
 	}
 
 	wg.Add(len(actions))
@@ -72,14 +82,14 @@ func TestExecutorConcurrent(t *testing.T) {
 		count++
 	}
 
-	if count != 3 {
-		t.Errorf("expected 3 results, got %d", count)
+	if count != 4 {
+		t.Errorf("expected 4 results, got %d", count)
 	}
 }
 
 func TestExecutorErrors(t *testing.T) {
 	b := bus.New()
-	exec := New(b, &mockClients{failInit: true, failFeedback: true, failKB: true})
+	exec := New(b, &mockClients{failInit: true, failFeedback: true, failKB: true, failSearch: true})
 
 	var wg sync.WaitGroup
 	results := make(chan types.ContextMessage, 10)
@@ -93,6 +103,7 @@ func TestExecutorErrors(t *testing.T) {
 		{Type: "ppt_init", Params: map[string]string{"topic": "AI"}},
 		{Type: "ppt_mod", Params: map[string]string{"task": "t1", "page": "p1"}},
 		{Type: "kb_query", Params: map[string]string{"q": "test"}},
+		{Type: "web_search", Params: map[string]string{"query": "test"}},
 	}
 
 	wg.Add(len(actions))
