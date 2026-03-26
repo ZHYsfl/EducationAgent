@@ -99,7 +99,6 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 			Query:      query,
 			MaxResults: 5,
 			Language:   "zh",
-			SearchType: "general",
 		})
 		if err != nil {
 			return "", err
