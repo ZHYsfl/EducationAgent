@@ -8,11 +8,14 @@ import (
 
 	"toolcalling"
 	adaptivepkg "voiceagent/internal/adaptive"
-	"voiceagent/internal/audio"
 	"voiceagent/internal/asr"
+	"voiceagent/internal/audio"
+	"voiceagent/internal/bus"
 	svcclients "voiceagent/internal/clients"
 	cfgpkg "voiceagent/internal/config"
+	"voiceagent/internal/executor"
 	hist "voiceagent/internal/history"
+	"voiceagent/internal/protocol"
 	"voiceagent/internal/think"
 	"voiceagent/internal/tts"
 	types "voiceagent/internal/types"
@@ -51,6 +54,10 @@ type Pipeline struct {
 	pendingContexts   []types.ContextMessage
 	pendingMu         sync.Mutex
 	highPriorityQueue chan types.ContextMessage
+
+	msgBus   *bus.Bus
+	executor *executor.Executor
+	parser   *protocol.Parser
 }
 
 func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.ExternalServices) *Pipeline {
@@ -62,7 +69,13 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 	ttsProv := tts.NewTTSClient(config.TTSURL)
 	log.Printf("TTS: %s", config.TTSURL)
 
-	return &Pipeline{
+	largeLLM := toolcalling.NewAgent(toolcalling.LLMConfig{
+		APIKey:  config.LargeLLMAPIKey,
+		Model:   config.LargeLLMModel,
+		BaseURL: config.LargeLLMBaseURL,
+	})
+
+	p := &Pipeline{
 		session:   session,
 		config:    config,
 		clients:   clients,
@@ -72,18 +85,20 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 			Model:   config.SmallLLMModel,
 			BaseURL: config.SmallLLMBaseURL,
 		}),
-		largeLLM: toolcalling.NewAgent(toolcalling.LLMConfig{
-			APIKey:  config.LargeLLMAPIKey,
-			Model:   config.LargeLLMModel,
-			BaseURL: config.LargeLLMBaseURL,
-		}),
+		largeLLM:          largeLLM,
 		ttsClient:         ttsProv,
 		history:           hist.NewConversationHistory(config.SystemPrompt),
 		audioBuf:          audio.NewAudioBuffer(),
 		adaptive:          adaptivepkg.NewAdaptiveController(sizes),
 		contextQueue:      make(chan types.ContextMessage, 64),
 		highPriorityQueue: make(chan types.ContextMessage, 16),
+		msgBus:            bus.New(),
+		parser:            &protocol.Parser{},
 	}
+
+	p.executor = executor.New(p.msgBus, clients)
+
+	return p
 }
 
 // OnAudioData is called by the session when audio arrives during LISTENING.
@@ -159,7 +174,6 @@ func (p *Pipeline) SetLargeLLM(a *toolcalling.Agent) { p.largeLLM = a }
 
 // GetConfig returns the pipeline config (pointer, so tests can mutate fields).
 func (p *Pipeline) GetConfig() *cfgpkg.Config { return p.config }
-
 
 // GetAudioCh returns the current audioCh (may be nil).
 func (p *Pipeline) GetAudioCh() chan []byte {
@@ -240,6 +254,10 @@ func (p *Pipeline) SetDraftCancel(c context.CancelFunc) {
 // the pipeline context is cancelled, so the model can resume from where it
 // left off in the next turn.
 func (p *Pipeline) OnInterrupt() {
+	// 先取消流式处理，确保不再有新 token 写入
+	p.cancelDraft()
+
+	// 然后读取并保存已生成的内容
 	p.tokensMu.Lock()
 	raw := p.rawGeneratedTokens.String()
 	p.rawGeneratedTokens.Reset()
@@ -257,6 +275,4 @@ func (p *Pipeline) OnInterrupt() {
 		p.history.AddInterruptedAssistant(raw)
 		log.Printf("Interrupt: preserved %d chars (including thinking)", len(raw))
 	}
-
-	p.cancelDraft()
 }

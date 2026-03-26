@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"voiceagent/internal/types"
 )
 
 func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
@@ -200,3 +202,30 @@ func formatSearchForLLM(resp SearchResponse) string {
 	}
 	return strings.TrimSpace(sb.String())
 }
+
+// EnqueueContext adds a context message to the queue and triggers active push if idle
+func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
+	if msg.Priority == "high" {
+		select {
+		case p.highPriorityQueue <- msg:
+		default:
+			log.Printf("[ctx] high priority queue full")
+		}
+	} else {
+		select {
+		case p.contextQueue <- msg:
+		default:
+			log.Printf("[ctx] context queue full")
+		}
+	}
+
+	if p.session.GetState() == StateIdle {
+		go p.processContextUpdate(context.Background(), msg)
+	}
+}
+
+func (p *Pipeline) processContextUpdate(ctx context.Context, msg types.ContextMessage) {
+	prompt := fmt.Sprintf("新任务结果（%s）: %s", msg.Source, msg.Content)
+	p.startProcessing(ctx, prompt)
+}
+
