@@ -20,7 +20,6 @@ func (e *Executor) executeWebSearch(ctx context.Context, params map[string]strin
 		Query:      params["query"],
 		MaxResults: 10,
 		Language:   "zh",
-		SearchType: "general",
 	}
 
 	results, err := e.clients.SearchWeb(ctx, req)

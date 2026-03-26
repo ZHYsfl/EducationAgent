@@ -57,6 +57,9 @@ func (e *Executor) Execute(action protocol.Action, sessionCtx SessionContext, ca
 		var msgType string
 
 		switch action.Type {
+		case "update_requirements":
+			result = e.executeUpdateRequirements(context.Background(), action.Params, sessionCtx)
+			msgType = "requirements_updated"
 		case "ppt_init":
 			result = e.executePPTInit(context.Background(), action.Params, sessionCtx)
 			msgType = "ppt_status"

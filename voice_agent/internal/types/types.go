@@ -167,7 +167,6 @@ type SearchRequest struct {
 	Query      string `json:"query"`
 	MaxResults int    `json:"max_results,omitempty"`
 	Language   string `json:"language,omitempty"`
-	SearchType string `json:"search_type,omitempty"`
 }
 
 type SearchResponse struct {

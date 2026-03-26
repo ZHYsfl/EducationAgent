@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"voiceagent/internal/types"
 )
@@ -11,6 +12,12 @@ import (
 func (e *Executor) executePPTInit(ctx context.Context, params map[string]string, sessionCtx SessionContext) string {
 	if e.clients == nil {
 		return "Error: PPT service not available"
+	}
+
+	// 检查必填字段
+	missing := checkRequiredFields(sessionCtx)
+	if len(missing) > 0 {
+		return fmt.Sprintf("Error: 缺少必填信息，请先提供: %s", strings.Join(missing, ", "))
 	}
 
 	teachingElements := &types.InitTeachingElements{
@@ -74,4 +81,39 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 	}
 
 	return "PPT修改请求已发送"
+}
+
+func checkRequiredFields(ctx SessionContext) []string {
+	var missing []string
+	if ctx.Audience == "" {
+		missing = append(missing, "target_audience")
+	}
+	if len(ctx.KnowledgePoints) == 0 {
+		missing = append(missing, "knowledge_points")
+	}
+	if len(ctx.TeachingGoals) == 0 {
+		missing = append(missing, "teaching_goals")
+	}
+	if ctx.TeachingLogic == "" {
+		missing = append(missing, "teaching_logic")
+	}
+	if len(ctx.KeyDifficulties) == 0 {
+		missing = append(missing, "key_difficulties")
+	}
+	if ctx.Duration == "" {
+		missing = append(missing, "duration")
+	}
+	if ctx.TotalPages == 0 {
+		missing = append(missing, "total_pages")
+	}
+	if ctx.GlobalStyle == "" {
+		missing = append(missing, "global_style")
+	}
+	if ctx.InteractionDesign == "" {
+		missing = append(missing, "interaction_design")
+	}
+	if len(ctx.OutputFormats) == 0 {
+		missing = append(missing, "output_formats")
+	}
+	return missing
 }
