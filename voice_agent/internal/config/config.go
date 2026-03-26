@@ -8,49 +8,35 @@ import (
 )
 
 type Config struct {
-	ServerPort int
+	ServerPort int // voice agent listen port
 
-	ASRMode  string // "local" or "remote"
-	ASRWSURL string // local mode
+	ASRWSURL string // ASR WebSocket URL
 
-	DouBaoASRAppKey     string // remote mode
-	DouBaoASRAccessKey  string
-	DouBaoASRResourceId string
+	SmallLLMAPIKey  string // Small LLM API Key
+	SmallLLMBaseURL string // Small LLM Base URL
+	SmallLLMModel   string // Small LLM Model
 
-	SmallLLMAPIKey  string
-	SmallLLMBaseURL string
-	SmallLLMModel   string
+	LargeLLMAPIKey  string // Large LLM API Key
+	LargeLLMBaseURL string // Large LLM Base URL
+	LargeLLMModel   string // Large LLM Model
 
-	LargeLLMAPIKey  string
-	LargeLLMBaseURL string
-	LargeLLMModel   string
+	TTSURL string // TTS HTTP URL
 
-	TTSMode string // "local" or "remote"
-	TTSURL  string // local mode
+	TokenBudget    int      // token budget for small LLM
+	FillerInterval int      // filler interval for small LLM
+	FillerPhrases  []string // filler phrases for small LLM
+	MaxFillers     int      // max fillers for small LLM
 
-	DouBaoTTSAppId     string // remote mode
-	DouBaoTTSToken     string
-	DouBaoTTSCluster   string
-	DouBaoTTSVoiceType string
+	SystemPrompt string // system prompt
 
-	TokenBudget    int
-	FillerInterval int
-	FillerPhrases  []string
-	MaxFillers     int
-
-	SystemPrompt string
-
-	AdaptiveSizesFile string
+	AdaptiveSizesFile string // adaptive sizes file path
 
 	// External services
-	PPTAgentURL  string
-	KBServiceURL string
-	MemoryURL    string
-	SearchURL    string
-	DBServiceURL string
-
-	// Fallback identity for local development when auth is not wired yet
-	DefaultUserID string
+	PPTAgentURL  string // PPT Agent HTTP URL
+	KBServiceURL string // KB Service HTTP URL
+	MemoryURL    string // Memory HTTP URL
+	SearchURL    string // Search HTTP URL
+	DBServiceURL string // DB Service HTTP URL
 }
 
 func LoadConfig() *Config {
@@ -64,12 +50,7 @@ func LoadConfig() *Config {
 	return &Config{
 		ServerPort: port,
 
-		ASRMode:  getEnv("ASR_MODE", "local"),
 		ASRWSURL: getEnv("ASR_WS_URL", "ws://localhost:10096"),
-
-		DouBaoASRAppKey:     getEnv("DOUBAO_ASR_APP_KEY", ""),
-		DouBaoASRAccessKey:  getEnv("DOUBAO_ASR_ACCESS_KEY", ""),
-		DouBaoASRResourceId: getEnv("DOUBAO_ASR_RESOURCE_ID", "volc.bigasr.sauc.duration"),
 
 		SmallLLMAPIKey:  getEnv("SMALL_LLM_API_KEY", "EMPTY"),
 		SmallLLMBaseURL: getEnv("SMALL_LLM_BASE_URL", "http://localhost:8001/v1"),
@@ -78,13 +59,7 @@ func LoadConfig() *Config {
 		LargeLLMBaseURL: getEnv("LARGE_LLM_BASE_URL", "http://localhost:8000/v1"),
 		LargeLLMModel:   getEnv("LARGE_LLM_MODEL", "large-llm"),
 
-		TTSMode: getEnv("TTS_MODE", "local"),
-		TTSURL:  getEnv("TTS_URL", "http://localhost:50000"),
-
-		DouBaoTTSAppId:     getEnv("DOUBAO_TTS_APPID", ""),
-		DouBaoTTSToken:     getEnv("DOUBAO_TTS_TOKEN", ""),
-		DouBaoTTSCluster:   getEnv("DOUBAO_TTS_CLUSTER", "volcano_tts"),
-		DouBaoTTSVoiceType: getEnv("DOUBAO_TTS_VOICE_TYPE", "BV700_streaming"),
+		TTSURL: getEnv("TTS_URL", "http://localhost:50000"),
 
 		TokenBudget:    tokenBudget,
 		FillerInterval: fillerInterval,
@@ -101,8 +76,7 @@ func LoadConfig() *Config {
 		KBServiceURL:  getEnv("KB_SERVICE_URL", "http://localhost:9200"),
 		MemoryURL:     getEnv("MEMORY_SERVICE_URL", "http://localhost:9300"),
 		SearchURL:     getEnv("SEARCH_SERVICE_URL", "http://localhost:9400"),
-		DBServiceURL:  getEnv("DB_SERVICE_URL", "http://localhost:9500"),
-		DefaultUserID: getEnv("USER_ID", "user_default"),
+		DBServiceURL: getEnv("DB_SERVICE_URL", "http://localhost:9500"),
 	}
 }
 

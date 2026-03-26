@@ -4,6 +4,7 @@ import (
 	agent "voiceagent/agent"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -69,18 +70,29 @@ func (b *blockingASR) RecognizeStream(ctx context.Context, audioCh <-chan []byte
 	return ch, nil
 }
 
-func TestNewSession_DefaultIDs_AndPipeline(t *testing.T) {
+func TestNewSession_EmptyUserID_ReturnsError(t *testing.T) {
 	_, serverConn, cleanup := newWSConnPair(t)
 	defer cleanup()
 
-	cfg := agent.NewTestConfig()
-	cfg.DefaultUserID = "u_default"
-	s := agent.NewSession(serverConn, cfg, &agent.MockServices{}, "", "")
+	_, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_x", "")
+	if !errors.Is(err, agent.ErrUserIDRequired) {
+		t.Fatalf("want ErrUserIDRequired, got %v", err)
+	}
+}
+
+func TestNewSession_GeneratesSessionID_AndPipeline(t *testing.T) {
+	_, serverConn, cleanup := newWSConnPair(t)
+	defer cleanup()
+
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "", "u1")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 
 	if s.SessionID == "" || !strings.HasPrefix(s.SessionID, "sess_") {
 		t.Fatalf("unexpected session id: %q", s.SessionID)
 	}
-	if s.UserID != "u_default" {
+	if s.UserID != "u1" {
 		t.Fatalf("unexpected user id: %q", s.UserID)
 	}
 	if s.GetPipeline() == nil {
@@ -92,7 +104,10 @@ func TestSessionWriteLoop_WritesTextAndBinary(t *testing.T) {
 	clientConn, serverConn, cleanup := newWSConnPair(t)
 	defer cleanup()
 
-	s := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_wl", "u1")
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_wl", "u1")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	done := make(chan struct{})
 	go func() {
 		s.WriteLoop()
@@ -140,7 +155,10 @@ func TestSessionReadLoop_DispatchesTextAndBinary(t *testing.T) {
 	clientConn, serverConn, cleanup := newWSConnPair(t)
 	defer cleanup()
 
-	s := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_rl", "u1")
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_rl", "u1")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	done := make(chan struct{})
 	go func() {
 		s.ReadLoop()
@@ -175,7 +193,10 @@ func TestSessionRun_StopsOnDisconnect(t *testing.T) {
 	clientConn, serverConn, cleanup := newWSConnPair(t)
 	defer cleanup()
 
-	s := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_run", "u1")
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_run", "u1")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	done := make(chan struct{})
 	go func() {
 		s.Run()
@@ -218,30 +239,3 @@ func TestSessionOnVADStart_StateTransitions(t *testing.T) {
 	}
 }
 
-func TestNewPipeline_ModeSelection(t *testing.T) {
-	s := agent.NewTestSession(nil)
-	m := &agent.MockServices{}
-
-	localCfg := agent.NewTestConfig()
-	localCfg.ASRMode = "local"
-	localCfg.TTSMode = "local"
-	p1 := agent.NewPipeline(s, localCfg, m)
-	if p1 == nil || p1.GetASRClient() == nil || p1.GetTTSClient() == nil {
-		t.Fatal("local mode pipeline init failed")
-	}
-
-	remoteCfg := agent.NewTestConfig()
-	remoteCfg.ASRMode = "remote"
-	remoteCfg.TTSMode = "remote"
-	remoteCfg.DouBaoASRAppKey = "ak"
-	remoteCfg.DouBaoASRAccessKey = "sk"
-	remoteCfg.DouBaoASRResourceId = "rid"
-	remoteCfg.DouBaoTTSAppId = "app"
-	remoteCfg.DouBaoTTSToken = "tok"
-	remoteCfg.DouBaoTTSCluster = "clu"
-	remoteCfg.DouBaoTTSVoiceType = "voice"
-	p2 := agent.NewPipeline(s, remoteCfg, m)
-	if p2 == nil || p2.GetASRClient() == nil || p2.GetTTSClient() == nil {
-		t.Fatal("remote mode pipeline init failed")
-	}
-}

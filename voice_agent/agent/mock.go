@@ -153,8 +153,7 @@ func NewTestConfig() *Config {
 		TokenBudget:       50,
 		FillerInterval:    100,
 		FillerPhrases:     []string{"稍等"},
-		MaxFillers:        3,
-		DefaultUserID:     "user_test",
+		MaxFillers: 3,
 	}
 }
 

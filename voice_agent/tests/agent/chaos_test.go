@@ -14,7 +14,10 @@ func TestSessionRun_ChaosTraffic_NoCrash(t *testing.T) {
 	llm := newMockLLMServer("do not interrupt", []string{"收到", "。"})
 	defer llm.Close()
 
-	s := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_chaos", "user_chaos")
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_chaos", "user_chaos")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	s.GetPipeline().SetASRClient(&blockingASR{})
 	s.GetPipeline().SetTTSClient(&agent.MockTTS{})
 	s.GetPipeline().SetSmallLLM(newMockAgent(llm.URL))
@@ -69,7 +72,10 @@ func TestSessionRun_InterruptStorm_NoDeadlock(t *testing.T) {
 	llm := newMockLLMServer("do not interrupt", []string{"先别急", "。"})
 	defer llm.Close()
 
-	s := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_storm", "user_storm")
+	s, err := agent.NewSession(serverConn, agent.NewTestConfig(), &agent.MockServices{}, "sess_storm", "user_storm")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	s.GetPipeline().SetASRClient(&blockingASR{})
 	s.GetPipeline().SetTTSClient(&agent.MockTTS{})
 	s.GetPipeline().SetSmallLLM(newMockAgent(llm.URL))

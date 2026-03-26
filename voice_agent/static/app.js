@@ -33,10 +33,25 @@ let currentAIBubble = null;
 // ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------
+function getOrCreateUserId() {
+  const params = new URLSearchParams(location.search);
+  const fromQuery = params.get("user_id");
+  if (fromQuery && fromQuery.trim()) {
+    return fromQuery.trim();
+  }
+  let id = localStorage.getItem("voice_user_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("voice_user_id", id);
+  }
+  return id;
+}
+
 function connectWS() {
   return new Promise((resolve, reject) => {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${proto}//${location.host}/ws`);
+    const uid = encodeURIComponent(getOrCreateUserId());
+    const socket = new WebSocket(`${proto}//${location.host}/ws?user_id=${uid}`);
     socket.binaryType = "arraybuffer";
 
     const timer = setTimeout(() => {

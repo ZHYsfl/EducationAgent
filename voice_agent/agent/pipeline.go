@@ -56,32 +56,11 @@ type Pipeline struct {
 func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.ExternalServices) *Pipeline {
 	sizes := adaptivepkg.LoadChannelSizes(config.AdaptiveSizesFile, adaptivepkg.DefaultChannelSizes())
 
-	var asrProv asr.ASRProvider
-	if config.ASRMode == "remote" {
-		asrProv = asr.NewDouBaoASRClient(asr.DouBaoASRConfig{
-			AppKey:     config.DouBaoASRAppKey,
-			AccessKey:  config.DouBaoASRAccessKey,
-			ResourceId: config.DouBaoASRResourceId,
-		})
-		log.Printf("ASR mode: remote (Doubao)")
-	} else {
-		asrProv = asr.NewASRClient(config.ASRWSURL)
-		log.Printf("ASR mode: local (%s)", config.ASRWSURL)
-	}
+	asrProv := asr.NewASRClient(config.ASRWSURL)
+	log.Printf("ASR: %s", config.ASRWSURL)
 
-	var ttsProv tts.TTSProvider
-	if config.TTSMode == "remote" {
-		ttsProv = tts.NewDouBaoTTSClient(tts.DouBaoTTSConfig{
-			AppId:     config.DouBaoTTSAppId,
-			Token:     config.DouBaoTTSToken,
-			Cluster:   config.DouBaoTTSCluster,
-			VoiceType: config.DouBaoTTSVoiceType,
-		})
-		log.Printf("TTS mode: remote (Doubao %s)", config.DouBaoTTSVoiceType)
-	} else {
-		ttsProv = tts.NewTTSClient(config.TTSURL)
-		log.Printf("TTS mode: local (%s)", config.TTSURL)
-	}
+	ttsProv := tts.NewTTSClient(config.TTSURL)
+	log.Printf("TTS: %s", config.TTSURL)
 
 	return &Pipeline{
 		session:   session,
