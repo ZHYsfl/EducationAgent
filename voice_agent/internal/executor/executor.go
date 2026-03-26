@@ -70,7 +70,7 @@ func (e *Executor) Execute(action protocol.Action, sessionCtx SessionContext, ca
 			msgType = "ppt_status"
 		case "kb_query":
 			result = e.executeKBQuery(context.Background(), action.Params, sessionCtx)
-			msgType = "rag_chunks"
+			msgType = "kb_summary"
 		case "web_search":
 			result = e.executeWebSearch(context.Background(), action.Params, sessionCtx)
 			msgType = "search_result"

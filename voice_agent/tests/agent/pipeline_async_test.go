@@ -74,9 +74,7 @@ func TestLaunchAsyncContextQueries_AllSources(t *testing.T) {
 	m := &agent.MockServices{
 		QueryKBFn: func(ctx context.Context, req agent.KBQueryRequest) (agent.KBQueryResponse, error) {
 			return agent.KBQueryResponse{
-				Chunks: []agent.RetrievedChunk{
-					{DocTitle: "doc-a", Content: "chunk-a", Score: 0.9},
-				},
+				Summary: "知识库总结：chunk-a",
 			}, nil
 		},
 		RecallMemoryFn: func(ctx context.Context, req agent.MemoryRecallRequest) (agent.MemoryRecallResponse, error) {
@@ -107,7 +105,7 @@ func TestLaunchAsyncContextQueries_IngestWhenKBScoreLow(t *testing.T) {
 	var mu sync.Mutex
 	m := &agent.MockServices{
 		QueryKBFn: func(ctx context.Context, req agent.KBQueryRequest) (agent.KBQueryResponse, error) {
-			return agent.KBQueryResponse{Chunks: []agent.RetrievedChunk{{Content: "low", Score: 0.2}}}, nil
+			return agent.KBQueryResponse{Summary: "低分总结"}, nil
 		},
 		RecallMemoryFn: func(ctx context.Context, req agent.MemoryRecallRequest) (agent.MemoryRecallResponse, error) {
 			return agent.MemoryRecallResponse{}, nil
@@ -139,7 +137,7 @@ func TestLaunchAsyncContextQueries_NoIngestWhenKBScoreHigh(t *testing.T) {
 	var mu sync.Mutex
 	m := &agent.MockServices{
 		QueryKBFn: func(ctx context.Context, req agent.KBQueryRequest) (agent.KBQueryResponse, error) {
-			return agent.KBQueryResponse{Chunks: []agent.RetrievedChunk{{Content: "high", Score: 0.92}}}, nil
+			return agent.KBQueryResponse{Summary: "高分总结"}, nil
 		},
 		RecallMemoryFn: func(ctx context.Context, req agent.MemoryRecallRequest) (agent.MemoryRecallResponse, error) {
 			return agent.MemoryRecallResponse{}, nil

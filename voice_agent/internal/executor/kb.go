@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -28,6 +27,5 @@ func (e *Executor) executeKBQuery(ctx context.Context, params map[string]string,
 		return fmt.Sprintf("知识库查询失败: %v", err)
 	}
 
-	data, _ := json.Marshal(results)
-	return fmt.Sprintf("知识库查询结果: %s", string(data))
+	return fmt.Sprintf("知识库查询结果: %s", results.Summary)
 }

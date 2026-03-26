@@ -18,7 +18,7 @@ func TestFormatContextForLLM_Empty(t *testing.T) {
 
 func TestFormatContextForLLM_NonEmpty(t *testing.T) {
 	msgs := []agent.ContextMessage{
-		{Source: "knowledge_base", MsgType: "rag_chunks", Content: "知识点A"},
+		{Source: "knowledge_base", MsgType: "kb_summary", Content: "知识点A"},
 		{Source: "web_search", MsgType: "search_result", Content: "搜索结果B"},
 	}
 	result := agent.FormatContextForLLM(msgs)
@@ -30,28 +30,6 @@ func TestFormatContextForLLM_NonEmpty(t *testing.T) {
 	}
 	if !contains(result, "knowledge_base") || !contains(result, "web_search") {
 		t.Errorf("result missing source labels: %s", result)
-	}
-}
-
-// ===========================================================================
-// formatChunksForLLM
-// ===========================================================================
-
-func TestFormatChunksForLLM_Empty(t *testing.T) {
-	result := agent.FormatChunksForLLM(nil)
-	if result != "" {
-		t.Errorf("expected empty, got %q", result)
-	}
-}
-
-func TestFormatChunksForLLM_NonEmpty(t *testing.T) {
-	chunks := []agent.RetrievedChunk{
-		{ChunkID: "c1", DocTitle: "线性代数", Content: "矩阵乘法", Score: 0.85},
-		{ChunkID: "c2", DocTitle: "微积分", Content: "求导公式", Score: 0.72},
-	}
-	result := agent.FormatChunksForLLM(chunks)
-	if !contains(result, "矩阵乘法") || !contains(result, "求导公式") {
-		t.Errorf("missing content: %s", result)
 	}
 }
 
