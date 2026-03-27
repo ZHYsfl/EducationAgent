@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"voiceagent/internal/types"
 )
 
-func (e *Executor) executePPTInit(ctx context.Context, params map[string]string, sessionCtx SessionContext) string {
+func (e *Executor) executePPTInit(ctx context.Context, params map[string]string, sessionCtx SessionContext, callback ResultCallback) string {
 	if e.clients == nil {
 		return "Error: PPT service not available"
 	}
@@ -56,6 +57,19 @@ func (e *Executor) executePPTInit(ctx context.Context, params map[string]string,
 	if err != nil {
 		log.Printf("[executor] ppt_init error: %v", err)
 		return fmt.Sprintf("PPT初始化失败: %v", err)
+	}
+
+	// 发送高优先级通知
+	if callback != nil {
+		callback(types.ContextMessage{
+			ID:         types.NewID("ctx_"),
+			Content:    "好的，正在为您生成课件，请稍候。",
+			Priority:   "high",
+			ActionType: "system",
+			MsgType:    "system_notify",
+			Metadata:   map[string]string{"task_id": resp.TaskID},
+			Timestamp:  time.Now().Unix(),
+		})
 	}
 
 	return fmt.Sprintf("PPT任务已创建，TaskID: %s", resp.TaskID)

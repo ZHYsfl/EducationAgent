@@ -63,20 +63,27 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 				p.session.SetState(StateIdle)
 
 				if ctx.Err() != nil {
+					// system_notify 被打断就放弃，不重试
+					if msg.MsgType == "system_notify" {
+						log.Printf("[high-priority] system_notify interrupted, skipping")
+						return
+					}
+
+					// conflict_question 重试机制
 					retries := 0
 					if r, ok := msg.Metadata["_retries"]; ok {
 						fmt.Sscanf(r, "%d", &retries)
 					}
 					retries++
 					if retries > 2 {
-						log.Printf("[high-priority] %s interrupted %d times, demoting to context",
-							msg.MsgType, retries)
+						log.Printf("[high-priority] conflict_question interrupted %d times, demoting to context",
+							retries)
 						p.pendingMu.Lock()
 						p.pendingContexts = append(p.pendingContexts, msg)
 						p.pendingMu.Unlock()
 					} else {
-						log.Printf("[high-priority] %s interrupted, will retry (retry=%d)",
-							msg.MsgType, retries)
+						log.Printf("[high-priority] conflict_question interrupted, will retry (retry=%d)",
+							retries)
 						if msg.Metadata == nil {
 							msg.Metadata = make(map[string]string)
 						}

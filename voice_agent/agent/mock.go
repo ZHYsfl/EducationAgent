@@ -201,7 +201,7 @@ func (m *MockTTS) Synthesize(ctx context.Context, text string, bufSize int) (<-c
 	return ch, nil
 }
 
-// NewTestPipelineWithTTS creates a pipeline with a mock TTS so speakText won't panic.
+// NewTestPipelineWithTTS creates a pipeline with a mock TTS for testing.
 func NewTestPipelineWithTTS(session *Session, clients ExternalServices) *Pipeline {
 	p := NewTestPipeline(session, clients)
 	p.ttsClient = &MockTTS{}
