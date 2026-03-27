@@ -70,6 +70,6 @@ func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
 }
 
 func (p *Pipeline) processContextUpdate(ctx context.Context, msg types.ContextMessage) {
-	prompt := fmt.Sprintf("新任务结果（%s）: %s", msg.Source, msg.Content)
+	prompt := fmt.Sprintf("新任务结果（%s）: %s", msg.ActionType, msg.Content)
 	p.startProcessing(ctx, prompt)
 }

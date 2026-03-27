@@ -17,13 +17,13 @@ func NewID(prefix string) string {
 }
 
 type ContextMessage struct {
-	ID        string            `json:"id"`
-	Source    string            `json:"source"`
-	Priority  string            `json:"priority"`
-	MsgType   string            `json:"msg_type"`
-	Content   string            `json:"content"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-	Timestamp int64             `json:"timestamp"`
+	ID         string            `json:"id"`
+	ActionType string            `json:"action_type"`
+	Priority   string            `json:"priority"`
+	MsgType    string            `json:"msg_type"`
+	Content    string            `json:"content"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	Timestamp  int64             `json:"timestamp"`
 }
 
 type ReferenceFileReq struct {

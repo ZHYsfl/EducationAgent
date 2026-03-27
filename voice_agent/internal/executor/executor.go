@@ -84,13 +84,13 @@ func (e *Executor) Execute(action protocol.Action, sessionCtx SessionContext, ca
 		}
 
 		callback(types.ContextMessage{
-			ID:        types.NewID("ctx_"),
-			Content:   result,
-			Priority:  priority,
-			Source:    action.Type,
-			MsgType:   msgType,
-			Metadata:  action.Params,
-			Timestamp: time.Now().Unix(),
+			ID:         types.NewID("ctx_"),
+			Content:    result,
+			Priority:   priority,
+			ActionType: action.Type,
+			MsgType:    msgType,
+			Metadata:   action.Params,
+			Timestamp:  time.Now().Unix(),
 		})
 	}()
 }
