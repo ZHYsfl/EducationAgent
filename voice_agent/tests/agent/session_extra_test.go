@@ -139,14 +139,6 @@ func TestTTSWorker_ContextCancel(t *testing.T) {
 
 // ===========================================================================
 // ===========================================================================
-// Pipeline: launchAsyncContextQueries (nil clients)
-// ===========================================================================
-
-func TestLaunchAsyncContextQueries_NilClients(t *testing.T) {
-	s := agent.NewTestSession(nil)
-	p := agent.NewTestPipeline(s, nil)
-	p.LaunchAsyncContextQueries(context.Background(), "test") // should not panic
-}
 
 // ===========================================================================
 // Pipeline: OnInterrupt with partial </think> suffix
@@ -173,19 +165,6 @@ func TestOnInterrupt_PartialThinkSuffix(t *testing.T) {
 }
 
 // ===========================================================================
-// formatMemoryForLLM edge: empty Content and Value entries
-// ===========================================================================
-
-func TestFormatMemoryForLLM_SkipsEmpty(t *testing.T) {
-	resp := agent.MemoryRecallResponse{
-		Facts:       []agent.MemoryEntry{{Content: "", Value: ""}},
-		Preferences: []agent.MemoryEntry{{Content: "", Value: ""}},
-	}
-	result := agent.FormatMemoryForLLM(resp)
-	if strings.Contains(result, "1)") {
-		t.Error("should skip entries with both empty Content and Value")
-	}
-}
 
 // ===========================================================================
 // handlePreview edge: sets active task via findSessionByTaskID

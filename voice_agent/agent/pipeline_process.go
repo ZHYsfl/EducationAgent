@@ -61,7 +61,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 - update_requirements: @{update_requirements|字段:值} - 更新需求信息（包括初始化topic）
 - ppt_init: @{ppt_init|topic:主题|desc:描述} - 开始制作PPT（需先收集完所有必填信息）
 - ppt_mod: @{ppt_mod|task:任务ID|page:页面ID|action:操作|ins:指令}
-- kb_query: @{kb_query|q:查询内容}
+- kb_query: @{kb_query|query:查询内容}
 - web_search: @{web_search|query:搜索关键词}
 
 ## 需求收集流程
