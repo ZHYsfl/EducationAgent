@@ -124,7 +124,7 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/init \
   "raw_text": "string",          // 必填，用户原始语音/文本输入
   "intents": [                   // 可选，意图列表（可由 PPT Agent 自行解析）
     {
-      "action_type": "string",   // 必填，操作类型，如 "modify_content", "change_style", "add_page"
+      "action_type": "string",   // 必填，操作类型，可选值: "modify", "insert", "delete", "reorder", "style"
       "target_page_id": "string",// 必填，目标页面ID
       "instruction": "string"    // 必填，具体指令
     }
@@ -1211,9 +1211,9 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ---
 
-### 3. 接收 PPT Agent 消息
+### 3. 接收异步服务回调
 
-**接口路径**: `POST /api/v1/voice/ppt_message`
+**接口路径**: `POST /api/v1/voice/callback`
 
 **请求参数**:
 
@@ -1252,6 +1252,8 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 - `ppt_preview`: PPT预览
 - `export_ready`: 导出就绪
 - `conflict_question`: 冲突询问（自动设置为高优先级）
+- `search_result`: 搜索服务回调结果
+- `kb_result`: 知识库查询回调结果
 - `error`: 错误消息
 
 **响应格式**:
@@ -1272,7 +1274,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 1. PPT状态更新：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1286,7 +1288,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
 1. 页面渲染完成：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1301,7 +1303,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
 1. 冲突询问：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1315,7 +1317,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
 1. 导出就绪：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1329,7 +1331,38 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
 1. 错误消息：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "msg_type": "error",
+    "error_code": 50001,
+    "tts_text": "生成失败，请重试"
+  }'
+```
+
+6. 搜索结果回调：
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "msg_type": "search_result",
+    "tts_text": "已找到相关资料：量子力学的基本原理包括波粒二象性、不确定性原理等"
+  }'
+```
+
+7. 知识库查询结果回调：
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/callback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "msg_type": "kb_result",
+    "tts_text": "根据知识库，牛顿第二定律表述为：物体的加速度与作用力成正比，与质量成反比"
+  }'
+```
+
+---

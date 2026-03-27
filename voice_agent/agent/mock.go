@@ -33,6 +33,7 @@ type MockServices struct {
 	RecallMemoryFn     func(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error)
 	GetUserProfileFn   func(ctx context.Context, userID string) (UserProfile, error)
 	SearchWebFn        func(ctx context.Context, req SearchRequest) (SearchResponse, error)
+	GetSearchResultsFn func(ctx context.Context, requestID string) (SearchResponse, error)
 	InitPPTFn          func(ctx context.Context, req PPTInitRequest) (PPTInitResponse, error)
 	SendFeedbackFn     func(ctx context.Context, req PPTFeedbackRequest) error
 	GetCanvasStatusFn  func(ctx context.Context, taskID string) (CanvasStatusResponse, error)
@@ -71,6 +72,12 @@ func (m *MockServices) GetUserProfile(ctx context.Context, userID string) (UserP
 func (m *MockServices) SearchWeb(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	if m.SearchWebFn != nil {
 		return m.SearchWebFn(ctx, req)
+	}
+	return SearchResponse{}, nil
+}
+func (m *MockServices) GetSearchResults(ctx context.Context, requestID string) (SearchResponse, error) {
+	if m.GetSearchResultsFn != nil {
+		return m.GetSearchResultsFn(ctx, requestID)
 	}
 	return SearchResponse{}, nil
 }

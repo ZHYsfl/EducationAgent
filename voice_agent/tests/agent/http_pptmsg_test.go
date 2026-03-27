@@ -30,7 +30,7 @@ func TestHandlePPTMessage_PPTStatus(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body: %s", rr.Code, rr.Body.String())
@@ -66,7 +66,7 @@ func TestHandlePPTMessage_PageRendered(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	time.Sleep(30 * time.Millisecond)
 	msgs := agent.DrainWriteCh(s)
@@ -95,7 +95,7 @@ func TestHandlePPTMessage_PPTPreview(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	time.Sleep(30 * time.Millisecond)
 	msgs := agent.DrainWriteCh(s)
@@ -121,7 +121,7 @@ func TestHandlePPTMessage_ExportReady(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	time.Sleep(30 * time.Millisecond)
 	msgs := agent.DrainWriteCh(s)
@@ -150,7 +150,7 @@ func TestHandlePPTMessage_Error(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	time.Sleep(30 * time.Millisecond)
 	msgs := agent.DrainWriteCh(s)
@@ -179,7 +179,7 @@ func TestHandlePPTMessage_ErrorDefaultCode(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	time.Sleep(30 * time.Millisecond)
 	msgs := agent.DrainWriteCh(s)
@@ -208,7 +208,7 @@ func TestHandlePPTMessage_ConflictQuestion_ForceHighPriority(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
@@ -244,7 +244,7 @@ func TestHandlePPTMessage_DefaultMsgType(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	select {
 	case msg := <-p.GetContextQueue():
@@ -261,7 +261,7 @@ func TestHandlePPTMessage_NoSession(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -281,7 +281,7 @@ func TestHandlePPTMessage_EmptyTaskID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rr.Code)
 	}
@@ -291,7 +291,7 @@ func TestHandlePPTMessage_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader("not json"))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rr.Code)
 	}
@@ -300,7 +300,7 @@ func TestHandlePPTMessage_InvalidJSON(t *testing.T) {
 func TestHandlePPTMessage_WrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/ppt_message", nil)
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rr.Code)
 	}
@@ -322,7 +322,7 @@ func TestHandlePPTMessage_DefaultTTSText(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	agent.HandlePPTMessage(rr, req)
+	agent.HandleServiceCallback(rr, req)
 
 	select {
 	case msg := <-p.GetContextQueue():

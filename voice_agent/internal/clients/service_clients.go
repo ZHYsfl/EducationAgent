@@ -77,6 +77,13 @@ func (c *ServiceClients) SearchWeb(ctx context.Context, req types.SearchRequest)
 	return out, err
 }
 
+func (c *ServiceClients) GetSearchResults(ctx context.Context, requestID string) (types.SearchResponse, error) {
+	var out types.SearchResponse
+	endpoint := c.searchBaseURL + "/api/v1/search/results/" + url.QueryEscape(requestID)
+	err := c.getJSON(ctx, endpoint, &out)
+	return out, err
+}
+
 func (c *ServiceClients) InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error) {
 	var out types.PPTInitResponse
 	err := c.postJSON(ctx, c.pptBaseURL+"/api/v1/ppt/init", req, &out)

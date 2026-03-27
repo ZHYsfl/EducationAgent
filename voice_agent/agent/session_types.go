@@ -55,6 +55,7 @@ type Session struct {
 	ViewingPageID    string
 	LastVADTimestamp int64
 	OwnedTasks       map[string]string // task_id → topic
+	PendingRequests  map[string]string // request_id → type ("search" or "kb")
 	activeTaskMu     sync.RWMutex
 
 	// ========== Requirements Collection (protected by reqMu) ==========

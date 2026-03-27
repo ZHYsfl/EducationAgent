@@ -169,8 +169,9 @@ func HandlePreview(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, http.StatusOK, payload)
 }
 
-// HandlePPTMessage handles POST /api/v1/voice/ppt_message (exported for main.go).
-func HandlePPTMessage(w http.ResponseWriter, r *http.Request) {
+// HandleServiceCallback handles POST /api/v1/voice/callback (exported for main.go).
+// Accepts async callbacks from PPT Agent, Search Service, and KB Service.
+func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, 40001, "method not allowed")
 		return
@@ -268,6 +269,18 @@ func HandlePPTMessage(w http.ResponseWriter, r *http.Request) {
 			Type:    "error",
 			Code:    code,
 			Message: content,
+		})
+	case "search_result":
+		// 搜索服务回调：搜索完成，返回结果
+		s.SendJSON(WSMessage{
+			Type: "response",
+			Text: content,
+		})
+	case "kb_result":
+		// KB服务回调：知识库查询完成，返回结果
+		s.SendJSON(WSMessage{
+			Type: "response",
+			Text: content,
 		})
 	}
 
