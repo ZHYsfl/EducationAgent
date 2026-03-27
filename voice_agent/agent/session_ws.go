@@ -211,21 +211,16 @@ func (s *Session) createPPTFromSnapshot(reqRef, req *TaskRequirements) {
 		Topic:  initReq.Topic,
 	})
 
-	s.speakText("好的，正在为您生成课件，请稍候。")
-}
-
-func (s *Session) speakText(text string) {
-	if s.pipeline == nil {
-		return
+	if s.pipeline != nil {
+		s.pipeline.enqueueContextMessage(context.Background(), ContextMessage{
+			ID:         NewID("ctx_"),
+			ActionType: "system",
+			Priority:   "high",
+			MsgType:    "system_notify",
+			Content:    "好的，正在为您生成课件，请稍候。",
+			Timestamp:  time.Now().UnixMilli(),
+		})
 	}
-	s.SetState(StateSpeaking)
-	sentenceCh := make(chan string, 1)
-	sentenceCh <- text
-	close(sentenceCh)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	s.pipeline.ttsWorker(ctx, sentenceCh)
-	s.SetState(StateIdle)
 }
 
 func (s *Session) AddPendingQuestion(contextID, taskID string) {
@@ -281,4 +276,3 @@ func (s *Session) GetAllTasks() []string {
 	}
 	return tasks
 }
-

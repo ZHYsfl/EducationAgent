@@ -44,14 +44,16 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 		select {
 		case msg := <-p.highPriorityQueue:
 			switch msg.MsgType {
-			case "conflict_question":
-				p.session.SendJSON(WSMessage{
-					Type:      "conflict_ask",
-					TaskID:    msg.Metadata["task_id"],
-					PageID:    msg.Metadata["page_id"],
-					ContextID: msg.Metadata["context_id"],
-					Question:  msg.Content,
-				})
+			case "conflict_question", "system_notify":
+				if msg.MsgType == "conflict_question" {
+					p.session.SendJSON(WSMessage{
+						Type:      "conflict_ask",
+						TaskID:    msg.Metadata["task_id"],
+						PageID:    msg.Metadata["page_id"],
+						ContextID: msg.Metadata["context_id"],
+						Question:  msg.Content,
+					})
+				}
 
 				p.session.SetState(StateSpeaking)
 				sentenceCh := make(chan string, 1)
@@ -67,14 +69,14 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 					}
 					retries++
 					if retries > 2 {
-						log.Printf("[high-priority] conflict_question interrupted %d times, demoting to context context_id=%s",
-							retries, msg.Metadata["context_id"])
+						log.Printf("[high-priority] %s interrupted %d times, demoting to context",
+							msg.MsgType, retries)
 						p.pendingMu.Lock()
 						p.pendingContexts = append(p.pendingContexts, msg)
 						p.pendingMu.Unlock()
 					} else {
-						log.Printf("[high-priority] conflict_question interrupted, will re-ask (retry=%d) context_id=%s",
-							retries, msg.Metadata["context_id"])
+						log.Printf("[high-priority] %s interrupted, will retry (retry=%d)",
+							msg.MsgType, retries)
 						if msg.Metadata == nil {
 							msg.Metadata = make(map[string]string)
 						}
@@ -89,7 +91,9 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 					}
 					return
 				}
-				p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"])
+				if msg.MsgType == "conflict_question" {
+					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"])
+				}
 			default:
 				p.pendingMu.Lock()
 				p.pendingContexts = append(p.pendingContexts, msg)
