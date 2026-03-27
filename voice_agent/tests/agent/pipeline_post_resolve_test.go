@@ -5,7 +5,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 // ===========================================================================
@@ -98,124 +97,6 @@ func TestTryResolveConflict_NilClients(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// handleRequirementsTransition
-// ===========================================================================
-
-func TestHandleRequirementsTransition_CollectingToConfirming(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	req := makeFullRequirements()
-	req.Status = "collecting"
-	s.SetRequirements(req)
-
-	p.HandleRequirementsTransition("好的信息齐全了 [REQUIREMENTS_CONFIRMED]")
-
-	s.RLockReqMu()
-	status := s.GetRequirements().Status
-	s.RUnlockReqMu()
-	if status != "confirming" {
-		t.Errorf("status = %q, want confirming", status)
-	}
-
-	msgs := agent.DrainWriteCh(s)
-	found, ok := agent.FindWSMessage(msgs, "requirements_summary")
-	if !ok {
-		t.Fatal("expected requirements_summary WS message")
-	}
-	if found.SummaryText == "" {
-		t.Error("summary text should be non-empty")
-	}
-}
-
-func TestHandleRequirementsTransition_CollectingStaysCollecting(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	req := agent.NewTaskRequirements("s", "u")
-	req.Topic = "测试"
-	req.Status = "collecting"
-	s.SetRequirements(req)
-
-	p.HandleRequirementsTransition("知道了，请告诉我更多信息")
-
-	s.RLockReqMu()
-	status := s.GetRequirements().Status
-	s.RUnlockReqMu()
-	if status != "collecting" {
-		t.Errorf("status = %q, want collecting", status)
-	}
-
-	msgs := agent.DrainWriteCh(s)
-	found, ok := agent.FindWSMessage(msgs, "requirements_progress")
-	if !ok {
-		t.Fatal("expected requirements_progress WS message")
-	}
-	if found.Status != "collecting" {
-		t.Errorf("ws status = %q", found.Status)
-	}
-}
-
-func TestHandleRequirementsTransition_ConfirmingToConfirmed(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipelineWithTTS(s, mock)
-
-	req := makeFullRequirements()
-	req.SessionID = s.SessionID
-	req.UserID = s.UserID
-	req.Status = "confirming"
-	s.SetRequirements(req)
-
-	agent.RegisterSession(s)
-	defer agent.UnregisterSession(s)
-
-	p.HandleRequirementsTransition("用户确认了 [REQUIREMENTS_CONFIRMED]")
-
-	time.Sleep(300 * time.Millisecond)
-	s.RLockReqMu()
-	status := s.GetRequirements().Status
-	s.RUnlockReqMu()
-
-	_ = p
-	if status != "confirmed" && status != "generating" {
-		t.Errorf("status = %q, want confirmed or generating", status)
-	}
-}
-
-func TestHandleRequirementsTransition_ConfirmingBackToCollecting(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	req := makeFullRequirements()
-	req.Status = "confirming"
-	s.SetRequirements(req)
-
-	p.HandleRequirementsTransition("我要修改一下，先改个主题")
-
-	s.RLockReqMu()
-	status := s.GetRequirements().Status
-	collected := s.GetRequirements().CollectedFields
-	s.RUnlockReqMu()
-	if status != "collecting" {
-		t.Errorf("status = %q, want collecting", status)
-	}
-	if len(collected) == 0 {
-		t.Error("RefreshCollectedFields should have been called")
-	}
-}
-
-func TestHandleRequirementsTransition_NilRequirements(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	p.HandleRequirementsTransition("anything") // should not panic
-}
 
 // ===========================================================================
 // buildTaskListContext

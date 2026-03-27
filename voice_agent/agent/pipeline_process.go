@@ -22,13 +22,11 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	contextMsgs := p.drainContextQueue()
 	contextPrompt := FormatContextForLLM(contextMsgs)
 
-	inRequirementsMode := false
 	systemPrompt := p.config.SystemPrompt
 	p.session.reqMu.RLock()
 	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
 	p.session.reqMu.RUnlock()
 	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "confirming") {
-		inRequirementsMode = true
 		var profile *UserProfile
 		if p.clients != nil {
 			if pInfo, err := p.clients.GetUserProfile(ctx, reqSnapshot.UserID); err == nil {
@@ -235,7 +233,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			p.history.AddAssistant(finalText)
 		}
 
-		p.postProcessResponse(ctx, userText, finalText, inRequirementsMode)
+		p.postProcessResponse(ctx, userText, finalText)
 		p.asyncExtractMemory(userText, finalText)
 
 		p.session.SetState(StateIdle)
@@ -245,13 +243,8 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.adaptive.Save(p.config.AdaptiveSizesFile)
 }
 
-func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmResponse string, inRequirementsMode bool) {
+func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmResponse string) {
 	if p.tryResolveConflict(ctx, userText, llmResponse) {
-		return
-	}
-
-	if inRequirementsMode {
-		p.handleRequirementsTransition(llmResponse)
 		return
 	}
 

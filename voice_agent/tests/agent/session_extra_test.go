@@ -219,28 +219,6 @@ func TestPrefillFromMemory_NilClients(t *testing.T) {
 }
 
 // ===========================================================================
-// createPPTFromRequirements: nil Requirements
-// ===========================================================================
-
-func TestCreatePPTFromRequirements_NilReq(t *testing.T) {
-	s := agent.NewTestSession(&agent.MockServices{})
-	agent.NewBarePipelineForTest(s)
-	s.SetRequirements(nil)
-	s.CreatePPTFromRequirements() // should not panic
-}
-
-// ===========================================================================
-// createPPTFromRequirements: nil clients
-// ===========================================================================
-
-func TestCreatePPTFromRequirements_NilClients(t *testing.T) {
-	s := agent.NewTestSession(nil)
-	agent.NewBarePipelineForTest(s)
-	s.SetRequirements(makeFullRequirements())
-	s.CreatePPTFromRequirements() // should not panic
-}
-
-// ===========================================================================
 // Helpers
 // ===========================================================================
 

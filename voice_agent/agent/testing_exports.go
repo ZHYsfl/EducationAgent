@@ -30,20 +30,13 @@ func (p *Pipeline) StartDraftThinking(ctx context.Context, partialText string) {
 }
 
 // PostProcessResponse calls the unexported postProcessResponse method.
-func (p *Pipeline) PostProcessResponse(ctx context.Context, userText, llmResponse string, inRequirementsMode bool) {
-	p.postProcessResponse(ctx, userText, llmResponse, inRequirementsMode)
+func (p *Pipeline) PostProcessResponse(ctx context.Context, userText, llmResponse string) {
+	p.postProcessResponse(ctx, userText, llmResponse)
 }
 
 // TryResolveConflict calls the unexported tryResolveConflict method.
 func (p *Pipeline) TryResolveConflict(ctx context.Context, userText, llmResponse string) bool {
 	return p.tryResolveConflict(ctx, userText, llmResponse)
-}
-
-
-
-// HandleRequirementsTransition calls the unexported handleRequirementsTransition method.
-func (p *Pipeline) HandleRequirementsTransition(llmResponse string) {
-	p.handleRequirementsTransition(llmResponse)
 }
 
 // BuildTaskListContext calls the unexported buildTaskListContext method.
@@ -162,11 +155,6 @@ func (s *Session) OnVADStart() {
 // PublishVADEvent calls the unexported publishVADEvent method.
 func (s *Session) PublishVADEvent() {
 	s.publishVADEvent()
-}
-
-// CreatePPTFromRequirements calls the unexported createPPTFromRequirements method.
-func (s *Session) CreatePPTFromRequirements() {
-	s.createPPTFromRequirements()
 }
 
 // HandleAudioData calls the unexported handleAudioData method.
