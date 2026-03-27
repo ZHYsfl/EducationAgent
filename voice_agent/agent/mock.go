@@ -16,6 +16,7 @@ import (
 
 	adaptivepkg "voiceagent/internal/adaptive"
 	hist "voiceagent/internal/history"
+	"voiceagent/internal/protocol"
 )
 
 // compile-time check: MockServices must satisfy ExternalServices
@@ -184,6 +185,7 @@ func NewTestPipeline(session *Session, clients ExternalServices) *Pipeline {
 		contextQueue:      make(chan ContextMessage, 64),
 		highPriorityQueue: make(chan ContextMessage, 16),
 		history:           hist.NewConversationHistory("test prompt"),
+		parser:            protocol.NewParser(),
 	}
 	session.pipeline = p
 	return p

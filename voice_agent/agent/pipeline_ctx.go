@@ -52,8 +52,8 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 	userID := p.session.UserID
 	sessionID := p.session.SessionID
 
-	var kbTopScoreMu sync.Mutex
-	kbTopScore := 0.0 // KB 没结果时 score=0，应触发搜索结果沉淀
+	var kbSummaryMu sync.Mutex
+	kbSummary := ""
 	kbScoreReady := make(chan struct{})
 	var kbScoreReadyOnce sync.Once
 	markKBReady := func() {
@@ -71,6 +71,9 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 		if err != nil {
 			return "", err
 		}
+		kbSummaryMu.Lock()
+		kbSummary = resp.Summary
+		kbSummaryMu.Unlock()
 		return resp.Summary, nil
 	})
 
@@ -107,9 +110,9 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 		case <-time.After(300 * time.Millisecond):
 		}
 
-		kbTopScoreMu.Lock()
-		shouldIngest := kbTopScore < 0.5
-		kbTopScoreMu.Unlock()
+		kbSummaryMu.Lock()
+		shouldIngest := kbSummary == ""
+		kbSummaryMu.Unlock()
 		if shouldIngest && len(resp.Results) > 0 {
 			items := make([]SearchIngestItem, 0, len(resp.Results))
 			for _, r := range resp.Results {

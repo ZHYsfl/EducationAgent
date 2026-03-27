@@ -16,7 +16,6 @@ import (
 	"voiceagent/internal/executor"
 	hist "voiceagent/internal/history"
 	"voiceagent/internal/protocol"
-	"voiceagent/internal/think"
 	"voiceagent/internal/tts"
 	types "voiceagent/internal/types"
 )
@@ -264,15 +263,7 @@ func (p *Pipeline) OnInterrupt() {
 	p.tokensMu.Unlock()
 
 	if raw != "" {
-		// Close unclosed <think> tag so the model sees well-formed history.
-		// Strip any partial </think> suffix (e.g. "</thi") before appending.
-		if strings.Contains(raw, "<think>") && !strings.Contains(raw, "</think>") {
-			if partial := think.LongestSuffixPrefix(raw, "</think>"); partial != "" {
-				raw = raw[:len(raw)-len(partial)]
-			}
-			raw += "</think>"
-		}
 		p.history.AddInterruptedAssistant(raw)
-		log.Printf("Interrupt: preserved %d chars (including thinking)", len(raw))
+		log.Printf("Interrupt: preserved %d chars", len(raw))
 	}
 }
