@@ -253,12 +253,6 @@ func (p *Pipeline) SetDraftCancel(c context.CancelFunc) {
 	p.draftCancel = c
 }
 
-// ---------------------------------------------------------------------------
-
-// OnInterrupt is called when user starts speaking during PROCESSING/SPEAKING.
-// Saves partial LLM output (including <think> reasoning) to history before
-// the pipeline context is cancelled, so the model can resume from where it
-// left off in the next turn.
 func (p *Pipeline) OnInterrupt() {
 	// 先取消流式处理，确保不再有新 token 写入
 	p.cancelDraft()
