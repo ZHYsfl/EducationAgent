@@ -16,6 +16,9 @@
 3. [记忆服务接口](#3-记忆服务接口)
 4. [搜索服务接口](#4-搜索服务接口)
 5. [数据库服务接口](#5-数据库服务接口)
+6. [认证服务接口](#6-认证服务接口)
+7. [会话管理接口](#7-会话管理接口)
+8. [搜索结果轮询接口](#8-搜索结果轮询接口)
 
 ### 第二部分：我们提供的接口
 
@@ -655,6 +658,253 @@ curl -X POST http://db-service-url/api/v1/files/upload \
   -F "file=@/path/to/document.pdf"
 ```
 
+## 6. 认证服务接口
+
+### 6.1 验证用户Token
+
+**接口路径**: `POST /api/v1/auth/verify`
+
+**请求参数**:
+```json
+{
+  "token": "string"              // 必填，用户token
+}
+```
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "string",         // 必填，用户ID
+    "valid": true                // 必填，token是否有效
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X POST http://auth-service-url/api/v1/auth/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
+```
+
+---
+
+### 6.2 获取用户基础信息
+
+**接口路径**: `GET /api/v1/auth/profile`
+
+**请求参数**:
+- Header: `Authorization: Bearer {token}`
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "string",         // 必填，用户ID
+    "username": "string",        // 必填，用户名
+    "email": "string",           // 可选，邮箱
+    "display_name": "string",    // 可选，显示名称
+    "avatar_url": "string",      // 可选，头像URL
+    "created_at": 0              // 必填，创建时间戳（毫秒）
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X GET http://auth-service-url/api/v1/auth/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 7. 会话管理接口
+
+### 7.1 创建会话
+
+**接口路径**: `POST /api/v1/sessions`
+
+**请求参数**:
+```json
+{
+  "user_id": "string",           // 必填，用户ID
+  "session_id": "string",        // 可选，会话ID（不提供则自动生成）
+  "title": "string"              // 可选，会话标题
+}
+```
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": "string",      // 必填，会话ID
+    "user_id": "string",         // 必填，用户ID
+    "title": "string",           // 必填，会话标题
+    "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
+    "created_at": 0              // 必填，创建时间戳（毫秒）
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X POST http://session-service-url/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_001",
+    "title": "高等数学课件制作"
+  }'
+```
+
+---
+
+### 7.2 获取会话详情
+
+**接口路径**: `GET /api/v1/sessions/{session_id}`
+
+**请求参数**:
+- `session_id` (path parameter): 必填，会话ID
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": "string",      // 必填，会话ID
+    "user_id": "string",         // 必填，用户ID
+    "title": "string",           // 必填，会话标题
+    "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
+    "created_at": 0,             // 必填，创建时间戳（毫秒）
+    "updated_at": 0              // 必填，更新时间戳（毫秒）
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X GET http://session-service-url/api/v1/sessions/sess_abc123
+```
+
+---
+
+### 7.3 获取用户会话列表
+
+**接口路径**: `GET /api/v1/sessions?user_id={user_id}&page=1&page_size=20`
+
+**请求参数**:
+- `user_id` (query): 必填，用户ID
+- `page` (query): 可选，页码，默认1
+- `page_size` (query): 可选，每页数量，默认20
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "sessions": [
+      {
+        "session_id": "string",      // 必填，会话ID
+        "user_id": "string",         // 必填，用户ID
+        "title": "string",           // 必填，会话标题
+        "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
+        "created_at": 0,             // 必填，创建时间戳（毫秒）
+        "updated_at": 0              // 必填，更新时间戳（毫秒）
+      }
+    ],
+    "total": 0,                      // 必填，总数
+    "page": 1                        // 必填，当前页码
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X GET "http://session-service-url/api/v1/sessions?user_id=user_001&page=1&page_size=20"
+```
+
+---
+
+### 7.4 更新会话
+
+**接口路径**: `PUT /api/v1/sessions/{session_id}`
+
+**请求参数**:
+```json
+{
+  "title": "string",             // 可选，会话标题
+  "status": "string"             // 可选，状态，可选值: "active", "archived", "completed"
+}
+```
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success"
+}
+```
+
+**使用示例**:
+```bash
+curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "高等数学课件制作（已完成）",
+    "status": "completed"
+  }'
+```
+
+---
+
+## 8. 搜索结果轮询接口
+
+### 8.1 获取搜索结果
+
+**接口路径**: `GET /api/v1/search/results/{request_id}`
+
+**请求参数**:
+- `request_id` (path parameter): 必填，搜索请求ID
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "request_id": "string",
+    "status": "string",          // 必填，可选值: "pending", "completed", "failed"
+    "results": [
+      {
+        "title": "string",
+        "url": "string",
+        "snippet": "string",
+        "source": "string"
+      }
+    ],
+    "summary": "string",
+    "duration": 0
+  }
+}
+```
+
+**使用示例**:
+```bash
+curl -X GET "http://search-service-url/api/v1/search/results/req_abc123"
+```
+
+**说明**: 此接口用于轮询异步搜索任务的结果。当 `status` 为 `"pending"` 时，客户端应继续轮询；当 `status` 为 `"completed"` 或 `"failed"` 时，任务结束。
+
 ---
 
 # 第二部分：我们提供的接口
@@ -874,6 +1124,14 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 **响应格式**:
 
+    "msg_type": "error",
+    "error_code": 50001,
+    "tts_text": "生成失败，请稍后重试"
+  }'
+```
+
+---
+
 ```json
 {
   "code": 200,
@@ -1075,212 +1333,3 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
-    "msg_type": "error",
-    "error_code": 50001,
-    "tts_text": "生成失败，请稍后重试"
-  }'
-```
-
----
-
-# 附录
-
-## A. 通用响应格式
-
-所有HTTP接口均使用统一的响应格式：
-
-```json
-{
-  "code": 0,                     // 必填，业务状态码，200表示成功
-  "message": "string",           // 必填，状态消息
-  "data": {}                     // 可选，响应数据
-}
-```
-
-**常见状态码**:
-
-- `200`: 成功
-- `40001`: 请求参数错误
-- `50000`: 服务器内部错误
-- `50200`: 外部服务不可用
-
----
-
-## B. TaskRequirements 完整结构
-
-需求收集过程中的完整数据结构：
-
-```json
-{
-  "session_id": "string",        // 必填，会话ID
-  "user_id": "string",           // 必填，用户ID
-  "topic": "string",             // 必填，课程主题
-  "subject": "string",           // 必填，学科
-  "knowledge_points": ["string"],// 必填，知识点列表
-  "teaching_goals": ["string"],  // 必填，教学目标列表
-  "teaching_logic": "string",    // 必填，讲授逻辑
-  "target_audience": "string",   // 必填，目标受众
-  "key_difficulties": ["string"],// 必填，重点难点列表
-  "duration": "string",          // 必填，课时长度
-  "total_pages": 0,              // 必填，总页数
-  "global_style": "string",      // 必填，全局风格
-  "interaction_design": "string",// 必填，互动设计
-  "output_formats": ["string"],  // 必填，输出格式列表
-  "additional_notes": "string",  // 可选，补充说明
-  "reference_files": [           // 可选，参考文件列表
-    {
-      "file_id": "string",
-      "file_url": "string",
-      "file_type": "string",
-      "instruction": "string"
-    }
-  ],
-  "collected_fields": ["string"],// 必填，已收集字段列表
-  "status": "string",            // 必填，状态，可选值: "collecting", "confirming", "confirmed"
-  "created_at": 0,               // 必填，创建时间戳（毫秒）
-  "updated_at": 0                // 必填，更新时间戳（毫秒）
-}
-```
-
----
-
-## C. 会话状态说明
-
-Voice Agent 会话有以下状态：
-
-- `idle`: 空闲，等待用户输入
-- `listening`: 监听中，正在接收用户语音
-- `processing`: 处理中，LLM正在生成响应
-- `speaking`: 播报中，TTS正在合成并播放音频
-
-状态转换：
-
-```
-idle → listening → processing → speaking → idle
-     ↑                                      ↓
-     └──────────── (用户打断) ──────────────┘
-```
-
----
-
-## D. 优先级机制说明
-
-Voice Agent 支持两种优先级的消息：
-
-1. **普通优先级 (normal)**:
-  - 进入普通队列
-  - 在会话空闲时触发处理
-  - 适用于：工具执行结果、状态更新等
-2. **高优先级 (high)**:
-  - 进入高优先级队列
-  - 立即打断当前播报并播放
-  - 被打断后会重试（最多3次）
-  - 适用于：冲突询问、紧急通知
-
-**conflict_question 类型自动设为高优先级**
-
----
-
-## E. 重要注意事项
-
-### 1. 时间戳格式
-
-- 所有时间戳均为 Unix 毫秒时间戳（13位整数）
-- 示例：`1711545600000` 表示 2024-03-27 18:00:00
-
-### 2. 任务ID与会话关联
-
-- 每个 `task_id` 必须关联到一个 `session_id`
-- PPT Agent 推送消息时，Voice Agent 会根据 `task_id` 查找对应的会话
-- 如果会话不存在或已断开，消息会被接受但不会投递
-
-### 3. 页面ID规范
-
-- 页面ID应保持唯一且稳定
-- 建议格式：`page_{task_id}_{index}` 或使用UUID
-
-### 4. 音频格式要求
-
-- **输入音频**（WebSocket Binary）：PCM 16kHz 16bit 单声道
-- **输出音频**（WebSocket Binary）：MP3 格式
-
-### 5. 文件上传
-
-- 文件上传接口 `/api/v1/upload` 是透明代理
-- 实际存储由数据库服务处理
-- 上传后返回的 `file_id` 和 `file_url` 用于后续引用
-
-### 6. 冲突解决流程
-
-- PPT Agent 发送 `conflict_question` 类型消息
-- Voice Agent 播报问题并等待用户回答
-- 用户回答后，Voice Agent 调用 `/api/v1/ppt/feedback` 接口
-- 请求中包含 `base_timestamp` 和 `viewing_page_id` 用于版本控制
-
-### 7. 需求收集流程
-
-- 状态流转：`collecting` → `confirming` → `confirmed`
-- `collecting`: 正在收集必填字段
-- `confirming`: 所有必填字段已收集，等待用户确认
-- `confirmed`: 用户确认后，调用 `/api/v1/ppt/init` 创建任务
-
-### 8. 错误处理
-
-- 所有接口调用失败时应返回明确的错误码和错误消息
-- Voice Agent 会记录错误日志但不会重试（除高优先级消息）
-- 建议实现幂等性，避免重复调用产生副作用
-
-### 9. 并发控制
-
-- 同一会话同时只能有一个 Pipeline 在运行
-- 用户打断会取消当前 Pipeline 并启动新的
-- 高优先级消息会打断当前播报
-
-### 10. WebSocket 连接管理
-
-- 连接断开后会自动清理会话资源
-- 建议实现心跳机制保持连接活跃
-- 重连时使用相同的 `session_id` 可恢复会话上下文
-
----
-
-## F. 配置说明
-
-Voice Agent 需要配置以下环境变量或配置文件：
-
-```bash
-# 服务端口
-SERVER_PORT=9000
-
-# 外部服务地址
-PPT_AGENT_URL=http://ppt-agent:8080
-KB_SERVICE_URL=http://kb-service:8081
-MEMORY_URL=http://memory-service:8082
-SEARCH_URL=http://search-service:8083
-DB_SERVICE_URL=http://db-service:8084
-
-# ASR/TTS服务
-ASR_WS_URL=wss://asr-service/ws
-TTS_URL=https://tts-service/api
-
-# LLM服务
-SMALL_LLM_BASE_URL=https://api.openai.com/v1
-SMALL_LLM_MODEL=gpt-4o-mini
-SMALL_LLM_API_KEY=sk-xxx
-
-LARGE_LLM_BASE_URL=https://api.openai.com/v1
-LARGE_LLM_MODEL=gpt-4o
-LARGE_LLM_API_KEY=sk-xxx
-```
-
----
-
-## G. 版本信息
-
-- **文档版本**: v1.0
-- **最后更新**: 2024-03-27
-- **Voice Agent 版本**: 基于代码库当前状态
-
----
-
-**文档结束**
