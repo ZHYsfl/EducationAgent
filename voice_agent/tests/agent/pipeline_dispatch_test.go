@@ -43,32 +43,4 @@ func TestPostProcessResponse_RequirementsMode(t *testing.T) {
 	}
 }
 
-func TestPostProcessResponse_TaskInit(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
 
-	p.PostProcessResponse(context.Background(), "帮我做PPT", `好的[TASK_INIT]{"topic":"测试"}[/TASK_INIT]`, false)
-
-	s.RLockReqMu()
-	req := s.GetRequirements()
-	s.RUnlockReqMu()
-	if req == nil {
-		t.Fatal("Requirements should be created")
-	}
-}
-
-func TestPostProcessResponse_PPTFeedback(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-	s.RegisterTask("t1", "测试")
-	s.SetActiveTask("t1")
-
-	p.PostProcessResponse(context.Background(), "改字体", `好的[PPT_FEEDBACK]{"action_type":"style","instruction":"改字体"}[/PPT_FEEDBACK]`, false)
-
-	calls := agent.WaitForFeedback(mock, 1)
-	if len(calls) == 0 {
-		t.Error("should trigger PPT feedback")
-	}
-}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 )
 
 func (p *Pipeline) drainContextQueue() []ContextMessage {
@@ -102,39 +101,6 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 	}
 }
 
-func (p *Pipeline) asyncQuery(
-	ctx context.Context,
-	source string,
-	msgType string, // 推荐传专用类型；为空时自动降级为 tool_result
-	queryFn func() (string, error),
-) {
-	go func() {
-		result, err := queryFn()
-		if err != nil {
-			log.Printf("[ContextBus] %s query failed: %v", source, err)
-			return
-		}
-		if result == "" {
-			return
-		}
-		resolvedType := msgType
-		if resolvedType == "" {
-			resolvedType = "tool_result"
-		}
-		msg := ContextMessage{
-			ID:        NewID("ctx_"),
-			Source:    source,
-			Priority:  "normal",
-			MsgType:   resolvedType,
-			Content:   result,
-			Timestamp: time.Now().UnixMilli(),
-		}
-		select {
-		case p.contextQueue <- msg:
-		case <-ctx.Done():
-		}
-	}()
-}
 
 func (p *Pipeline) enqueueContextMessage(ctx context.Context, msg ContextMessage) {
 	switch msg.Priority {

@@ -16,7 +16,7 @@ func (e *Executor) executeKBQuery(ctx context.Context, params map[string]string,
 	req := types.KBQueryRequest{
 		Subject:        sessionCtx.Subject,
 		UserID:         sessionCtx.UserID,
-		Query:          params["q"],
+		Query:          params["query"],
 		TopK:           5,
 		ScoreThreshold: 0.5,
 	}

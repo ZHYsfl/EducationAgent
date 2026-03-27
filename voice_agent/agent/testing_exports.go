@@ -39,15 +39,7 @@ func (p *Pipeline) TryResolveConflict(ctx context.Context, userText, llmResponse
 	return p.tryResolveConflict(ctx, userText, llmResponse)
 }
 
-// TryDetectTaskInit calls the unexported tryDetectTaskInit method.
-func (p *Pipeline) TryDetectTaskInit(llmResponse string) bool {
-	return p.tryDetectTaskInit(llmResponse)
-}
 
-// TrySendPPTFeedback calls the unexported trySendPPTFeedback method.
-func (p *Pipeline) TrySendPPTFeedback(userText, llmResponse string) {
-	p.trySendPPTFeedback(userText, llmResponse)
-}
 
 // HandleRequirementsTransition calls the unexported handleRequirementsTransition method.
 func (p *Pipeline) HandleRequirementsTransition(llmResponse string) {
@@ -74,10 +66,6 @@ func (p *Pipeline) DrainASRResults(ctx context.Context, ch <-chan asr.ASRResult,
 	p.drainASRResults(ctx, ch, partialTexts, finalText, timeout)
 }
 
-// AsyncQuery calls the unexported asyncQuery method.
-func (p *Pipeline) AsyncQuery(ctx context.Context, source, msgType string, fn func() (string, error)) {
-	p.asyncQuery(ctx, source, msgType, fn)
-}
 
 // AsyncExtractMemory calls the unexported asyncExtractMemory method.
 func (p *Pipeline) AsyncExtractMemory(userText, assistantText string) {
@@ -89,10 +77,6 @@ func (p *Pipeline) HighPriorityListener(ctx context.Context) {
 	p.highPriorityListener(ctx)
 }
 
-// LaunchAsyncContextQueries calls the unexported launchAsyncContextQueries method.
-func (p *Pipeline) LaunchAsyncContextQueries(ctx context.Context, query string) {
-	p.launchAsyncContextQueries(ctx, query)
-}
 
 // GetDraftOutput calls the unexported getDraftOutput method.
 func (p *Pipeline) GetDraftOutput() string {
@@ -271,15 +255,7 @@ func FormatProfileSummary(profile *UserProfile) string {
 	return formatProfileSummary(profile)
 }
 
-// FormatMemoryForLLM calls the unexported formatMemoryForLLM function.
-func FormatMemoryForLLM(resp MemoryRecallResponse) string {
-	return formatMemoryForLLM(resp)
-}
 
-// FormatSearchForLLM calls the unexported formatSearchForLLM function.
-func FormatSearchForLLM(resp SearchResponse) string {
-	return formatSearchForLLM(resp)
-}
 
 // DecodeAPIData calls the unexported decodeAPIData function.
 func DecodeAPIData(raw []byte, out any) error {

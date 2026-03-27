@@ -56,7 +56,6 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 	draftStarted := false
 	asrSinceDraft := 0
 	draftInterval := 1
-	contextQueriesStarted := false
 
 	for {
 		select {
@@ -105,10 +104,6 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 			currentText := strings.Join(partialTexts, "")
 			if currentText == "" && finalText != "" {
 				currentText = finalText
-			}
-			if !contextQueriesStarted && currentText != "" {
-				contextQueriesStarted = true
-				p.launchAsyncContextQueries(ctx, currentText)
 			}
 			if currentText == "" {
 				break
