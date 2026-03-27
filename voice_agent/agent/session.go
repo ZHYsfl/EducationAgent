@@ -7,11 +7,12 @@ import (
 	"log"
 	"strings"
 
-	"github.com/gorilla/websocket"
 	adaptivepkg "voiceagent/internal/adaptive"
-	cfgpkg "voiceagent/internal/config"
 	svcclients "voiceagent/internal/clients"
+	cfgpkg "voiceagent/internal/config"
 	types "voiceagent/internal/types"
+
+	"github.com/gorilla/websocket"
 )
 
 // ErrUserIDRequired is returned when NewSession is called with an empty user_id.

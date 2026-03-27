@@ -52,6 +52,14 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 	userID := p.session.UserID
 	sessionID := p.session.SessionID
 
+	// Get subject from requirements
+	var subject string
+	p.session.reqMu.RLock()
+	if p.session.Requirements != nil {
+		subject = p.session.Requirements.Subject
+	}
+	p.session.reqMu.RUnlock()
+
 	var kbSummaryMu sync.Mutex
 	kbSummary := ""
 	kbScoreReady := make(chan struct{})
@@ -63,6 +71,7 @@ func (p *Pipeline) launchAsyncContextQueries(ctx context.Context, query string) 
 	p.asyncQuery(ctx, "knowledge_base", "kb_summary", func() (string, error) {
 		defer markKBReady()
 		resp, err := p.clients.QueryKB(ctx, KBQueryRequest{
+			Subject:        subject,
 			UserID:         userID,
 			Query:          query,
 			TopK:           5,
@@ -219,4 +228,3 @@ func (p *Pipeline) processContextUpdate(ctx context.Context, msg types.ContextMe
 	prompt := fmt.Sprintf("新任务结果（%s）: %s", msg.Source, msg.Content)
 	p.startProcessing(ctx, prompt)
 }
-
