@@ -85,9 +85,9 @@ func TestContextEnqueue(t *testing.T) {
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		received <- types.ContextMessage{
-			Content:  "test",
-			Priority: "normal",
-			Source:   "test",
+			Content:    "test",
+			Priority:   "normal",
+			ActionType: "test",
 		}
 	}()
 

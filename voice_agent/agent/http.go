@@ -210,11 +210,11 @@ func HandlePPTMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := ContextMessage{
-		ID:       NewID("ctx_"),
-		Source:   "ppt_agent",
-		Priority: priority,
-		MsgType:  msgType,
-		Content:  content,
+		ID:         NewID("ctx_"),
+		ActionType: "ppt_agent",
+		Priority:   priority,
+		MsgType:    msgType,
+		Content:    content,
 		Metadata: map[string]string{
 			"task_id":    req.TaskID,
 			"page_id":    req.PageID,

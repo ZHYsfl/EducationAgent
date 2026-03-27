@@ -34,7 +34,7 @@ func FormatContextForLLM(msgs []ContextMessage) string {
 	var sb strings.Builder
 	sb.WriteString("\n\n[系统补充信息 - 以下是后台检索到的相关资料，供回答参考]\n")
 	for _, m := range msgs {
-		sb.WriteString(fmt.Sprintf("\n--- 来源: %s | 类型: %s ---\n%s\n", m.Source, m.MsgType, m.Content))
+		sb.WriteString(fmt.Sprintf("\n--- 操作: %s | 类型: %s ---\n%s\n", m.ActionType, m.MsgType, m.Content))
 	}
 	return sb.String()
 }
