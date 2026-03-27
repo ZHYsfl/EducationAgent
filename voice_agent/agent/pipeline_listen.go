@@ -11,17 +11,30 @@ import (
 
 // StartListening runs the listening pipeline: accumulate audio, run ASR,
 // check for interrupt intent, and optionally do draft thinking.
+//
+// Concurrency pattern:
+// 1. runMu ensures only one StartListening runs at a time
+// 2. Creates new audio/vad channels and swaps them under ioMu
+// 3. Spawns highPriorityListener goroutine for conflict questions
+// 4. Main loop reads from audioCh and asrResultCh concurrently
+// 5. Cleanup: resets channels under ioMu on exit
 func (p *Pipeline) StartListening(ctx context.Context) {
+	// Lock: prevent concurrent StartListening calls
 	p.runMu.Lock()
 	defer p.runMu.Unlock()
 
+	// Create new channels for this listening session
 	audioCh := make(chan []byte, p.adaptive.Get("audio_ch"))
 	vadEndCh := make(chan struct{}, 1)
+
+	// Swap channels under lock (ioMu protects audioCh/vadEndCh)
 	p.ioMu.Lock()
 	p.audioBuf.Reset()
 	p.audioCh = audioCh
 	p.vadEndCh = vadEndCh
 	p.ioMu.Unlock()
+
+	// Cleanup: reset channels on exit
 	defer func() {
 		p.ioMu.Lock()
 		if p.audioCh == audioCh {
@@ -33,12 +46,15 @@ func (p *Pipeline) StartListening(ctx context.Context) {
 		p.ioMu.Unlock()
 	}()
 
+	// Spawn high-priority listener for conflict questions
 	go p.highPriorityListener(ctx)
 
+	// Reset token tracking (tokensMu protects rawGeneratedTokens)
 	p.tokensMu.Lock()
 	p.rawGeneratedTokens.Reset()
 	p.tokensMu.Unlock()
 
+	// Reset draft thinking output
 	p.resetDraftOutput()
 
 	asrAudioCh := make(chan []byte, p.adaptive.Get("asr_audio_ch"))

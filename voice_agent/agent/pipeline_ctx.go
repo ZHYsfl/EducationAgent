@@ -42,9 +42,6 @@ func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
 	}
 }
 
-
-
-
 // EnqueueContext adds a context message to the queue and triggers active push if idle
 func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
 	// Handle requirements updates immediately
