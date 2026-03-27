@@ -182,47 +182,6 @@ func (s *Session) prefillFromMemory(req *TaskRequirements) {
 	}
 }
 
-func (s *Session) createPPTFromSnapshot(reqRef, req *TaskRequirements) {
-	if req == nil || s.clients == nil {
-		return
-	}
-
-	initReq := req.ToPPTInitRequest()
-	resp, err := s.clients.InitPPT(context.Background(), initReq)
-	if err != nil {
-		log.Printf("[session] InitPPT failed: %v", err)
-		s.SendJSON(WSMessage{Type: "error", Code: 50200, Message: "PPT创建失败: " + err.Error()})
-		return
-	}
-
-	s.RegisterTask(resp.TaskID, initReq.Topic)
-	s.SetActiveTask(resp.TaskID)
-	registerTask(resp.TaskID, s.SessionID)
-	s.reqMu.Lock()
-	if s.Requirements == reqRef && s.Requirements != nil {
-		s.Requirements.Status = "generating"
-		s.Requirements.UpdatedAt = time.Now().UnixMilli()
-	}
-	s.reqMu.Unlock()
-
-	s.SendJSON(WSMessage{
-		Type:   "task_created",
-		TaskID: resp.TaskID,
-		Topic:  initReq.Topic,
-	})
-
-	if s.pipeline != nil {
-		s.pipeline.enqueueContextMessage(context.Background(), ContextMessage{
-			ID:         NewID("ctx_"),
-			ActionType: "system",
-			Priority:   "high",
-			MsgType:    "system_notify",
-			Content:    "好的，正在为您生成课件，请稍候。",
-			Timestamp:  time.Now().UnixMilli(),
-		})
-	}
-}
-
 func (s *Session) AddPendingQuestion(contextID, taskID string) {
 	if contextID == "" {
 		return

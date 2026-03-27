@@ -277,8 +277,3 @@ func (s *Session) GetConfig() *Config {
 func (s *Session) PrefillFromMemory(req *TaskRequirements) {
 	s.prefillFromMemory(req)
 }
-
-// CreatePPTFromSnapshot calls the unexported createPPTFromSnapshot method.
-func (s *Session) CreatePPTFromSnapshot(req *TaskRequirements, snapshot *TaskRequirements) {
-	s.createPPTFromSnapshot(req, snapshot)
-}
