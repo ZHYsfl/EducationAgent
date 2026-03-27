@@ -235,3 +235,16 @@ func (s *Session) GetAllTasks() []string {
 	}
 	return tasks
 }
+
+func (s *Session) RegisterRequest(requestID, reqType string) {
+	s.activeTaskMu.Lock()
+	s.PendingRequests[requestID] = reqType
+	s.activeTaskMu.Unlock()
+}
+
+func (s *Session) OwnsRequest(requestID string) bool {
+	s.activeTaskMu.RLock()
+	defer s.activeTaskMu.RUnlock()
+	_, ok := s.PendingRequests[requestID]
+	return ok
+}

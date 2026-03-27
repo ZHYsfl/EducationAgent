@@ -225,3 +225,29 @@ type FileUploadData struct {
 	StorageURL string `json:"storage_url"`
 	Purpose    string `json:"purpose"`
 }
+
+type SessionCreateRequest struct {
+	UserID    string `json:"user_id"`
+	SessionID string `json:"session_id,omitempty"`
+	Title     string `json:"title,omitempty"`
+}
+
+type SessionInfo struct {
+	SessionID string `json:"session_id"`
+	UserID    string `json:"user_id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
+}
+
+type SessionListResponse struct {
+	Sessions []SessionInfo `json:"sessions"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+}
+
+type SessionUpdateRequest struct {
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status,omitempty"`
+}

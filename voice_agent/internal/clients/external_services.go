@@ -16,6 +16,7 @@ type ExternalServices interface {
 	RecallMemory(ctx context.Context, req types.MemoryRecallRequest) (types.MemoryRecallResponse, error)
 	GetUserProfile(ctx context.Context, userID string) (types.UserProfile, error)
 	SearchWeb(ctx context.Context, req types.SearchRequest) (types.SearchResponse, error)
+	GetSearchResults(ctx context.Context, requestID string) (types.SearchResponse, error)
 	InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error)
 	SendFeedback(ctx context.Context, req types.PPTFeedbackRequest) error
 	GetCanvasStatus(ctx context.Context, taskID string) (types.CanvasStatusResponse, error)

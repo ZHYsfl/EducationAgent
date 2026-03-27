@@ -36,6 +36,7 @@ func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.
 		done:             make(chan struct{}),
 		clients:          clients,
 		OwnedTasks:       make(map[string]string),
+		PendingRequests:  make(map[string]string),
 		PendingQuestions: make(map[string]string),
 	}
 	s.pipeline = NewPipeline(s, config, clients)
