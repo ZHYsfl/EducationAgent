@@ -17,10 +17,6 @@ func (s *Session) handleTextMessage(msg WSMessage) {
 		s.handleTextInput(msg)
 	case "page_navigate":
 		s.handlePageNavigate(msg)
-	case "task_init":
-		s.handleTaskInit(msg)
-	case "requirements_confirm":
-		s.handleRequirementsConfirm(msg)
 	}
 }
 
@@ -121,32 +117,6 @@ func (s *Session) GetViewingPageID() string {
 	return s.ViewingPageID
 }
 
-func (s *Session) handleTaskInit(msg WSMessage) {
-	req := NewTaskRequirements(s.SessionID, s.UserID)
-	req.Topic = strings.TrimSpace(msg.Topic)
-	req.TotalPages = msg.TotalPages
-	req.TargetAudience = strings.TrimSpace(msg.Audience)
-	req.GlobalStyle = strings.TrimSpace(msg.GlobalStyle)
-	req.AdditionalNotes = strings.TrimSpace(msg.Description)
-	req.UpdatedAt = time.Now().UnixMilli()
-
-	s.prefillFromMemory(req)
-	req.RefreshCollectedFields()
-	reqSnapshot := CloneTaskRequirements(req)
-
-	s.reqMu.Lock()
-	s.Requirements = req
-	s.reqMu.Unlock()
-
-	s.SendJSON(WSMessage{
-		Type:            "requirements_progress",
-		Status:          req.Status,
-		CollectedFields: req.CollectedFields,
-		MissingFields:   req.GetMissingFields(),
-		Requirements:    reqSnapshot,
-	})
-}
-
 func (s *Session) prefillFromMemory(req *TaskRequirements) {
 	if s.clients == nil {
 		return
@@ -161,31 +131,6 @@ func (s *Session) prefillFromMemory(req *TaskRequirements) {
 	if style, ok := profile.VisualPreferences["color_scheme"]; ok && req.GlobalStyle == "" {
 		req.GlobalStyle = style
 	}
-}
-
-func (s *Session) handleRequirementsConfirm(msg WSMessage) {
-	s.reqMu.Lock()
-	if s.Requirements == nil {
-		s.reqMu.Unlock()
-		return
-	}
-	if msg.Confirmed != nil && *msg.Confirmed {
-		reqRef := s.Requirements
-		s.Requirements.Status = "confirmed"
-		s.Requirements.UpdatedAt = time.Now().UnixMilli()
-		reqSnapshot := CloneTaskRequirements(s.Requirements)
-		s.reqMu.Unlock()
-		go s.createPPTFromSnapshot(reqRef, reqSnapshot)
-		return
-	}
-	if msg.Modifications != "" {
-		s.Requirements.Status = "collecting"
-		s.Requirements.AdditionalNotes = strings.TrimSpace(
-			strings.TrimSpace(s.Requirements.AdditionalNotes) + "\n用户修改意见: " + msg.Modifications,
-		)
-	}
-	s.Requirements.UpdatedAt = time.Now().UnixMilli()
-	s.reqMu.Unlock()
 }
 
 func (s *Session) createPPTFromRequirements() {

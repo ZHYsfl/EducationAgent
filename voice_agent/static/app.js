@@ -136,6 +136,19 @@ function handleServerMessage(msg) {
     case "response":
       appendCurrentAIBubble(msg.text);
       break;
+
+    case "requirements_summary":
+      showRequirementsCard(msg);
+      break;
+
+    case "requirements_progress":
+      updateRequirementsProgress(msg);
+      break;
+
+    case "task_created":
+      hideRequirementsCard();
+      addMessage("assistant", `课件创建成功：${msg.topic}`);
+      break;
   }
 }
 
@@ -530,3 +543,52 @@ window.addEventListener("load", () => {
     startBtn.disabled = true;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Requirements Card Functions
+// ---------------------------------------------------------------------------
+function showRequirementsCard(data) {
+  const card = document.getElementById('requirements-card');
+  const fields = {
+    'req-topic': data.topic,
+    'req-subject': data.subject,
+    'req-audience': data.target_audience,
+    'req-pages': data.page_count,
+    'req-difficulty': data.difficulty_level,
+    'req-style': data.global_style,
+    'req-focus': data.key_points,
+    'req-examples': data.case_studies,
+    'req-interactive': data.interactive_elements,
+    'req-visual': data.visual_preferences,
+    'req-duration': data.duration_minutes,
+    'req-notes': data.additional_notes
+  };
+
+  for (const [id, value] of Object.entries(fields)) {
+    const elem = document.getElementById(id);
+    if (elem) elem.textContent = value || '未指定';
+  }
+
+  card.classList.remove('hidden');
+}
+
+function updateRequirementsProgress(data) {
+  const indicator = document.querySelector('.progress-indicator');
+  if (indicator && data.message) {
+    indicator.textContent = data.message;
+  }
+}
+
+function hideRequirementsCard() {
+  const card = document.getElementById('requirements-card');
+  card.classList.add('hidden');
+}
+
+function addMessage(role, text) {
+  chatEmpty.style.display = "none";
+  const block = createMsgBlock(role === "assistant" ? "ai" : "user", role === "assistant" ? "AI" : "You");
+  block.textEl.textContent = text;
+  chatContainer.appendChild(block.el);
+  scrollChat();
+}
+

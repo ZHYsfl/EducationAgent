@@ -182,6 +182,57 @@
   }
   .log-line .ts  { color: #999; }
   .log-line .evt { color: #1a1a1a; font-weight: 500; }
+
+  /* ---- Requirements Card ---- */
+  .requirements-card {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    max-height: 80vh;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 1000;
+    overflow: hidden;
+  }
+  .requirements-card.hidden { display: none; }
+  .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+  }
+  .card-header h3 { margin: 0 0 10px 0; }
+  .progress-indicator { font-size: 14px; opacity: 0.9; }
+  .card-body {
+    padding: 20px;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .req-field {
+    margin-bottom: 12px;
+    display: flex;
+  }
+  .req-field label {
+    font-weight: bold;
+    min-width: 80px;
+    color: #555;
+  }
+  .req-field span {
+    flex: 1;
+    color: #333;
+  }
+  .card-footer {
+    background: #f5f5f5;
+    padding: 15px 20px;
+    text-align: center;
+  }
+  .voice-hint {
+    margin: 0;
+    color: #667eea;
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
@@ -201,6 +252,30 @@
 
   <div id="chat-container">
     <div class="chat-empty" id="chat-empty">Tap Start to begin a conversation</div>
+  </div>
+
+  <div id="requirements-card" class="requirements-card hidden">
+    <div class="card-header">
+      <h3>课件需求确认</h3>
+      <div class="progress-indicator"></div>
+    </div>
+    <div class="card-body">
+      <div class="req-field"><label>主题:</label><span id="req-topic"></span></div>
+      <div class="req-field"><label>学科:</label><span id="req-subject"></span></div>
+      <div class="req-field"><label>目标受众:</label><span id="req-audience"></span></div>
+      <div class="req-field"><label>页数:</label><span id="req-pages"></span></div>
+      <div class="req-field"><label>难度:</label><span id="req-difficulty"></span></div>
+      <div class="req-field"><label>风格:</label><span id="req-style"></span></div>
+      <div class="req-field"><label>重点:</label><span id="req-focus"></span></div>
+      <div class="req-field"><label>案例:</label><span id="req-examples"></span></div>
+      <div class="req-field"><label>互动:</label><span id="req-interactive"></span></div>
+      <div class="req-field"><label>视觉:</label><span id="req-visual"></span></div>
+      <div class="req-field"><label>时长:</label><span id="req-duration"></span></div>
+      <div class="req-field"><label>备注:</label><span id="req-notes"></span></div>
+    </div>
+    <div class="card-footer">
+      <p class="voice-hint">请语音确认或提出修改意见</p>
+    </div>
   </div>
 
   <div class="log-section">

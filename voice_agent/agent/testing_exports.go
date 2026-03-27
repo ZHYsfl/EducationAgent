@@ -149,16 +149,6 @@ func (s *Session) HandlePageNavigate(msg WSMessage) {
 	s.handlePageNavigate(msg)
 }
 
-// HandleTaskInit calls the unexported handleTaskInit method.
-func (s *Session) HandleTaskInit(msg WSMessage) {
-	s.handleTaskInit(msg)
-}
-
-// HandleRequirementsConfirm calls the unexported handleRequirementsConfirm method.
-func (s *Session) HandleRequirementsConfirm(msg WSMessage) {
-	s.handleRequirementsConfirm(msg)
-}
-
 // OnVADEnd calls the unexported onVADEnd method.
 func (s *Session) OnVADEnd() {
 	s.onVADEnd()

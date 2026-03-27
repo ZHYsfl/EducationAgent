@@ -4,9 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/gorilla/websocket"
-	cfgpkg "voiceagent/internal/config"
 	svcclients "voiceagent/internal/clients"
+	cfgpkg "voiceagent/internal/config"
+
+	"github.com/gorilla/websocket"
 )
 
 type SessionState int
