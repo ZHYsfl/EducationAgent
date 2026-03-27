@@ -282,29 +282,3 @@ func (s *Session) GetAllTasks() []string {
 	return tasks
 }
 
-// ResolveTaskID implements §0.5 task routing rules (deterministic part).
-// Rule 1 (conflict reply) is handled in tryResolveConflict.
-// Rule 2 (fuzzy topic matching) and Rule 5 (ask user) are delegated to LLM
-// via buildTaskListContext system prompt injection.
-// Returns (task_id, resolved). resolved=false means LLM should decide.
-func (s *Session) ResolveTaskID() (string, bool) {
-	s.activeTaskMu.RLock()
-	defer s.activeTaskMu.RUnlock()
-
-	// Rule 3: active_task_id exists
-	if s.ActiveTaskID != "" {
-		if _, ok := s.OwnedTasks[s.ActiveTaskID]; ok {
-			return s.ActiveTaskID, true
-		}
-	}
-
-	// Rule 4: only 1 task
-	if len(s.OwnedTasks) == 1 {
-		for tid := range s.OwnedTasks {
-			return tid, true
-		}
-	}
-
-	// Rule 2 & 5: LLM handles fuzzy matching / asking user
-	return "", false
-}
