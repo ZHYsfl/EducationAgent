@@ -204,11 +204,6 @@ func (s *Session) WriteLoop() {
 	s.writeLoop()
 }
 
-// SpeakText calls the unexported speakText method.
-func (s *Session) SpeakText(text string) {
-	s.speakText(text)
-}
-
 // ---------------------------------------------------------------------------
 // Package-level function shims
 // ---------------------------------------------------------------------------
