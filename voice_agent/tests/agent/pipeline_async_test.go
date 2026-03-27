@@ -105,7 +105,7 @@ func TestLaunchAsyncContextQueries_IngestWhenKBScoreLow(t *testing.T) {
 	var mu sync.Mutex
 	m := &agent.MockServices{
 		QueryKBFn: func(ctx context.Context, req agent.KBQueryRequest) (agent.KBQueryResponse, error) {
-			return agent.KBQueryResponse{Summary: "低分总结"}, nil
+			return agent.KBQueryResponse{Summary: ""}, nil
 		},
 		RecallMemoryFn: func(ctx context.Context, req agent.MemoryRecallRequest) (agent.MemoryRecallResponse, error) {
 			return agent.MemoryRecallResponse{}, nil

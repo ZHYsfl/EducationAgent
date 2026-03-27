@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"voiceagent/internal/executor"
-	"voiceagent/internal/think"
+	"voiceagent/internal/protocol"
 )
 
 func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
@@ -107,7 +107,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	nextFillerAt := p.config.TokenBudget
 	fillerCount := 0
 
-	var tf think.ThinkFilter
+	var pf protocol.ProtocolFilter
 
 	// Interrupt-safe send: never blocks if ttsWorker already exited.
 	sendSentence := func(s string) bool {
@@ -127,13 +127,10 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		totalTokens++
 
-		// Track ALL raw tokens (including <think>) for interrupt preservation
+		// Track ALL raw tokens for interrupt preservation
 		p.tokensMu.Lock()
 		p.rawGeneratedTokens.WriteString(token)
 		p.tokensMu.Unlock()
-
-		// Strip <think>...</think> blocks — only pass visible content through
-		visible := tf.Feed(token)
 
 		// Parse actions from the accumulated buffer
 		result := p.parser.Feed(token)
@@ -163,6 +160,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			}
 			p.executor.Execute(action, sessionCtx, p.EnqueueContext)
 		}
+
+		// Filter out #{...} and @{...} for display/TTS
+		visible := pf.Feed(token)
 
 		if visible != "" {
 			allTokens.WriteString(visible)
@@ -219,10 +219,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		}
 	}
 
-	if flushed := tf.Flush(); flushed != "" {
-		allTokens.WriteString(flushed)
-		sentenceBuf.WriteString(flushed)
-	}
+	// Send any remaining buffered sentence
 	if sentenceBuf.Len() > 0 {
 		sendSentence(sentenceBuf.String())
 	}
