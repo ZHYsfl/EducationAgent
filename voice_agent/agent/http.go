@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"voiceagent/internal/types"
 )
 
 var (
@@ -276,6 +278,24 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 			Type: "response",
 			Text: content,
 		})
+		// 异步导入知识库
+		if content != "" {
+			go func() {
+				clients := getGlobalClients()
+				if clients != nil {
+					_ = clients.IngestFromSearch(r.Context(), types.IngestFromSearchRequest{
+						UserID: s.UserID,
+						Items: []types.SearchIngestItem{
+							{
+								Title:   "搜索结果摘要",
+								Content: content,
+								Source:  "web_search",
+							},
+						},
+					})
+				}
+			}()
+		}
 	case "kb_result":
 		// KB服务回调：知识库查询完成，返回结果
 		s.SendJSON(WSMessage{
