@@ -33,36 +33,46 @@ func (s SessionState) String() string {
 }
 
 type Session struct {
+	// ========== Core Dependencies ==========
 	conn   *websocket.Conn
 	config *cfgpkg.Config
 
+	// ========== Identity ==========
 	SessionID string
 	UserID    string
 
+	// ========== State Management (protected by stateMu) ==========
 	state   SessionState
 	stateMu sync.RWMutex
 
+	// ========== Processing Pipeline ==========
 	pipeline *Pipeline
 	clients  svcclients.ExternalServices
 
+	// ========== Task Management (protected by activeTaskMu) ==========
 	ActiveTaskID     string
 	ViewingPageID    string
 	LastVADTimestamp int64
 	OwnedTasks       map[string]string // task_id → topic
 	activeTaskMu     sync.RWMutex
 
+	// ========== Requirements Collection (protected by reqMu) ==========
 	Requirements *TaskRequirements
 	reqMu        sync.RWMutex
 
+	// ========== Conflict Resolution (protected by pendingQMu) ==========
 	PendingQuestions map[string]string // context_id -> task_id
 	pendingQMu       sync.RWMutex
 
+	// ========== Pipeline Lifecycle (protected by pipelineMu) ==========
 	pipelineCancel context.CancelFunc
 	pipelineMu     sync.Mutex
 
+	// ========== WebSocket Communication ==========
 	// All writes go through this channel to avoid concurrent WS writes
 	writeCh chan writeItem
 
+	// ========== Shutdown Coordination ==========
 	done chan struct{}
 	once sync.Once
 }

@@ -21,39 +21,46 @@ import (
 )
 
 type Pipeline struct {
+	// ========== Core Dependencies ==========
 	session *Session
 	config  *cfgpkg.Config
 	clients svcclients.ExternalServices
 
+	// ========== AI Components ==========
 	asrClient asr.ASRProvider
 	smallLLM  *toolcalling.Agent
 	largeLLM  *toolcalling.Agent
 	ttsClient tts.TTSProvider
 
+	// ========== State Management ==========
 	history  *hist.ConversationHistory
 	adaptive *adaptivepkg.AdaptiveController
 
+	// ========== Audio Streaming (protected by ioMu) ==========
 	audioBuf *audio.AudioBuffer
 	audioCh  chan []byte   // audio data from session → pipeline
 	vadEndCh chan struct{} // signal: user stopped speaking
 	ioMu     sync.RWMutex  // protects audioCh/vadEndCh pointer swaps
 	runMu    sync.Mutex    // ensures only one StartListening runs at a time
 
-	// For interrupt preservation: tracks ALL tokens including <think> content
+	// ========== Token Tracking (protected by tokensMu) ==========
+	// Tracks ALL tokens including <think> content for interrupt preservation
 	rawGeneratedTokens strings.Builder
 	tokensMu           sync.Mutex
 
-	// Draft thinking
+	// ========== Draft Thinking (protected by draftMu) ==========
 	draftCancel   context.CancelFunc
 	draftMu       sync.Mutex
 	draftOutput   strings.Builder // accumulated thinker output across rounds
 	draftOutputMu sync.Mutex
 
+	// ========== Context Queue (protected by pendingMu) ==========
 	contextQueue      chan types.ContextMessage
 	pendingContexts   []types.ContextMessage
 	pendingMu         sync.Mutex
 	highPriorityQueue chan types.ContextMessage
 
+	// ========== Protocol Handling ==========
 	msgBus   *bus.Bus
 	executor *executor.Executor
 	parser   *protocol.Parser
