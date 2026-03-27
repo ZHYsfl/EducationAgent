@@ -16,7 +16,7 @@ func TestPostProcessResponse_ConflictFirst(t *testing.T) {
 	p := agent.NewTestPipeline(s, mock)
 
 	s.AddPendingQuestion("ctx_pp", "task_pp")
-	p.PostProcessResponse(context.Background(), "选A", "用户选A", false)
+	p.PostProcessResponse(context.Background(), "选A", "用户选A")
 
 	calls := agent.WaitForFeedback(mock, 1)
 	if len(calls) != 1 {
@@ -33,13 +33,13 @@ func TestPostProcessResponse_RequirementsMode(t *testing.T) {
 	req.Status = "collecting"
 	s.SetRequirements(req)
 
-	p.PostProcessResponse(context.Background(), "测试", "好的 [REQUIREMENTS_CONFIRMED]", true)
+	p.PostProcessResponse(context.Background(), "测试", "好的")
 
 	s.RLockReqMu()
 	status := s.GetRequirements().Status
 	s.RUnlockReqMu()
-	if status != "confirming" {
-		t.Errorf("status = %q, want confirming", status)
+	if status != "collecting" {
+		t.Errorf("status = %q, want collecting", status)
 	}
 }
 

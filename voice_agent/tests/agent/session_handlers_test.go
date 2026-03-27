@@ -3,7 +3,6 @@ package agent_test
 import (
 	agent "voiceagent/agent"
 	"context"
-	"strings"
 	"testing"
 	"time"
 )
@@ -86,8 +85,8 @@ func TestPrefillFromMemory_FillsEmptyFields(t *testing.T) {
 	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
 	s.PrefillFromMemory(req)
 
-	if !strings.Contains(req.TargetAudience, "数学") {
-		t.Errorf("target_audience = %q, expected to contain 数学", req.TargetAudience)
+	if req.Subject != "数学" {
+		t.Errorf("subject = %q, want 数学", req.Subject)
 	}
 	if req.GlobalStyle != "蓝色" {
 		t.Errorf("global_style = %q, want 蓝色", req.GlobalStyle)
@@ -105,12 +104,12 @@ func TestPrefillFromMemory_DoesNotOverwrite(t *testing.T) {
 	}
 	s := agent.NewTestSession(mock)
 	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
-	req.TargetAudience = "高三学生"
+	req.Subject = "化学"
 	req.GlobalStyle = "绿色"
 	s.PrefillFromMemory(req)
 
-	if req.TargetAudience != "高三学生" {
-		t.Errorf("should not overwrite existing audience, got %q", req.TargetAudience)
+	if req.Subject != "化学" {
+		t.Errorf("should not overwrite existing subject, got %q", req.Subject)
 	}
 	if req.GlobalStyle != "绿色" {
 		t.Errorf("should not overwrite existing style, got %q", req.GlobalStyle)

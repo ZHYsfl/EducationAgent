@@ -125,20 +125,61 @@ func (s *Session) prefillFromMemory(req *TaskRequirements) {
 	if err != nil {
 		return
 	}
-	if profile.Subject != "" && req.TargetAudience == "" {
-		req.TargetAudience = profile.Subject + "专业学生"
-	}
-	if style, ok := profile.VisualPreferences["color_scheme"]; ok && req.GlobalStyle == "" {
-		req.GlobalStyle = style
-	}
-}
 
-func (s *Session) createPPTFromRequirements() {
-	s.reqMu.RLock()
-	reqRef := s.Requirements
-	req := CloneTaskRequirements(reqRef)
-	s.reqMu.RUnlock()
-	s.createPPTFromSnapshot(reqRef, req)
+	// Direct field mappings
+	if profile.Subject != "" && req.Subject == "" {
+		req.Subject = profile.Subject
+	}
+	if profile.TeachingStyle != "" && req.GlobalStyle == "" {
+		req.GlobalStyle = profile.TeachingStyle
+	}
+	if profile.ContentDepth != "" && req.AdditionalNotes == "" {
+		req.AdditionalNotes = "内容深度: " + profile.ContentDepth
+	}
+	if profile.School != "" && req.TargetAudience == "" {
+		req.TargetAudience = profile.School
+	}
+	if profile.HistorySummary != "" {
+		if req.AdditionalNotes == "" {
+			req.AdditionalNotes = profile.HistorySummary
+		} else {
+			req.AdditionalNotes += "\n" + profile.HistorySummary
+		}
+	}
+
+	// VisualPreferences mapping
+	for key, value := range profile.VisualPreferences {
+		if value == "" {
+			continue
+		}
+		switch key {
+		case "color_scheme":
+			if req.GlobalStyle == "" {
+				req.GlobalStyle = value
+			}
+		case "layout_style":
+			if req.InteractionDesign == "" {
+				req.InteractionDesign = value
+			}
+		}
+	}
+
+	// General Preferences mapping
+	for key, value := range profile.Preferences {
+		if value == "" {
+			continue
+		}
+		switch key {
+		case "default_duration":
+			if req.Duration == "" {
+				req.Duration = value
+			}
+		case "interaction_level":
+			if req.InteractionDesign == "" {
+				req.InteractionDesign = value
+			}
+		}
+	}
 }
 
 func (s *Session) createPPTFromSnapshot(reqRef, req *TaskRequirements) {

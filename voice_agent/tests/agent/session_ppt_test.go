@@ -2,57 +2,11 @@ package agent_test
 
 import (
 	agent "voiceagent/agent"
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 )
-
-// ===========================================================================
-// createPPTFromRequirements
-// ===========================================================================
-
-func TestCreatePPTFromRequirements(t *testing.T) {
-	mock := &agent.MockServices{
-		InitPPTFn: func(ctx context.Context, req agent.PPTInitRequest) (agent.PPTInitResponse, error) {
-			return agent.PPTInitResponse{TaskID: "task_created_001"}, nil
-		},
-	}
-	s := agent.NewTestSession(mock)
-	_ = agent.NewTestPipelineWithTTS(s, mock)
-	req := makeFullRequirements()
-	req.SessionID = s.SessionID
-	req.UserID = s.UserID
-	s.SetRequirements(req)
-
-	agent.RegisterSession(s)
-	defer agent.UnregisterSession(s)
-
-	s.CreatePPTFromRequirements()
-
-	if !s.OwnsTask("task_created_001") {
-		t.Error("should own the created task")
-	}
-	if s.GetActiveTask() != "task_created_001" {
-		t.Error("should set active task")
-	}
-
-	msgs := agent.DrainWriteCh(s)
-	found, ok := agent.FindWSMessage(msgs, "task_created")
-	if !ok {
-		t.Fatal("expected task_created message")
-	}
-	if found.TaskID != "task_created_001" {
-		t.Error("task_id mismatch in WS message")
-	}
-
-	s.RLockReqMu()
-	if s.GetRequirements().Status != "generating" {
-		t.Errorf("status = %q, want generating", s.GetRequirements().Status)
-	}
-	s.RUnlockReqMu()
-}
 
 // ===========================================================================
 // onVADStart state transitions
