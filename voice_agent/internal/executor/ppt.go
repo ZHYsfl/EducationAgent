@@ -66,8 +66,16 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 		return "Error: PPT service not available"
 	}
 
+	taskID := params["task"]
+	if taskID == "" {
+		taskID = sessionCtx.ActiveTaskID
+	}
+	if taskID == "" {
+		return "Error: 无法确定要修改的任务，请明确指定"
+	}
+
 	req := types.PPTFeedbackRequest{
-		TaskID:        sessionCtx.ActiveTaskID,
+		TaskID:        taskID,
 		BaseTimestamp: sessionCtx.BaseTimestamp,
 		ViewingPageID: sessionCtx.ViewingPageID,
 		RawText:       params["raw_text"],
