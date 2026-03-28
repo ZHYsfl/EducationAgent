@@ -28,7 +28,7 @@ func TestOnInterrupt_RaceCondition(t *testing.T) {
 			case <-ctx.Done():
 				return
 			default:
-				p.AppendRawToken("token")
+				p.WriteRawTokens("token")
 				time.Sleep(time.Millisecond)
 			}
 		}

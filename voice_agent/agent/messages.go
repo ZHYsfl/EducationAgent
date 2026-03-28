@@ -7,10 +7,12 @@ type WSMessage struct {
 	State string `json:"state,omitempty"`
 
 	// 任务相关
-	TaskID   string `json:"task_id,omitempty"`
-	Topic    string `json:"topic,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Progress int    `json:"progress,omitempty"`
+	TaskID       string            `json:"task_id,omitempty"`
+	Topic        string            `json:"topic,omitempty"`
+	Status       string            `json:"status,omitempty"`
+	Progress     int               `json:"progress,omitempty"`
+	ActiveTaskID string            `json:"active_task_id,omitempty"`
+	Tasks        map[string]string `json:"tasks,omitempty"` // task_id -> topic
 
 	// 页面相关
 	PageID    string `json:"page_id,omitempty"`

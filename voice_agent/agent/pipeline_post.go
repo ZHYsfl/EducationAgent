@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"voiceagent/internal/protocol"
 )
 
 func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
@@ -84,7 +86,7 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	log.Printf("[pipeline] requirements updated: %v", updates)
 }
 
-func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse string) bool {
+func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, actions []protocol.Action) bool {
 	if p.clients == nil {
 		return false
 	}
@@ -95,39 +97,47 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse s
 		return false
 	}
 
-	var contextID, taskID string
+	var contextID string
+	var pq PendingQuestion
 	if pendingCount == 1 {
-		for cid, tid := range p.session.PendingQuestions {
+		for cid, q := range p.session.PendingQuestions {
 			contextID = cid
-			taskID = tid
+			pq = q
 		}
 	} else {
-		contextID = p.extractContextIDFromResponse(llmResponse)
-		if contextID != "" {
-			taskID = p.session.PendingQuestions[contextID]
+		// 从 actions 中查找 resolve_conflict
+		for _, action := range actions {
+			if action.Type == "resolve_conflict" {
+				contextID = action.Params["context_id"]
+				if contextID != "" {
+					pq = p.session.PendingQuestions[contextID]
+					break
+				}
+			}
 		}
-		if contextID == "" || taskID == "" {
-			for cid, tid := range p.session.PendingQuestions {
+		// 如果没找到，使用第一个
+		if contextID == "" || pq.TaskID == "" {
+			for cid, q := range p.session.PendingQuestions {
 				contextID = cid
-				taskID = tid
+				pq = q
 				break
 			}
 		}
 	}
 	p.session.pendingQMu.RUnlock()
 
-	if _, ok := p.session.ResolvePendingQuestion(contextID); !ok {
+	if resolved, ok := p.session.ResolvePendingQuestion(contextID); !ok {
 		return false
+	} else {
+		pq = resolved
 	}
-	log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, taskID)
+	log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, pq.TaskID)
 
-	viewingPageID := p.session.GetViewingPageID()
-	baseTS := p.session.GetLastVADTimestamp()
 	go func() {
 		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
-			TaskID:        taskID,
-			BaseTimestamp: baseTS,
-			ViewingPageID: viewingPageID,
+			TaskID:        pq.TaskID,
+			BaseTimestamp: pq.BaseTimestamp,
+			ViewingPageID: pq.PageID,
 			RawText:       userText,
 			Intents:       nil, // PPT Agent 负责解析
 		}); err != nil {
@@ -137,33 +147,33 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText, llmResponse s
 	return true
 }
 
-func (p *Pipeline) extractContextIDFromResponse(text string) string {
-	marker := "[RESOLVE_CONFLICT:"
-	idx := strings.Index(text, marker)
-	if idx < 0 {
-		return ""
-	}
-	rest := text[idx+len(marker):]
-	end := strings.Index(rest, "]")
-	if end < 0 {
-		return ""
-	}
-	return strings.TrimSpace(rest[:end])
-}
-
 func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
 	if p.clients == nil || (userText == "" && assistantText == "") {
 		return
 	}
+
+	p.session.memoryMu.Lock()
+	messages := p.history.Messages()
+	startIdx := p.session.lastMemoryExtractIndex
+	endIdx := len(messages)
+
+	if startIdx >= endIdx {
+		p.session.memoryMu.Unlock()
+		return
+	}
+
+	// 只提取新增的对话
+	newMessages := messages[startIdx:endIdx]
+	turns := make([]ConversationTurn, 0, len(newMessages))
+	for _, msg := range newMessages {
+		turns = append(turns, ConversationTurn{Role: msg.Role, Content: msg.Content})
+	}
+
+	p.session.lastMemoryExtractIndex = endIdx
+	p.session.memoryMu.Unlock()
+
 	sessionID := p.session.SessionID
 	userID := p.session.UserID
-	turns := make([]ConversationTurn, 0, 2)
-	if userText != "" {
-		turns = append(turns, ConversationTurn{Role: "user", Content: userText})
-	}
-	if assistantText != "" {
-		turns = append(turns, ConversationTurn{Role: "assistant", Content: assistantText})
-	}
 	go func() {
 		if _, err := p.clients.ExtractMemory(context.Background(), MemoryExtractRequest{
 			UserID:    userID,
@@ -207,12 +217,12 @@ func (p *Pipeline) buildPendingQuestionsContext() string {
 	var sb strings.Builder
 	sb.WriteString("\n\n[系统提示 - 待回答的冲突问题]\n")
 	sb.WriteString("以下是 PPT Agent 提出的需要用户确认的问题，请判断用户是否在回答这些问题：\n")
-	for cid, tid := range p.session.PendingQuestions {
-		sb.WriteString(fmt.Sprintf("- context_id=%s, task_id=%s\n", cid, tid))
+	for cid, pq := range p.session.PendingQuestions {
+		sb.WriteString(fmt.Sprintf("- context_id=%s, task_id=%s\n  问题: %s\n", cid, pq.TaskID, pq.QuestionText))
 	}
 	if len(p.session.PendingQuestions) > 1 {
-		sb.WriteString("\n有多个待确认问题，请在回复末尾标注你判断用户回答的是哪个问题：")
-		sb.WriteString("[RESOLVE_CONFLICT:context_id值]\n")
+		sb.WriteString("\n有多个待确认问题，请使用动作标记指定：")
+		sb.WriteString("@{resolve_conflict|context_id:xxx}\n")
 	}
 	return sb.String()
 }

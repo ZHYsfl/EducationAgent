@@ -10,6 +10,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type PendingQuestion struct {
+	TaskID        string
+	PageID        string
+	BaseTimestamp int64
+	QuestionText  string
+}
+
 type SessionState int
 
 const (
@@ -63,8 +70,12 @@ type Session struct {
 	reqMu        sync.RWMutex
 
 	// ========== Conflict Resolution (protected by pendingQMu) ==========
-	PendingQuestions map[string]string // context_id -> task_id
+	PendingQuestions map[string]PendingQuestion // context_id -> PendingQuestion
 	pendingQMu       sync.RWMutex
+
+	// ========== Memory Extraction ==========
+	lastMemoryExtractIndex int // 上次提取记忆时的对话索引
+	memoryMu               sync.Mutex
 
 	// ========== Pipeline Lifecycle (protected by pipelineMu) ==========
 	pipelineCancel context.CancelFunc

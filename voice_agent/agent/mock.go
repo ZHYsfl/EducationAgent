@@ -177,7 +177,7 @@ func NewTestSession(clients ExternalServices) *Session {
 		done:             make(chan struct{}),
 		clients:          clients,
 		OwnedTasks:       make(map[string]string),
-		PendingQuestions: make(map[string]string),
+		PendingQuestions: make(map[string]PendingQuestion),
 	}
 	return s
 }

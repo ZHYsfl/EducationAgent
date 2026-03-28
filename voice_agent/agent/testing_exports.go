@@ -9,10 +9,9 @@ package agent
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"toolcalling"
-	"voiceagent/internal/asr"
+	"voiceagent/internal/protocol"
 )
 
 // ---------------------------------------------------------------------------
@@ -24,19 +23,15 @@ func (p *Pipeline) StartProcessing(ctx context.Context, userText string) {
 	p.startProcessing(ctx, userText)
 }
 
-// StartDraftThinking calls the unexported startDraftThinking method.
-func (p *Pipeline) StartDraftThinking(ctx context.Context, partialText string) {
-	p.startDraftThinking(ctx, partialText)
-}
 
 // PostProcessResponse calls the unexported postProcessResponse method.
-func (p *Pipeline) PostProcessResponse(ctx context.Context, userText, llmResponse string) {
-	p.postProcessResponse(ctx, userText, llmResponse)
+func (p *Pipeline) PostProcessResponse(ctx context.Context, userText, llmResponse string, actions []protocol.Action) {
+	p.postProcessResponse(ctx, userText, llmResponse, actions)
 }
 
 // TryResolveConflict calls the unexported tryResolveConflict method.
-func (p *Pipeline) TryResolveConflict(ctx context.Context, userText, llmResponse string) bool {
-	return p.tryResolveConflict(ctx, userText, llmResponse)
+func (p *Pipeline) TryResolveConflict(ctx context.Context, userText string, actions []protocol.Action) bool {
+	return p.tryResolveConflict(ctx, userText, actions)
 }
 
 // BuildTaskListContext calls the unexported buildTaskListContext method.
@@ -54,12 +49,6 @@ func (p *Pipeline) DrainContextQueue() []ContextMessage {
 	return p.drainContextQueue()
 }
 
-// DrainASRResults calls the unexported drainASRResults method.
-func (p *Pipeline) DrainASRResults(ctx context.Context, ch <-chan asr.ASRResult, partialTexts *[]string, finalText *string, timeout time.Duration) {
-	p.drainASRResults(ctx, ch, partialTexts, finalText, timeout)
-}
-
-
 // AsyncExtractMemory calls the unexported asyncExtractMemory method.
 func (p *Pipeline) AsyncExtractMemory(userText, assistantText string) {
 	p.asyncExtractMemory(userText, assistantText)
@@ -70,43 +59,12 @@ func (p *Pipeline) HighPriorityListener(ctx context.Context) {
 	p.highPriorityListener(ctx)
 }
 
-
-// GetDraftOutput calls the unexported getDraftOutput method.
-func (p *Pipeline) GetDraftOutput() string {
-	return p.getDraftOutput()
-}
-
-// AppendDraftOutput calls the unexported appendDraftOutput method.
-func (p *Pipeline) AppendDraftOutput(token string) {
-	p.appendDraftOutput(token)
-}
-
-// ResetDraftOutput calls the unexported resetDraftOutput method.
-func (p *Pipeline) ResetDraftOutput() {
-	p.resetDraftOutput()
-}
-
-// ExtractContextIDFromResponse calls the unexported extractContextIDFromResponse method.
-func (p *Pipeline) ExtractContextIDFromResponse(text string) string {
-	return p.extractContextIDFromResponse(text)
-}
-
 // TTSWorker calls the unexported ttsWorker method.
 func (p *Pipeline) TTSWorker(ctx context.Context, sentenceCh <-chan string) {
 	p.ttsWorker(ctx, sentenceCh)
 }
 
-// CancelDraft calls the unexported cancelDraft method.
-func (p *Pipeline) CancelDraft() {
-	p.cancelDraft()
-}
 
-// AppendRawToken appends a token to rawGeneratedTokens (for testing race conditions).
-func (p *Pipeline) AppendRawToken(token string) {
-	p.tokensMu.Lock()
-	p.rawGeneratedTokens.WriteString(token)
-	p.tokensMu.Unlock()
-}
 
 // EnqueueContextMessage calls the unexported enqueueContextMessage method.
 func (p *Pipeline) EnqueueContextMessage(ctx context.Context, msg ContextMessage) {

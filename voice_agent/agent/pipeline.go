@@ -47,11 +47,14 @@ type Pipeline struct {
 	rawGeneratedTokens strings.Builder
 	tokensMu           sync.Mutex
 
-	// ========== Draft Thinking (protected by draftMu) ==========
-	draftCancel   context.CancelFunc
-	draftMu       sync.Mutex
-	draftOutput   strings.Builder // accumulated thinker output across rounds
-	draftOutputMu sync.Mutex
+	// ========== O/T/A Concurrent Channels ==========
+	userInputCh chan string // ASR → Think
+	tokenCh     chan string // Think → Output
+	sentenceCh  chan string // Output → TTS
+
+	// ========== Think Stream Control ==========
+	thinkCancel   context.CancelFunc
+	thinkCancelMu sync.Mutex
 
 	// ========== Context Queue (protected by pendingMu) ==========
 	contextQueue      chan types.ContextMessage
@@ -236,25 +239,11 @@ func (p *Pipeline) SetPendingContexts(msgs []types.ContextMessage) {
 	p.pendingMu.Unlock()
 }
 
-// GetDraftCancel returns the draft cancel func.
-func (p *Pipeline) GetDraftCancel() context.CancelFunc {
-	p.draftMu.Lock()
-	defer p.draftMu.Unlock()
-	return p.draftCancel
-}
-
-// SetDraftCancel sets the draft cancel func.
-func (p *Pipeline) SetDraftCancel(c context.CancelFunc) {
-	p.draftMu.Lock()
-	defer p.draftMu.Unlock()
-	p.draftCancel = c
-}
-
 func (p *Pipeline) OnInterrupt() {
-	// 先取消流式处理，确保不再有新 token 写入
-	p.cancelDraft()
+	// 立即取消当前思考流
+	p.cancelThinkStream()
 
-	// 然后读取并保存已生成的内容
+	// 读取并保存已生成的内容
 	p.tokensMu.Lock()
 	raw := p.rawGeneratedTokens.String()
 	p.rawGeneratedTokens.Reset()

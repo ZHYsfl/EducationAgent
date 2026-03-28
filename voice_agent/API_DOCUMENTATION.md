@@ -1319,6 +1319,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
     "msg_type": "conflict_question",
     "page_id": "page_005",
     "context_id": "ctx_abc123",
+    "base_timestamp": "1234567890",
     "tts_text": "第5页有两个标题，您想保留哪一个？"
   }'
 ```

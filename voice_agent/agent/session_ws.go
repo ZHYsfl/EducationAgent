@@ -38,7 +38,7 @@ func (s *Session) onVADStart() {
 	case StateIdle:
 		s.SetState(StateListening)
 		ctx := s.newPipelineContext()
-		go s.pipeline.StartListening(ctx)
+		go s.pipeline.StartInteractive(ctx)
 
 	case StateProcessing, StateSpeaking:
 		// User interrupts — preserve history, start new listening
@@ -46,7 +46,7 @@ func (s *Session) onVADStart() {
 		s.cancelCurrentPipeline()
 		s.SetState(StateListening)
 		ctx := s.newPipelineContext()
-		go s.pipeline.StartListening(ctx)
+		go s.pipeline.StartInteractive(ctx)
 	}
 }
 
@@ -119,35 +119,63 @@ func (s *Session) GetViewingPageID() string {
 	return s.ViewingPageID
 }
 
-func (s *Session) AddPendingQuestion(contextID, taskID string) {
+func (s *Session) AddPendingQuestion(contextID, taskID, pageID string, baseTimestamp int64, questionText string) {
 	if contextID == "" {
 		return
 	}
 	s.pendingQMu.Lock()
-	s.PendingQuestions[contextID] = taskID
+	s.PendingQuestions[contextID] = PendingQuestion{
+		TaskID:        taskID,
+		PageID:        pageID,
+		BaseTimestamp: baseTimestamp,
+		QuestionText:  questionText,
+	}
 	s.pendingQMu.Unlock()
 }
 
-func (s *Session) ResolvePendingQuestion(contextID string) (string, bool) {
+func (s *Session) ResolvePendingQuestion(contextID string) (PendingQuestion, bool) {
 	s.pendingQMu.Lock()
 	defer s.pendingQMu.Unlock()
-	taskID, ok := s.PendingQuestions[contextID]
+	pq, ok := s.PendingQuestions[contextID]
 	if ok {
 		delete(s.PendingQuestions, contextID)
 	}
-	return taskID, ok
+	return pq, ok
 }
 
 func (s *Session) SetActiveTask(taskID string) {
 	s.activeTaskMu.Lock()
 	s.ActiveTaskID = taskID
+	tasks := make(map[string]string)
+	for k, v := range s.OwnedTasks {
+		tasks[k] = v
+	}
 	s.activeTaskMu.Unlock()
+
+	// 通知前端任务列表和活跃任务
+	s.SendJSON(WSMessage{
+		Type:         "task_list_update",
+		ActiveTaskID: taskID,
+		Tasks:        tasks,
+	})
 }
 
 func (s *Session) RegisterTask(taskID, topic string) {
 	s.activeTaskMu.Lock()
 	s.OwnedTasks[taskID] = topic
+	tasks := make(map[string]string)
+	for k, v := range s.OwnedTasks {
+		tasks[k] = v
+	}
+	activeTaskID := s.ActiveTaskID
 	s.activeTaskMu.Unlock()
+
+	// 通知前端任务列表更新
+	s.SendJSON(WSMessage{
+		Type:         "task_list_update",
+		ActiveTaskID: activeTaskID,
+		Tasks:        tasks,
+	})
 }
 
 func (s *Session) OwnsTask(taskID string) bool {
