@@ -74,6 +74,46 @@ func TestTryResolveConflict_MultiplePending_WithMarker(t *testing.T) {
 	}
 }
 
+func TestTryResolveConflict_MultiplePending_MultipleActions(t *testing.T) {
+	mock := &agent.MockServices{}
+	s := agent.NewTestSession(mock)
+	p := agent.NewTestPipeline(s, mock)
+
+	s.AddPendingQuestion("ctx_a", "task_1", "pg1", 1000, "question 1")
+	s.AddPendingQuestion("ctx_b", "task_2", "pg2", 2000, "question 2")
+
+	actions := []protocol.Action{
+		{Type: "resolve_conflict", Params: map[string]string{"context_id": "ctx_a"}},
+		{Type: "resolve_conflict", Params: map[string]string{"context_id": "ctx_b"}},
+	}
+	resolved := p.TryResolveConflict(context.Background(), "第一个选A，第二个选B", actions)
+	if !resolved {
+		t.Error("should resolve both conflicts")
+	}
+
+	calls := agent.WaitForFeedback(mock, 2)
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 feedbacks, got %d", len(calls))
+	}
+
+	// 验证两个冲突都被处理
+	taskIDs := map[string]bool{}
+	for _, call := range calls {
+		taskIDs[call.TaskID] = true
+	}
+	if !taskIDs["task_1"] || !taskIDs["task_2"] {
+		t.Errorf("should resolve both task_1 and task_2, got %v", taskIDs)
+	}
+
+	// 验证两个问题都被移除
+	if _, ok := s.ResolvePendingQuestion("ctx_a"); ok {
+		t.Error("ctx_a should have been consumed")
+	}
+	if _, ok := s.ResolvePendingQuestion("ctx_b"); ok {
+		t.Error("ctx_b should have been consumed")
+	}
+}
+
 func TestTryResolveConflict_NoPending(t *testing.T) {
 	mock := &agent.MockServices{}
 	s := agent.NewTestSession(mock)

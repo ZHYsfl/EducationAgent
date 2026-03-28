@@ -13,10 +13,6 @@ import (
 func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.SetState(StateProcessing)
 
-	// Grab accumulated thinker output before clearing
-	previousThought := p.getDraftOutput()
-	p.resetDraftOutput()
-
 	p.history.AddUser(userText)
 
 	contextMsgs := p.drainContextQueue()
@@ -84,9 +80,6 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 `
 
 	log.Printf("Processing user input: %s", truncate(userText, 100))
-	if previousThought != "" {
-		log.Printf("With %d chars of pre-thinking", len(previousThought))
-	}
 
 	// Send user text to browser for display
 	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
@@ -102,12 +95,13 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	}()
 
 	// Stream tokens from Large LLM
-	messages := p.history.ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt)
+	messages := p.history.ToOpenAIWithThoughtAndPrompt("", systemPrompt)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
 
 	totalTokens := 0
 	var sentenceBuf strings.Builder
 	var allTokens strings.Builder
+	var allActions []protocol.Action
 	firstSentenceSent := false
 	nextFillerAt := p.config.TokenBudget
 	fillerCount := 0
@@ -139,6 +133,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 		// Parse actions from the accumulated buffer
 		result := p.parser.Feed(token)
+
+		// Accumulate actions
+		allActions = append(allActions, result.Actions...)
 
 		// Execute any detected actions asynchronously
 		for _, action := range result.Actions {
@@ -243,7 +240,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 			p.history.AddAssistant(finalText)
 		}
 
-		p.postProcessResponse(ctx, userText, finalText)
+		p.postProcessResponse(ctx, userText, finalText, allActions)
 		p.asyncExtractMemory(userText, finalText)
 
 		p.session.SetState(StateIdle)
@@ -253,10 +250,216 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.adaptive.Save(p.config.AdaptiveSizesFile)
 }
 
-func (p *Pipeline) postProcessResponse(ctx context.Context, userText, llmResponse string) {
-	if p.tryResolveConflict(ctx, userText, llmResponse) {
+func (p *Pipeline) postProcessResponse(ctx context.Context, userText, _ string, actions []protocol.Action) {
+	if p.tryResolveConflict(ctx, userText, actions) {
 		return
 	}
 
 	// Tool calling 已在流式输出过程中自动处理
+}
+
+// ---------------------------------------------------------------------------
+// O/T/A Concurrent Loops
+// ---------------------------------------------------------------------------
+
+func (p *Pipeline) thinkLoop(ctx context.Context) {
+	var lastThinkLen int
+	var isWarmup bool = true
+
+	for {
+		select {
+		case userInput := <-p.userInputCh:
+			inputLen := len([]rune(userInput))
+
+			// 前7字：预热 KV-cache（抛弃输出）
+			if inputLen < 7 {
+				p.cancelThinkStream()
+				streamCtx, cancel := context.WithCancel(ctx)
+				p.setThinkCancel(cancel)
+				isWarmup = true
+				go p.runThinkStream(streamCtx, userInput, true)
+				lastThinkLen = inputLen
+				continue
+			}
+
+			// >= 7字：开始保留输出
+			if isWarmup {
+				p.cancelThinkStream()
+				streamCtx, cancel := context.WithCancel(ctx)
+				p.setThinkCancel(cancel)
+				isWarmup = false
+				go p.runThinkStream(streamCtx, userInput, false)
+				lastThinkLen = inputLen
+				continue
+			}
+
+			// 递增间隔 (7, 14, 21, 28...)
+			threshold := ((lastThinkLen / 7) + 1) * 7
+			if inputLen >= threshold {
+				p.cancelThinkStream()
+				streamCtx, cancel := context.WithCancel(ctx)
+				p.setThinkCancel(cancel)
+				go p.runThinkStream(streamCtx, userInput, false)
+				lastThinkLen = inputLen
+			}
+
+		case <-ctx.Done():
+			p.cancelThinkStream()
+			return
+		}
+	}
+}
+
+func (p *Pipeline) setThinkCancel(cancel context.CancelFunc) {
+	p.thinkCancelMu.Lock()
+	p.thinkCancel = cancel
+	p.thinkCancelMu.Unlock()
+}
+
+func (p *Pipeline) cancelThinkStream() {
+	p.thinkCancelMu.Lock()
+	if p.thinkCancel != nil {
+		p.thinkCancel()
+		p.thinkCancel = nil
+	}
+	p.thinkCancelMu.Unlock()
+}
+
+func (p *Pipeline) runThinkStream(ctx context.Context, userInput string, warmup bool) {
+	p.history.AddUser(userInput)
+
+	contextMsgs := p.drainContextQueue()
+	systemPrompt := p.buildSystemPrompt(contextMsgs)
+
+	messages := p.history.ToOpenAIWithThoughtAndPrompt("", systemPrompt)
+	tokenCh := p.largeLLM.StreamChat(ctx, messages)
+
+	for token := range tokenCh {
+		if warmup {
+			// 预热阶段：抛弃输出，只为了预热 KV-cache
+			continue
+		}
+		select {
+		case p.tokenCh <- token:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (p *Pipeline) buildSystemPrompt(contextMsgs []ContextMessage) string {
+	contextPrompt := FormatContextForLLM(contextMsgs)
+	systemPrompt := p.config.SystemPrompt
+
+	p.session.reqMu.RLock()
+	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
+	p.session.reqMu.RUnlock()
+
+	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "confirming") {
+		var profile *UserProfile
+		if p.clients != nil {
+			if pInfo, err := p.clients.GetUserProfile(context.Background(), reqSnapshot.UserID); err == nil {
+				profile = &pInfo
+			}
+		}
+		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
+	}
+
+	taskListContext := p.buildTaskListContext()
+	if taskListContext != "" {
+		systemPrompt += taskListContext
+	}
+
+	pendingQContext := p.buildPendingQuestionsContext()
+	if pendingQContext != "" {
+		systemPrompt += pendingQContext
+	}
+
+	if contextPrompt != "" {
+		systemPrompt += contextPrompt
+	}
+
+	systemPrompt += `
+
+## 动作协议
+执行操作时使用: @{type|key:value|key:value}
+内部思考使用: #{思考内容}（可选，不显示给用户）
+
+支持的动作:
+- update_requirements: @{update_requirements|字段:值}
+- ppt_init: @{ppt_init|topic:主题|desc:描述}
+- ppt_mod: @{ppt_mod|task:任务ID|raw_text:用户原话}
+- kb_query: @{kb_query|query:查询内容}
+- web_search: @{web_search|query:搜索关键词}
+`
+
+	return systemPrompt
+}
+
+func (p *Pipeline) outputLoop(ctx context.Context) {
+	var sentenceBuf strings.Builder
+
+	for {
+		select {
+		case token := <-p.tokenCh:
+			result := p.parser.Feed(token)
+
+			// 执行动作
+			for _, action := range result.Actions {
+				go p.executeAction(ctx, action)
+			}
+
+			// 累积可见文本
+			if result.VisibleText != "" {
+				sentenceBuf.WriteString(result.VisibleText)
+				p.session.SendJSON(WSMessage{Type: "response", Text: result.VisibleText})
+
+				if isSentenceEnd(result.VisibleText) {
+					sentence := sentenceBuf.String()
+					sentenceBuf.Reset()
+
+					select {
+					case p.sentenceCh <- sentence:
+					case <-ctx.Done():
+						return
+					}
+
+					if p.session.GetState() != StateSpeaking {
+						p.session.SetState(StateSpeaking)
+					}
+				}
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (p *Pipeline) executeAction(_ context.Context, action protocol.Action) {
+	reqs := p.session.GetRequirements()
+	if reqs == nil {
+		reqs = &TaskRequirements{}
+	}
+	sessionCtx := executor.SessionContext{
+		UserID:            p.session.UserID,
+		SessionID:         p.session.SessionID,
+		ActiveTaskID:      p.session.ActiveTaskID,
+		ViewingPageID:     p.session.ViewingPageID,
+		BaseTimestamp:     p.session.LastVADTimestamp,
+		Topic:             reqs.Topic,
+		Subject:           reqs.Subject,
+		TotalPages:        reqs.TotalPages,
+		Audience:          reqs.TargetAudience,
+		GlobalStyle:       reqs.GlobalStyle,
+		KnowledgePoints:   reqs.KnowledgePoints,
+		TeachingGoals:     reqs.TeachingGoals,
+		TeachingLogic:     reqs.TeachingLogic,
+		KeyDifficulties:   reqs.KeyDifficulties,
+		Duration:          reqs.Duration,
+		InteractionDesign: reqs.InteractionDesign,
+		OutputFormats:     reqs.OutputFormats,
+		ReferenceFiles:    reqs.ReferenceFiles,
+	}
+	p.executor.Execute(action, sessionCtx, p.EnqueueContext)
 }

@@ -97,54 +97,50 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 		return false
 	}
 
-	var contextID string
-	var pq PendingQuestion
+	var contextIDs []string
 	if pendingCount == 1 {
-		for cid, q := range p.session.PendingQuestions {
-			contextID = cid
-			pq = q
+		for cid := range p.session.PendingQuestions {
+			contextIDs = append(contextIDs, cid)
 		}
 	} else {
-		// 从 actions 中查找 resolve_conflict
+		// 从 actions 中收集所有 resolve_conflict
 		for _, action := range actions {
 			if action.Type == "resolve_conflict" {
-				contextID = action.Params["context_id"]
-				if contextID != "" {
-					pq = p.session.PendingQuestions[contextID]
-					break
+				contextID := action.Params["context_id"]
+				if contextID != "" && p.session.PendingQuestions[contextID].TaskID != "" {
+					contextIDs = append(contextIDs, contextID)
 				}
 			}
 		}
 		// 如果没找到，使用第一个
-		if contextID == "" || pq.TaskID == "" {
-			for cid, q := range p.session.PendingQuestions {
-				contextID = cid
-				pq = q
+		if len(contextIDs) == 0 {
+			for cid := range p.session.PendingQuestions {
+				contextIDs = append(contextIDs, cid)
 				break
 			}
 		}
 	}
 	p.session.pendingQMu.RUnlock()
 
-	if resolved, ok := p.session.ResolvePendingQuestion(contextID); !ok {
-		return false
-	} else {
-		pq = resolved
-	}
-	log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, pq.TaskID)
-
-	go func() {
-		if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
-			TaskID:        pq.TaskID,
-			BaseTimestamp: pq.BaseTimestamp,
-			ViewingPageID: pq.PageID,
-			RawText:       userText,
-			Intents:       nil, // PPT Agent 负责解析
-		}); err != nil {
-			log.Printf("[pipeline] SendFeedback resolve_conflict failed: %v", err)
+	// 处理所有标记的冲突
+	for _, contextID := range contextIDs {
+		if resolved, ok := p.session.ResolvePendingQuestion(contextID); ok {
+			log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, resolved.TaskID)
+			pq := resolved
+			go func() {
+				if err := p.clients.SendFeedback(context.Background(), PPTFeedbackRequest{
+					TaskID:        pq.TaskID,
+					BaseTimestamp: pq.BaseTimestamp,
+					ViewingPageID: pq.PageID,
+					RawText:       userText,
+					Intents:       nil,
+				}); err != nil {
+					log.Printf("[pipeline] SendFeedback resolve_conflict failed: %v", err)
+				}
+			}()
 		}
-	}()
-	return true
+	}
+	return len(contextIDs) > 0
 }
 
 func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
