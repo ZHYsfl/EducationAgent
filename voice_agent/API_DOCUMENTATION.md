@@ -46,18 +46,19 @@ Voice Agent 作为客户端，需要调用以下外部服务的接口。
   "user_id": "string",           // 必填，用户ID
   "session_id": "string",        // 必填，会话ID
   "topic": "string",             // 必填，课程主题
+  "subject": "string",           // 必填，学科
   "description": "string",       // 必填，详细描述（包含教学目标、知识点等结构化信息）
   "total_pages": 0,              // 必填，期望页数，整数，>0
   "audience": "string",          // 必填，目标受众
   "global_style": "string",      // 必填，全局风格
-  "teaching_elements": {         // 可选，教学元素
-    "knowledge_points": ["string"],      // 可选，知识点列表
-    "teaching_goals": ["string"],        // 可选，教学目标列表
-    "teaching_logic": "string",          // 可选，讲授逻辑
-    "key_difficulties": ["string"],      // 可选，重点难点列表
-    "duration": "string",                // 可选，课时长度，如 "45分钟"
-    "interaction_design": "string",      // 可选，互动设计
-    "output_formats": ["string"]         // 可选，输出格式列表，如 ["pptx", "pdf"]
+  "teaching_elements": {         // 必填，教学元素
+    "knowledge_points": ["string"],      // 必填，知识点列表
+    "teaching_goals": ["string"],        // 必填，教学目标列表
+    "teaching_logic": "string",          // 必填，讲授逻辑
+    "key_difficulties": ["string"],      // 必填，重点难点列表
+    "duration": "string",                // 必填，课时长度，如 "45分钟"
+    "interaction_design": "string",      // 必填，互动设计
+    "output_formats": ["string"]         // 必填，输出格式列表，如 ["pptx", "pdf"]
   },
   "reference_files": [           // 可选，参考文件列表
     {
