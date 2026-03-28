@@ -273,8 +273,3 @@ func (s *Session) GetClients() ExternalServices {
 func (s *Session) GetConfig() *Config {
 	return s.config
 }
-
-// PrefillFromMemory calls the unexported prefillFromMemory method.
-func (s *Session) PrefillFromMemory(req *TaskRequirements) {
-	s.prefillFromMemory(req)
-}
