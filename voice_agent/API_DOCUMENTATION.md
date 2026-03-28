@@ -971,7 +971,23 @@ Voice Agent 对外提供以下接口供其他系统调用。
 }
 ```
 
-**5. 音频数据**
+**5. 添加参考文件**
+
+```json
+{
+  "type": "add_reference_files",
+  "files": [                     // 必填，文件列表（支持单个或多个）
+    {
+      "file_id": "string",       // 必填，文件ID（从上传接口获取）
+      "file_url": "string",      // 必填，文件URL
+      "file_type": "string",     // 必填，文件类型，如 "pdf", "docx", "pptx"
+      "instruction": "string"    // 可选，使用说明
+    }
+  ]
+}
+```
+
+**6. 音频数据**
 
 - 消息类型：二进制（Binary）
 - 格式：PCM 16kHz 16bit 单声道

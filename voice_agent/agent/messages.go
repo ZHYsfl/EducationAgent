@@ -43,6 +43,14 @@ type WSMessage struct {
 	Confirmed       *bool             `json:"confirmed,omitempty"`
 	Modifications   string            `json:"modifications,omitempty"`
 
+	// 文件引用
+	Files []struct {
+		FileID      string `json:"file_id"`
+		FileURL     string `json:"file_url"`
+		FileType    string `json:"file_type"`
+		Instruction string `json:"instruction,omitempty"`
+	} `json:"files,omitempty"`
+
 	// 错误
 	Code    int    `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`

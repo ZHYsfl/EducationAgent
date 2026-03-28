@@ -235,16 +235,6 @@ func DecodeAPIData(raw []byte, out any) error {
 	return decodeAPIData(raw, out)
 }
 
-// ToReferenceFiles calls the unexported toReferenceFiles function.
-func ToReferenceFiles(in []ReferenceFileReq) []ReferenceFile {
-	return toReferenceFiles(in)
-}
-
-// BuildDetailedDescription calls the unexported buildDetailedDescription function.
-func BuildDetailedDescription(r *TaskRequirements) string {
-	return buildDetailedDescription(r)
-}
-
 // ---------------------------------------------------------------------------
 // HTTP helper shims
 // ---------------------------------------------------------------------------
