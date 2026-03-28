@@ -64,6 +64,11 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	}
 
 	req.RefreshCollectedFields()
+	if req.IsReadyForConfirm() {
+		req.Status = "ready"
+	} else {
+		req.Status = "collecting"
+	}
 	req.UpdatedAt = time.Now().UnixMilli()
 	reqSnapshot := CloneTaskRequirements(req)
 	p.session.reqMu.Unlock()

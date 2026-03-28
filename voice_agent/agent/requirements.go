@@ -126,7 +126,7 @@ func (r *TaskRequirements) RefreshCollectedFields() {
 	if r == nil {
 		return
 	}
-	collected := make([]string, 0, 16)
+	collected := make([]string, 0, 13)
 	add := func(name string, ok bool) {
 		if ok {
 			collected = append(collected, name)
@@ -184,8 +184,8 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 	sb.WriteString("2. 每轮最多问1-2个问题\n")
 	sb.WriteString("3. 如果教师一句话涵盖了多个信息，全部提取\n")
 	sb.WriteString("4. 教师上传文件时，主动询问如何使用该资料\n")
-	sb.WriteString("5. 所有P0字段收集完毕后，生成一份结构化摘要让教师确认\n")
-	sb.WriteString("6. 确认后输出特殊标记: [REQUIREMENTS_CONFIRMED]\n")
+	sb.WriteString("5. 所有必填字段收集完毕后，前端会弹出卡片让用户确认，等待用户语音确认\n")
+	sb.WriteString("6. 用户确认后调用 @{ppt_init|...} 工具开始制作PPT\n")
 	return sb.String()
 }
 
