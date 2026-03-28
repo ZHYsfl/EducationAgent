@@ -22,7 +22,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.reqMu.RLock()
 	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
 	p.session.reqMu.RUnlock()
-	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "confirming") {
+	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
 		var profile *UserProfile
 		if p.clients != nil {
 			if pInfo, err := p.clients.GetUserProfile(ctx, reqSnapshot.UserID); err == nil {
@@ -355,7 +355,7 @@ func (p *Pipeline) buildSystemPrompt(contextMsgs []ContextMessage) string {
 	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
 	p.session.reqMu.RUnlock()
 
-	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "confirming") {
+	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
 		var profile *UserProfile
 		if p.clients != nil {
 			if pInfo, err := p.clients.GetUserProfile(context.Background(), reqSnapshot.UserID); err == nil {
