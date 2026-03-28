@@ -48,33 +48,8 @@ func InitApp() (*App, error) {
 	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
 	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS checksum VARCHAR(128) NOT NULL DEFAULT ''`)
 	_ = db.Exec(`ALTER TABLE file_delete_jobs ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
-	_ = db.Exec(`
-CREATE OR REPLACE FUNCTION trg_enqueue_file_delete_job() RETURNS TRIGGER AS $$
-DECLARE
-    now_ms BIGINT;
-BEGIN
-    now_ms := (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT;
-    INSERT INTO file_delete_jobs (
-        id, file_id, storage_url, object_key, status, retry_count, last_error, created_at, updated_at
-    ) VALUES (
-        'fdel_' || gen_random_uuid()::text,
-        OLD.id,
-        OLD.storage_url,
-        COALESCE(OLD.object_key, ''),
-        'pending',
-        0,
-        '',
-        now_ms,
-        now_ms
-    );
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-DROP TRIGGER IF EXISTS after_files_delete_enqueue_job ON files;
-CREATE TRIGGER after_files_delete_enqueue_job
-AFTER DELETE ON files
-FOR EACH ROW
-EXECUTE FUNCTION trg_enqueue_file_delete_job();`)
+	_ = db.Exec(`DROP TRIGGER IF EXISTS after_files_delete_enqueue_job ON files`)
+	_ = db.Exec(`DROP FUNCTION IF EXISTS trg_enqueue_file_delete_job()`)
 
 	ossProvider := strings.ToLower(getenv("OSS_PROVIDER", "local"))
 	ossBaseURL := getenv("OSS_BASE_URL", "http://localhost:9500")
