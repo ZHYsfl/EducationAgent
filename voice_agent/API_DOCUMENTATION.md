@@ -1124,14 +1124,6 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 **响应格式**:
 
-    "msg_type": "error",
-    "error_code": 50001,
-    "tts_text": "生成失败，请稍后重试"
-  }'
-```
-
----
-
 ```json
 {
   "code": 200,

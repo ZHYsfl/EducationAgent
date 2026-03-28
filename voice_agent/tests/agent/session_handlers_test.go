@@ -2,7 +2,6 @@ package agent_test
 
 import (
 	agent "voiceagent/agent"
-	"context"
 	"testing"
 	"time"
 )
@@ -69,49 +68,5 @@ func TestPublishVADEvent_NilClients(t *testing.T) {
 }
 
 // ===========================================================================
-// prefillFromMemory
+// Other tests
 // ===========================================================================
-
-func TestPrefillFromMemory_FillsEmptyFields(t *testing.T) {
-	mock := &agent.MockServices{
-		GetUserProfileFn: func(ctx context.Context, userID string) (agent.UserProfile, error) {
-			return agent.UserProfile{
-				Subject:           "数学",
-				VisualPreferences: map[string]string{"color_scheme": "蓝色"},
-			}, nil
-		},
-	}
-	s := agent.NewTestSession(mock)
-	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
-	s.PrefillFromMemory(req)
-
-	if req.Subject != "数学" {
-		t.Errorf("subject = %q, want 数学", req.Subject)
-	}
-	if req.GlobalStyle != "蓝色" {
-		t.Errorf("global_style = %q, want 蓝色", req.GlobalStyle)
-	}
-}
-
-func TestPrefillFromMemory_DoesNotOverwrite(t *testing.T) {
-	mock := &agent.MockServices{
-		GetUserProfileFn: func(ctx context.Context, userID string) (agent.UserProfile, error) {
-			return agent.UserProfile{
-				Subject:           "物理",
-				VisualPreferences: map[string]string{"color_scheme": "红色"},
-			}, nil
-		},
-	}
-	s := agent.NewTestSession(mock)
-	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
-	req.Subject = "化学"
-	req.GlobalStyle = "绿色"
-	s.PrefillFromMemory(req)
-
-	if req.Subject != "化学" {
-		t.Errorf("should not overwrite existing subject, got %q", req.Subject)
-	}
-	if req.GlobalStyle != "绿色" {
-		t.Errorf("should not overwrite existing style, got %q", req.GlobalStyle)
-	}
-}

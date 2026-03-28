@@ -20,7 +20,6 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	req := p.session.Requirements
 	if req == nil {
 		req = NewTaskRequirements(p.session.SessionID, p.session.UserID)
-		p.session.prefillFromMemory(req)
 		p.session.Requirements = req
 	}
 
@@ -143,8 +142,6 @@ func (p *Pipeline) extractContextIDFromResponse(text string) string {
 	}
 	return strings.TrimSpace(rest[:end])
 }
-
-
 
 func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
 	if p.clients == nil || (userText == "" && assistantText == "") {

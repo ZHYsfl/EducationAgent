@@ -209,16 +209,6 @@ func TestFindSessionByTaskID_FallbackOwnsTask(t *testing.T) {
 }
 
 // ===========================================================================
-// prefillFromMemory edge: nil clients
-// ===========================================================================
-
-func TestPrefillFromMemory_NilClients(t *testing.T) {
-	s := agent.NewTestSession(nil)
-	req := agent.NewTaskRequirements("s", "u")
-	s.PrefillFromMemory(req) // should not panic
-}
-
-// ===========================================================================
 // Helpers
 // ===========================================================================
 
