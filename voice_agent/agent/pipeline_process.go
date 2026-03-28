@@ -143,6 +143,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		// Execute any detected actions asynchronously
 		for _, action := range result.Actions {
 			reqs := p.session.GetRequirements()
+			if reqs == nil {
+				reqs = &TaskRequirements{}
+			}
 			sessionCtx := executor.SessionContext{
 				UserID:            p.session.UserID,
 				SessionID:         p.session.SessionID,

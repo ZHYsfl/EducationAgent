@@ -10,7 +10,6 @@ import (
 	adaptivepkg "voiceagent/internal/adaptive"
 	"voiceagent/internal/asr"
 	"voiceagent/internal/audio"
-	"voiceagent/internal/bus"
 	svcclients "voiceagent/internal/clients"
 	cfgpkg "voiceagent/internal/config"
 	"voiceagent/internal/executor"
@@ -61,7 +60,6 @@ type Pipeline struct {
 	highPriorityQueue chan types.ContextMessage
 
 	// ========== Protocol Handling ==========
-	msgBus   *bus.Bus
 	executor *executor.Executor
 	parser   *protocol.Parser
 }
@@ -98,11 +96,10 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 		adaptive:          adaptivepkg.NewAdaptiveController(sizes),
 		contextQueue:      make(chan types.ContextMessage, 64),
 		highPriorityQueue: make(chan types.ContextMessage, 16),
-		msgBus:            bus.New(),
 		parser:            protocol.NewParser(),
 	}
 
-	p.executor = executor.New(p.msgBus, clients)
+	p.executor = executor.New(clients)
 
 	return p
 }

@@ -281,8 +281,7 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		// 异步导入知识库
 		if content != "" {
 			go func() {
-				clients := getGlobalClients()
-				if clients != nil {
+				if clients := getGlobalClients(); clients != nil {
 					_ = clients.IngestFromSearch(r.Context(), types.IngestFromSearchRequest{
 						UserID: s.UserID,
 						Items: []types.SearchIngestItem{

@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"voiceagent/internal/bus"
 	"voiceagent/internal/protocol"
 	"voiceagent/internal/types"
 )
 
 type Executor struct {
-	bus     *bus.Bus
 	clients ClientProvider
 }
 
@@ -45,9 +43,8 @@ type ClientProvider interface {
 
 type ResultCallback func(types.ContextMessage)
 
-func New(b *bus.Bus, clients ClientProvider) *Executor {
+func New(clients ClientProvider) *Executor {
 	return &Executor{
-		bus:     b,
 		clients: clients,
 	}
 }

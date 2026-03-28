@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"voiceagent/internal/bus"
 	"voiceagent/internal/protocol"
 	"voiceagent/internal/types"
 )
@@ -51,8 +50,7 @@ func (m *mockClients) SearchWeb(ctx context.Context, req types.SearchRequest) (t
 }
 
 func TestExecutorConcurrent(t *testing.T) {
-	b := bus.New()
-	exec := New(b, &mockClients{})
+	exec := New(&mockClients{})
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",
@@ -93,8 +91,7 @@ func TestExecutorConcurrent(t *testing.T) {
 }
 
 func TestExecutorErrors(t *testing.T) {
-	b := bus.New()
-	exec := New(b, &mockClients{failInit: true, failFeedback: true, failKB: true, failSearch: true})
+	exec := New(&mockClients{failInit: true, failFeedback: true, failKB: true, failSearch: true})
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",
@@ -132,8 +129,7 @@ func TestExecutorErrors(t *testing.T) {
 }
 
 func TestExecutorNilClients(t *testing.T) {
-	b := bus.New()
-	exec := New(b, nil)
+	exec := New(nil)
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",
@@ -170,8 +166,7 @@ func TestExecutorNilClients(t *testing.T) {
 }
 
 func TestExecutorUnknownAction(t *testing.T) {
-	b := bus.New()
-	exec := New(b, &mockClients{})
+	exec := New(&mockClients{})
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",
@@ -190,8 +185,7 @@ func TestExecutorUnknownAction(t *testing.T) {
 }
 
 func TestExecutorHighPriority(t *testing.T) {
-	b := bus.New()
-	exec := New(b, &mockClients{})
+	exec := New(&mockClients{})
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",
