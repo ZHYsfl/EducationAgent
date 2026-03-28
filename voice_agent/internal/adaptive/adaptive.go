@@ -153,6 +153,9 @@ func (ac *AdaptiveController) Adjust() {
 }
 
 func (ac *AdaptiveController) Save(path string) {
+	if path == "" {
+		return
+	}
 	ac.mu.RLock()
 	data, err := json.MarshalIndent(ac.sizes, "", "  ")
 	ac.mu.RUnlock()

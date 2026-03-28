@@ -43,8 +43,7 @@ func (c *TTSClient) Synthesize(ctx context.Context, text string, bufSize int) (<
 		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
-		close(ch)
-		return ch, fmt.Errorf("tts request build: %w", err)
+		return nil, fmt.Errorf("tts request build: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

@@ -29,6 +29,11 @@ func NewServiceClients(config *cfg.Config) *ServiceClients {
 	return &ServiceClients{
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
 		},
 		pptBaseURL:    strings.TrimRight(config.PPTAgentURL, "/"),
 		kbBaseURL:     strings.TrimRight(config.KBServiceURL, "/"),
