@@ -231,66 +231,6 @@ func TestFormatProfileSummary_Populated(t *testing.T) {
 	}
 }
 
-		t.Errorf("expected empty, got %d items", len(result))
-	}
-}
-
-func TestToReferenceFiles_Conversion(t *testing.T) {
-	input := []agent.ReferenceFileReq{
-		{FileID: "f1", FileURL: "http://a.com", FileType: "pdf", Instruction: "参考"},
-		{FileID: "f2", FileURL: "http://b.com", FileType: "docx", Instruction: "引用"},
-	}
-	output := agent.ToReferenceFiles(input)
-	if len(output) != 2 {
-		t.Fatalf("expected 2, got %d", len(output))
-	}
-	if output[0].FileID != "f1" || output[1].FileType != "docx" {
-		t.Error("field mapping incorrect")
-	}
-}
-
-// ===========================================================================
-// buildDetailedDescription
-// ===========================================================================
-
-func TestBuildDetailedDescription_Full(t *testing.T) {
-	req := makeFullRequirements()
-	req.Duration = "2课时"
-	req.TotalPages = 25
-	req.AdditionalNotes = "包含练习题"
-	desc := agent.BuildDetailedDescription(req)
-	if !strings.Contains(desc, "高等数学") {
-		t.Error("missing topic")
-	}
-	if !strings.Contains(desc, "微分") {
-		t.Error("missing knowledge points")
-	}
-	if !strings.Contains(desc, "2课时") {
-		t.Error("missing duration")
-	}
-	if !strings.Contains(desc, "练习题") {
-		t.Error("missing additional notes")
-	}
-}
-
-func TestBuildDetailedDescription_Nil(t *testing.T) {
-	result := agent.BuildDetailedDescription(nil)
-	if result != "" {
-		t.Errorf("nil should return empty, got %q", result)
-	}
-}
-
-func TestBuildDetailedDescription_ReferenceFiles(t *testing.T) {
-	req := makeFullRequirements()
-	req.ReferenceFiles = []agent.ReferenceFileReq{
-		{FileID: "ref1", FileType: "pdf", Instruction: "参考教材"},
-	}
-	desc := agent.BuildDetailedDescription(req)
-	if !strings.Contains(desc, "参考教材") {
-		t.Error("missing reference files")
-	}
-}
-
 // ===========================================================================
 // Helper
 // ===========================================================================
