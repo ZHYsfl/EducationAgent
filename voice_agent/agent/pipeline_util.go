@@ -63,11 +63,11 @@ var sentenceEnders = map[rune]bool{
 
 func isSentenceEnd(s string) bool {
 	s = strings.TrimRightFunc(s, unicode.IsSpace)
-	if s == "" {
+	runes := []rune(s)
+	if len(runes) == 0 {
 		return false
 	}
-	lastRune := []rune(s)[len([]rune(s))-1]
-	return sentenceEnders[lastRune]
+	return sentenceEnders[runes[len(runes)-1]]
 }
 
 func truncate(s string, maxLen int) string {
