@@ -27,6 +27,19 @@ func (b *Bus) Subscribe(eventType string) <-chan Event {
 	return ch
 }
 
+func (b *Bus) Unsubscribe(eventType string, ch <-chan Event) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	subs := b.subscribers[eventType]
+	for i, sub := range subs {
+		if sub == ch {
+			close(sub)
+			b.subscribers[eventType] = append(subs[:i], subs[i+1:]...)
+			return
+		}
+	}
+}
+
 func (b *Bus) Publish(event Event) {
 	b.mu.RLock()
 	subs := b.subscribers[event.Type]

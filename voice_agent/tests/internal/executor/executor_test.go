@@ -46,7 +46,7 @@ func (m *mockClients) SendFeedback(ctx context.Context, req types.PPTFeedbackReq
 }
 
 func TestExecute_UpdateRequirements(t *testing.T) {
-	exec := executor.New(nil, nil)
+	exec := executor.New(nil)
 
 	action := protocol.Action{
 		Type: "update_requirements",
@@ -87,7 +87,7 @@ func TestExecute_KBQuery(t *testing.T) {
 			return types.KBQueryResponse{Summary: "测试总结"}, nil
 		},
 	}
-	exec := executor.New(nil, mock)
+	exec := executor.New(mock)
 
 	action := protocol.Action{
 		Type:   "kb_query",
@@ -119,7 +119,7 @@ func TestExecute_KBQuery(t *testing.T) {
 
 func TestExecute_PPTInit_MissingFields(t *testing.T) {
 	mock := &mockClients{}
-	exec := executor.New(nil, mock)
+	exec := executor.New(mock)
 
 	action := protocol.Action{
 		Type:   "ppt_init",
@@ -155,7 +155,7 @@ func TestExecute_WebSearch(t *testing.T) {
 			return types.SearchResponse{Summary: "搜索结果"}, nil
 		},
 	}
-	exec := executor.New(nil, mock)
+	exec := executor.New(mock)
 
 	action := protocol.Action{
 		Type:   "web_search",

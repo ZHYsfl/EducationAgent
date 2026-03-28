@@ -4,14 +4,12 @@ import (
 	"sync"
 	"testing"
 
-	"voiceagent/internal/bus"
 	"voiceagent/internal/protocol"
 	"voiceagent/internal/types"
 )
 
 func TestExecutorRaceCondition(t *testing.T) {
-	b := bus.New()
-	exec := New(b, &mockClients{})
+	exec := New(&mockClients{})
 
 	sessionCtx := SessionContext{
 		UserID:    "test_user",

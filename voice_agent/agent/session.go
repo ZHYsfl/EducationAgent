@@ -53,7 +53,9 @@ func (s *Session) Close() {
 	s.once.Do(func() {
 		close(s.done)
 		s.cancelCurrentPipeline()
-		s.conn.Close()
+		if err := s.conn.Close(); err != nil {
+			log.Printf("[session] WebSocket close error: %v", err)
+		}
 	})
 }
 
