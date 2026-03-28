@@ -17,6 +17,8 @@ func (s *Session) handleTextMessage(msg WSMessage) {
 		s.handleTextInput(msg)
 	case "page_navigate":
 		s.handlePageNavigate(msg)
+	case "add_reference_files":
+		s.handleAddReferenceFiles(msg)
 	}
 }
 
@@ -182,4 +184,35 @@ func (s *Session) OwnsRequest(requestID string) bool {
 	defer s.activeTaskMu.RUnlock()
 	_, ok := s.PendingRequests[requestID]
 	return ok
+}
+
+func (s *Session) handleAddReferenceFiles(msg WSMessage) {
+	if len(msg.Files) == 0 {
+		return
+	}
+
+	s.reqMu.Lock()
+	req := s.Requirements
+	if req == nil {
+		req = NewTaskRequirements(s.SessionID, s.UserID)
+		s.Requirements = req
+	}
+
+	// 批量添加文件引用
+	for _, f := range msg.Files {
+		if f.FileID == "" {
+			continue
+		}
+		req.ReferenceFiles = append(req.ReferenceFiles, ReferenceFileReq{
+			FileID:      f.FileID,
+			FileURL:     f.FileURL,
+			FileType:    f.FileType,
+			Instruction: f.Instruction,
+		})
+	}
+	req.RefreshCollectedFields()
+	req.UpdatedAt = time.Now().UnixMilli()
+	s.reqMu.Unlock()
+
+	log.Printf("[session] added %d reference file(s)", len(msg.Files))
 }
