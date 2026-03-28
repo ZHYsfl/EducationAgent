@@ -19,7 +19,7 @@ func TestPipeline_ConcurrentContextBusOperations(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				s.AddPendingQuestion("ctx_"+string(rune('A'+id%10)), "question")
+				s.AddPendingQuestion("ctx_"+string(rune('A'+id%10)), "question", "", 0, "test")
 			}(i)
 		}
 

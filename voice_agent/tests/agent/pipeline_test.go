@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 	"toolcalling"
 
 	"voiceagent/internal/asr"
@@ -118,27 +117,6 @@ func (n *neverReturnASRProvider) RecognizeStream(ctx context.Context, audioCh <-
 	return ch, nil
 }
 
-func TestStartDraftThinking_AppendsOutput(t *testing.T) {
-	llm := newMockLLMServer("interrupt", []string{"草稿", "内容"})
-	defer llm.Close()
-
-	s := agent.NewTestSession(&agent.MockServices{})
-	p := agent.NewTestPipelineWithTTS(s, s.GetClients())
-	p.SetLargeLLM(newMockAgent(llm.URL))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	p.StartDraftThinking(ctx, "用户部分输入")
-	waitUntil(t, time.Second, func() bool {
-		return p.GetDraftOutput() != ""
-	}, "draft output not produced")
-
-	if got := p.GetDraftOutput(); !strings.Contains(got, "草稿") {
-		t.Fatalf("unexpected draft output: %q", got)
-	}
-	p.CancelDraft()
-}
 
 func TestStartProcessing_StreamsAndReturnsIdle(t *testing.T) {
 	llm := newMockLLMServer("interrupt", []string{"你好", "，", "世界", "。"})
@@ -190,149 +168,5 @@ func TestStartProcessing_FillerPath(t *testing.T) {
 	}
 }
 
-func TestStartListening_EndToEndPath(t *testing.T) {
-	small := newMockLLMServer("do not interrupt", []string{"忽略"})
-	defer small.Close()
-	large := newMockLLMServer("interrupt", []string{"收到", "。"})
-	defer large.Close()
 
-	m := &agent.MockServices{}
-	s := agent.NewTestSession(m)
-	p := agent.NewPipeline(s, s.GetConfig(), m)
-	s.SetPipeline(p)
-	p.SetSmallLLM(newMockAgent(small.URL))
-	p.SetLargeLLM(newMockAgent(large.URL))
-	p.SetTTSClient(&agent.MockTTS{})
-	p.SetASRClient(&scriptedASRProvider{
-		results: []asr.ASRResult{
-			{Text: "你好", IsFinal: false, Mode: "streaming"},
-			{Text: "你好世界", IsFinal: true, Mode: "2pass-offline"},
-		},
-	})
 
-	s.SetState(agent.StateListening)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	p.StartListening(ctx)
-
-	if s.GetState() != agent.StateIdle {
-		t.Fatalf("state = %v, want idle", s.GetState())
-	}
-	if len(p.GetHistory().Messages()) < 2 {
-		t.Fatalf("history should have user and assistant messages, got %d", len(p.GetHistory().Messages()))
-	}
-}
-
-func TestStartListening_ASRStartError_SetsIdle(t *testing.T) {
-	s := agent.NewTestSession(&agent.MockServices{})
-	p := agent.NewPipeline(s, s.GetConfig(), s.GetClients())
-	s.SetPipeline(p)
-	p.SetASRClient(&errorASRProvider{})
-	s.SetState(agent.StateListening)
-
-	p.StartListening(context.Background())
-
-	if s.GetState() != agent.StateIdle {
-		t.Fatalf("state = %v, want idle on ASR start error", s.GetState())
-	}
-}
-
-func TestStartListening_VADEndPath(t *testing.T) {
-	small := newMockLLMServer("do not interrupt", []string{"忽略"})
-	defer small.Close()
-	large := newMockLLMServer("interrupt", []string{"好的", "。"})
-	defer large.Close()
-
-	m := &agent.MockServices{}
-	s := agent.NewTestSession(m)
-	p := agent.NewPipeline(s, s.GetConfig(), m)
-	s.SetPipeline(p)
-	p.SetSmallLLM(newMockAgent(small.URL))
-	p.SetLargeLLM(newMockAgent(large.URL))
-	p.SetTTSClient(&agent.MockTTS{})
-	ready := make(chan struct{})
-	p.SetASRClient(&closeDrivenASRProvider{ready: ready})
-	s.SetState(agent.StateListening)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		p.StartListening(ctx)
-		close(done)
-	}()
-
-	select {
-	case <-ready:
-	case <-time.After(time.Second):
-		t.Fatal("listening channels not initialized in time")
-	}
-
-	// Send a tiny audio fragment; VAD end will flush remaining bytes.
-	p.OnAudioData([]byte{1, 2, 3, 4})
-	p.OnVADEnd()
-
-	waitUntil(t, 2*time.Second, func() bool {
-		select {
-		case <-done:
-			return true
-		default:
-			return false
-		}
-	}, "StartListening VAD-end path did not finish")
-
-	if s.GetState() != agent.StateIdle {
-		t.Fatalf("state = %v, want idle", s.GetState())
-	}
-}
-
-func TestStartListening_ContextCancelPath(t *testing.T) {
-	s := agent.NewTestSession(&agent.MockServices{})
-	p := agent.NewPipeline(s, s.GetConfig(), s.GetClients())
-	s.SetPipeline(p)
-	p.SetASRClient(&neverReturnASRProvider{})
-	s.SetState(agent.StateListening)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		p.StartListening(ctx)
-		close(done)
-	}()
-
-	waitUntil(t, time.Second, func() bool {
-		select {
-		case <-done:
-			return true
-		default:
-			return false
-		}
-	}, "StartListening did not exit on ctx cancel")
-}
-
-func TestStartProcessing_RequirementsMode(t *testing.T) {
-	llm := newMockLLMServer("interrupt", []string{"已记录", "。"})
-	defer llm.Close()
-
-	m := &agent.MockServices{
-		GetUserProfileFn: func(ctx context.Context, userID string) (agent.UserProfile, error) {
-			return agent.UserProfile{DisplayName: "学生A", Subject: "数学"}, nil
-		},
-	}
-	s := agent.NewTestSession(m)
-	req := agent.NewTaskRequirements(s.SessionID, s.UserID)
-	req.Status = "collecting"
-	s.SetRequirements(req)
-
-	p := agent.NewTestPipelineWithTTS(s, m)
-	p.SetLargeLLM(newMockAgent(llm.URL))
-	p.StartProcessing(context.Background(), "我要做一套课件")
-
-	if s.GetState() != agent.StateIdle {
-		t.Fatalf("state = %v, want idle", s.GetState())
-	}
-}

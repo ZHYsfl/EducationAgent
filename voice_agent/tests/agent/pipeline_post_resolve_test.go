@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"voiceagent/internal/protocol"
 )
 
 // ===========================================================================
@@ -16,13 +17,9 @@ func TestTryResolveConflict_SinglePending(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	s.AddPendingQuestion("ctx_conflict_1", "task_c1")
-	s.LockActiveTaskMu()
-	s.ViewingPageID = "pg1"
-	s.LastVADTimestamp = 99999
-	s.UnlockActiveTaskMu()
+	s.AddPendingQuestion("ctx_conflict_1", "task_c1", "pg1", 99999, "test question")
 
-	resolved := p.TryResolveConflict(context.Background(), "选方案A", "用户选了方案A")
+	resolved := p.TryResolveConflict(context.Background(), "选方案A", nil)
 	if !resolved {
 		t.Error("should resolve with single pending question")
 	}
@@ -57,11 +54,13 @@ func TestTryResolveConflict_MultiplePending_WithMarker(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	s.AddPendingQuestion("ctx_a", "task_1")
-	s.AddPendingQuestion("ctx_b", "task_2")
+	s.AddPendingQuestion("ctx_a", "task_1", "", 0, "test question")
+	s.AddPendingQuestion("ctx_b", "task_2", "", 0, "test question")
 
-	llmResp := "好的选方案B [RESOLVE_CONFLICT:ctx_b]"
-	resolved := p.TryResolveConflict(context.Background(), "选方案B", llmResp)
+	actions := []protocol.Action{
+		{Type: "resolve_conflict", Params: map[string]string{"context_id": "ctx_b"}},
+	}
+	resolved := p.TryResolveConflict(context.Background(), "选方案B", actions)
 	if !resolved {
 		t.Error("should resolve with marker")
 	}
@@ -80,7 +79,7 @@ func TestTryResolveConflict_NoPending(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	resolved := p.TryResolveConflict(context.Background(), "hi", "hello")
+	resolved := p.TryResolveConflict(context.Background(), "hi", nil)
 	if resolved {
 		t.Error("should not resolve with no pending questions")
 	}
@@ -90,8 +89,8 @@ func TestTryResolveConflict_NilClients(t *testing.T) {
 	s := agent.NewTestSession(nil)
 	p := agent.NewTestPipeline(s, nil)
 
-	s.AddPendingQuestion("ctx_1", "task_1")
-	resolved := p.TryResolveConflict(context.Background(), "hi", "hello")
+	s.AddPendingQuestion("ctx_1", "task_1", "", 0, "test question")
+	resolved := p.TryResolveConflict(context.Background(), "hi", nil)
 	if resolved {
 		t.Error("nil clients should return false")
 	}
@@ -171,7 +170,7 @@ func TestBuildPendingQuestionsContext_SingleQuestion(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	s.AddPendingQuestion("ctx_q1", "task_q1")
+	s.AddPendingQuestion("ctx_q1", "task_q1", "", 0, "test question")
 	result := p.BuildPendingQuestionsContext()
 	if !strings.Contains(result, "ctx_q1") {
 		t.Error("should contain context_id")
@@ -183,10 +182,10 @@ func TestBuildPendingQuestionsContext_MultipleQuestions(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	s.AddPendingQuestion("ctx_1", "task_1")
-	s.AddPendingQuestion("ctx_2", "task_2")
+	s.AddPendingQuestion("ctx_1", "task_1", "", 0, "test question")
+	s.AddPendingQuestion("ctx_2", "task_2", "", 0, "test question")
 	result := p.BuildPendingQuestionsContext()
-	if !strings.Contains(result, "RESOLVE_CONFLICT") {
-		t.Error("multiple questions should include RESOLVE_CONFLICT instruction")
+	if !strings.Contains(result, "resolve_conflict") {
+		t.Error("multiple questions should include resolve_conflict instruction")
 	}
 }

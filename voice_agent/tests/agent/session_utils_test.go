@@ -11,12 +11,12 @@ import (
 
 func TestSession_PendingQuestions(t *testing.T) {
 	s := agent.NewTestSession(nil)
-	s.AddPendingQuestion("ctx_001", "task_a")
-	s.AddPendingQuestion("ctx_002", "task_b")
+	s.AddPendingQuestion("ctx_001", "task_a", "page_1", 1000, "question A")
+	s.AddPendingQuestion("ctx_002", "task_b", "page_2", 2000, "question B")
 
-	tid, ok := s.ResolvePendingQuestion("ctx_001")
-	if !ok || tid != "task_a" {
-		t.Errorf("expected task_a, got %q ok=%v", tid, ok)
+	pq, ok := s.ResolvePendingQuestion("ctx_001")
+	if !ok || pq.TaskID != "task_a" {
+		t.Errorf("expected task_a, got %q ok=%v", pq.TaskID, ok)
 	}
 	// should be removed
 	_, ok = s.ResolvePendingQuestion("ctx_001")
@@ -25,15 +25,15 @@ func TestSession_PendingQuestions(t *testing.T) {
 	}
 
 	// ctx_002 still there
-	tid, ok = s.ResolvePendingQuestion("ctx_002")
-	if !ok || tid != "task_b" {
-		t.Errorf("expected task_b, got %q ok=%v", tid, ok)
+	pq, ok = s.ResolvePendingQuestion("ctx_002")
+	if !ok || pq.TaskID != "task_b" {
+		t.Errorf("expected task_b, got %q ok=%v", pq.TaskID, ok)
 	}
 }
 
 func TestSession_AddPendingQuestion_EmptyContextID(t *testing.T) {
 	s := agent.NewTestSession(nil)
-	s.AddPendingQuestion("", "task_a")
+	s.AddPendingQuestion("", "task_a", "", 0, "test question")
 	if len(s.PendingQuestions) != 0 {
 		t.Error("empty context_id should not be added")
 	}

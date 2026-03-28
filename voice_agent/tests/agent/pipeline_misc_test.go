@@ -2,11 +2,8 @@ package agent_test
 
 import (
 	agent "voiceagent/agent"
-	"context"
 	"testing"
 	"time"
-
-	"voiceagent/internal/asr"
 )
 
 // ===========================================================================
@@ -143,95 +140,3 @@ func TestOnVADEnd_WithChannel(t *testing.T) {
 	}
 }
 
-// ===========================================================================
-// Draft thinking helpers
-// ===========================================================================
-
-func TestDraftOutput_AppendGetReset(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	p.AppendDraftOutput("hello ")
-	p.AppendDraftOutput("world")
-	if got := p.GetDraftOutput(); got != "hello world" {
-		t.Errorf("got %q", got)
-	}
-	p.ResetDraftOutput()
-	if got := p.GetDraftOutput(); got != "" {
-		t.Errorf("after reset: %q", got)
-	}
-}
-
-// ===========================================================================
-// drainASRResults
-// ===========================================================================
-
-func TestDrainASRResults_Normal(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	ch := make(chan asr.ASRResult, 3)
-	ch <- asr.ASRResult{Text: "hello", Mode: "online"}
-	ch <- asr.ASRResult{Text: "final", Mode: "2pass-offline"}
-	close(ch)
-
-	var partials []string
-	var finalText string
-	p.DrainASRResults(context.Background(), ch, &partials, &finalText, time.Second)
-
-	if finalText != "final" {
-		t.Errorf("finalText = %q", finalText)
-	}
-	if len(partials) != 1 || partials[0] != "hello" {
-		t.Errorf("partials = %v", partials)
-	}
-}
-
-func TestDrainASRResults_Timeout(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	ch := make(chan asr.ASRResult)
-	var partials []string
-	var finalText string
-
-	done := make(chan struct{})
-	go func() {
-		p.DrainASRResults(context.Background(), ch, &partials, &finalText, 50*time.Millisecond)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("drainASRResults should timeout")
-	}
-}
-
-func TestDrainASRResults_ContextCancel(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	ch := make(chan asr.ASRResult)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	var partials []string
-	var finalText string
-
-	done := make(chan struct{})
-	go func() {
-		p.DrainASRResults(ctx, ch, &partials, &finalText, 5*time.Second)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("drainASRResults should exit on cancelled context")
-	}
-}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -99,7 +100,14 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 					return
 				}
 				if msg.MsgType == "conflict_question" {
-					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"])
+					pageID := msg.Metadata["page_id"]
+					baseTS := int64(0)
+					if tsStr := msg.Metadata["base_timestamp"]; tsStr != "" {
+						if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
+							baseTS = ts
+						}
+					}
+					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"], pageID, baseTS, msg.Content)
 				}
 			default:
 				p.pendingMu.Lock()
@@ -111,7 +119,6 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 		}
 	}
 }
-
 
 func (p *Pipeline) enqueueContextMessage(ctx context.Context, msg ContextMessage) {
 	switch msg.Priority {

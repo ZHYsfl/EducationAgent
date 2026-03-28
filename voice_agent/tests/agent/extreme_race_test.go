@@ -28,7 +28,7 @@ func TestPipeline_ConcurrentTokenWriteAndCancel(t *testing.T) {
 				case <-ctx.Done():
 					return
 				default:
-					p.AppendRawToken("x")
+					p.WriteRawTokens("x")
 				}
 			}
 		}()

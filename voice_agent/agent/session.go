@@ -37,7 +37,7 @@ func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.
 		clients:          clients,
 		OwnedTasks:       make(map[string]string),
 		PendingRequests:  make(map[string]string),
-		PendingQuestions: make(map[string]string),
+		PendingQuestions: make(map[string]PendingQuestion),
 	}
 	s.pipeline = NewPipeline(s, config, clients)
 	return s, nil
@@ -185,10 +185,10 @@ func (s *Session) SetRequirements(r *TaskRequirements) {
 }
 
 // GetPendingQuestions returns a snapshot copy of pending questions.
-func (s *Session) GetPendingQuestions() map[string]string {
+func (s *Session) GetPendingQuestions() map[string]PendingQuestion {
 	s.pendingQMu.RLock()
 	defer s.pendingQMu.RUnlock()
-	out := make(map[string]string)
+	out := make(map[string]PendingQuestion)
 	for k, v := range s.PendingQuestions {
 		out[k] = v
 	}
