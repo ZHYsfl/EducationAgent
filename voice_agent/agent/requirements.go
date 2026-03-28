@@ -76,11 +76,20 @@ func CloneTaskRequirements(in *TaskRequirements) *TaskRequirements {
 
 func (r *TaskRequirements) GetMissingFields() []string {
 	if r == nil {
-		return []string{"topic", "knowledge_points", "teaching_goals", "teaching_logic", "target_audience"}
+		return []string{"topic", "subject", "audience", "total_pages", "knowledge_points", "teaching_goals", "teaching_logic", "key_difficulties", "duration", "global_style", "interaction_design", "output_formats"}
 	}
 	var missing []string
 	if strings.TrimSpace(r.Topic) == "" {
 		missing = append(missing, "topic")
+	}
+	if strings.TrimSpace(r.Subject) == "" {
+		missing = append(missing, "subject")
+	}
+	if strings.TrimSpace(r.TargetAudience) == "" {
+		missing = append(missing, "audience")
+	}
+	if r.TotalPages <= 0 {
+		missing = append(missing, "total_pages")
 	}
 	if len(r.KnowledgePoints) == 0 {
 		missing = append(missing, "knowledge_points")
@@ -91,8 +100,20 @@ func (r *TaskRequirements) GetMissingFields() []string {
 	if strings.TrimSpace(r.TeachingLogic) == "" {
 		missing = append(missing, "teaching_logic")
 	}
-	if strings.TrimSpace(r.TargetAudience) == "" {
-		missing = append(missing, "target_audience")
+	if len(r.KeyDifficulties) == 0 {
+		missing = append(missing, "key_difficulties")
+	}
+	if strings.TrimSpace(r.Duration) == "" {
+		missing = append(missing, "duration")
+	}
+	if strings.TrimSpace(r.GlobalStyle) == "" {
+		missing = append(missing, "global_style")
+	}
+	if strings.TrimSpace(r.InteractionDesign) == "" {
+		missing = append(missing, "interaction_design")
+	}
+	if len(r.OutputFormats) == 0 {
+		missing = append(missing, "output_formats")
 	}
 	return missing
 }

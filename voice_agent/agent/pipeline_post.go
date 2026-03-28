@@ -59,6 +59,9 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	if v, ok := updates["output_formats"].(string); ok && v != "" {
 		req.OutputFormats = strings.Split(v, ",")
 	}
+	if v, ok := updates["additional_notes"].(string); ok && v != "" {
+		req.AdditionalNotes = v
+	}
 
 	req.RefreshCollectedFields()
 	req.UpdatedAt = time.Now().UnixMilli()
