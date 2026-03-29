@@ -183,8 +183,9 @@ func (a *App) deleteFile(c *gin.Context) {
 
 func (a *App) createSession(c *gin.Context) {
 	var req struct {
-		UserID string `json:"user_id"`
-		Title  string `json:"title"`
+		UserID    string `json:"user_id"`
+		SessionID string `json:"session_id"`
+		Title     string `json:"title"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 40001, "请求体格式错误")
@@ -198,13 +199,37 @@ func (a *App) createSession(c *gin.Context) {
 		return
 	}
 
+	sid := strings.TrimSpace(req.SessionID)
+	if sid != "" {
+		if !strings.HasPrefix(sid, "sess_") {
+			fail(c, 40001, "参数 session_id 非法")
+			return
+		}
+		var existing SessionModel
+		if err := a.db.First(&existing, "id = ?", sid).Error; err == nil {
+			fail(c, 40900, "会话已存在")
+			return
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			fail(c, 50000, "查询会话失败")
+			return
+		}
+	} else {
+		sid = newID("sess_")
+	}
+
 	n := nowMs()
-	rec := SessionModel{ID: newID("sess_"), UserID: req.UserID, Title: req.Title, Status: "active", CreatedAt: n, UpdatedAt: n}
+	rec := SessionModel{ID: sid, UserID: req.UserID, Title: req.Title, Status: "active", CreatedAt: n, UpdatedAt: n}
 	if err := a.db.Create(&rec).Error; err != nil {
 		fail(c, 50000, "创建会话失败")
 		return
 	}
-	ok(c, gin.H{"session_id": rec.ID})
+	ok(c, gin.H{
+		"session_id": rec.ID,
+		"user_id":    rec.UserID,
+		"title":      rec.Title,
+		"status":     rec.Status,
+		"created_at": rec.CreatedAt,
+	})
 }
 
 func (a *App) getSession(c *gin.Context) {
@@ -306,7 +331,7 @@ func (a *App) updateSession(c *gin.Context) {
 		fail(c, 50000, "更新会话失败")
 		return
 	}
-	ok(c, gin.H{"session_id": sid, "title": current.Title, "status": current.Status, "updated_at": current.UpdatedAt})
+	ok(c, nil)
 }
 
 func (a *App) searchQuery(c *gin.Context) {
