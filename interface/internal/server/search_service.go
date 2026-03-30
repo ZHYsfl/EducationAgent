@@ -4,45 +4,119 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"strings"
 	"time"
 )
 
-func (a *App) runSearchAsync(requestID, userID, query string, maxResults int, language, searchType string) {
+func (a *App) runSearchPipeline(ctx context.Context, userID, query string, maxResults int, language, searchType string) (results []SearchResultItem, summary string, duration int64, status string) {
 	start := time.Now()
+	elapsed := func() int64 { return time.Since(start).Milliseconds() }
+
 	if a.kbDedupEnabled {
 		hit, err := a.kbLikelyHasAnswer(userID, query)
 		if err == nil && hit {
-			a.finishSearch(requestID, "completed", nil, "知识库已有高相关内容，本次不重复回注搜索结果。", time.Since(start).Milliseconds(), "")
-			return
+			summary = "知识库已有高相关内容，本次不重复回注搜索结果。"
+			return nil, summary, elapsed(), "success"
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
-	defer cancel()
 	results, summary, err := a.fetchSearchResults(ctx, query, maxResults, language, searchType)
 	if err != nil {
-		a.finishSearch(requestID, "failed", nil, "", time.Since(start).Milliseconds(), err.Error())
-		return
+		return nil, err.Error(), elapsed(), "failed"
 	}
-	a.finishSearch(requestID, "completed", results, summary, time.Since(start).Milliseconds(), "")
-}
-
-func (a *App) finishSearch(requestID, status string, results []SearchResultItem, summary string, duration int64, lastErr string) {
-	resultsJSON := ""
-	if len(results) > 0 {
-		b, _ := json.Marshal(results)
-		resultsJSON = string(b)
+	if len(results) == 0 {
+		if strings.TrimSpace(summary) == "" {
+			summary = "未检索到结果"
+		}
+		return nil, summary, elapsed(), "partial"
 	}
-	updates := map[string]interface{}{"status": status, "results": resultsJSON, "summary": summary, "duration": duration, "updated_at": nowMs()}
-	if lastErr != "" {
-		updates["summary"] = lastErr
-	}
-	_ = a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(updates).Error
+	return results, summary, elapsed(), "success"
 }
 
 func (a *App) fetchSearchResults(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
 	return a.fetchSearchResultsParallel(ctx, query, maxResults, language, searchType)
+}
+
+// mapPipelineStatusToSection8 maps internal pipeline outcomes to §8 polling states:
+// pending is only set at task creation; success/partial → completed; failed → failed.
+func mapPipelineStatusToSection8(pipeline string) string {
+	switch pipeline {
+	case "failed":
+		return "failed"
+	default:
+		return "completed"
+	}
+}
+
+// NormalizeStoredStatusForSection8 maps persisted search_requests.status values to §8 GET
+// response values. Legacy rows may still hold success/partial from pre-async storage.
+func NormalizeStoredStatusForSection8(st string) string {
+	switch strings.ToLower(strings.TrimSpace(st)) {
+	case "pending":
+		return "pending"
+	case "failed":
+		return "failed"
+	case "completed", "success", "partial":
+		return "completed"
+	case "":
+		return "failed"
+	default:
+		return "completed"
+	}
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	r := []rune(s)
+	if maxRunes <= 0 || len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "…"
+}
+
+func (a *App) markSearchJobPersistFailed(requestID string, duration int64, cause error) {
+	msg := "保存搜索结果失败"
+	if cause != nil {
+		msg = fmt.Sprintf("%s: %v", msg, cause)
+	}
+	msg = truncateRunes(msg, 2000)
+	fallback := map[string]interface{}{
+		"status":     "failed",
+		"results":    "[]",
+		"summary":    msg,
+		"duration":   duration,
+		"updated_at": nowMs(),
+	}
+	if err := a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(fallback).Error; err != nil {
+		log.Printf("search job persist fallback failed request_id=%s: %v", requestID, err)
+	}
+}
+
+func (a *App) runSearchJob(requestID, userID, query string, maxResults int, language, searchType string) {
+	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
+	defer cancel()
+	results, summary, duration, pipelineStatus := a.runSearchPipeline(ctx, userID, query, maxResults, language, searchType)
+	status := mapPipelineStatusToSection8(pipelineStatus)
+	resultsJSON := "[]"
+	if len(results) > 0 {
+		b, err := json.Marshal(results)
+		if err != nil {
+			resultsJSON = "[]"
+		} else {
+			resultsJSON = string(b)
+		}
+	}
+	err := a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(map[string]interface{}{
+		"status":     status,
+		"results":    resultsJSON,
+		"summary":    summary,
+		"duration":   duration,
+		"updated_at": nowMs(),
+	}).Error
+	if err != nil {
+		a.markSearchJobPersistFailed(requestID, duration, err)
+	}
 }
 
 func (a *App) kbLikelyHasAnswer(userID, query string) (bool, error) {

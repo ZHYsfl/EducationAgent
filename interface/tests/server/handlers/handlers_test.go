@@ -69,6 +69,8 @@ func TestHandlers_BasicValidationBranches(t *testing.T) {
 		{http.MethodGet, "/sessions/bad", ""},
 		{http.MethodGet, "/sessions", ""},
 		{http.MethodPut, "/sessions/bad", `{"status":"active"}`},
+		{http.MethodPost, "/search/query", `{"query":"x"}`},
+		{http.MethodPost, "/search/query", `{"user_id":"user_1"}`},
 		{http.MethodPost, "/search/query", `{"user_id":"bad","query":"x"}`},
 		{http.MethodGet, "/search/results/bad", ""},
 	} {
