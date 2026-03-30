@@ -23,8 +23,10 @@ func (a *App) uploadFile(c *gin.Context) {
 	}
 	defer file.Close()
 
-	purpose := c.PostForm("purpose")
-	if purpose == "" || !isAllowedPurpose(purpose) {
+	purpose := strings.TrimSpace(c.PostForm("purpose"))
+	if purpose == "" {
+		purpose = "reference"
+	} else if !isAllowedPurpose(purpose) {
 		fail(c, 40001, "参数 purpose 非法")
 		return
 	}
@@ -34,9 +36,6 @@ func (a *App) uploadFile(c *gin.Context) {
 		fail(c, 40100, "未授权或 token 非法")
 		return
 	}
-
-	sessionID := emptyToNil(c.PostForm("session_id"))
-	taskID := emptyToNil(c.PostForm("task_id"))
 
 	fileID := newID("file_")
 	safeName := strings.ReplaceAll(filepath.Base(header.Filename), " ", "_")
@@ -58,8 +57,8 @@ func (a *App) uploadFile(c *gin.Context) {
 	rec := FileModel{
 		ID:         fileID,
 		UserID:     userID,
-		SessionID:  sessionID,
-		TaskID:     taskID,
+		SessionID:  nil,
+		TaskID:     nil,
 		Filename:   header.Filename,
 		FileType:   detectFileType(header.Filename),
 		FileSize:   header.Size,
@@ -80,7 +79,6 @@ func (a *App) uploadFile(c *gin.Context) {
 		"file_type":   rec.FileType,
 		"file_size":   rec.FileSize,
 		"storage_url": rec.StorageURL,
-		"checksum":    rec.Checksum,
 		"purpose":     rec.Purpose,
 	})
 }
@@ -282,7 +280,7 @@ func (a *App) listSessions(c *gin.Context) {
 	for _, s := range rows {
 		items = append(items, gin.H{"session_id": s.ID, "user_id": s.UserID, "title": s.Title, "status": s.Status, "created_at": s.CreatedAt, "updated_at": s.UpdatedAt})
 	}
-	ok(c, gin.H{"sessions": items, "total": total, "page": page, "page_size": pageSize})
+	ok(c, gin.H{"sessions": items, "total": total, "page": page})
 }
 
 func (a *App) updateSession(c *gin.Context) {
@@ -331,7 +329,7 @@ func (a *App) updateSession(c *gin.Context) {
 		fail(c, 50000, "更新会话失败")
 		return
 	}
-	ok(c, nil)
+	okWithoutData(c)
 }
 
 func (a *App) searchQuery(c *gin.Context) {
@@ -348,14 +346,19 @@ func (a *App) searchQuery(c *gin.Context) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = userIDFromContext(c)
+		fail(c, 40001, "参数 user_id 必填")
+		return
 	}
-	if req.UserID == "" || req.Query == "" || !strings.HasPrefix(req.UserID, "user_") {
-		fail(c, 40001, "参数 user_id 或 query 非法")
+	if req.Query == "" {
+		fail(c, 40001, "参数 query 必填")
+		return
+	}
+	if !strings.HasPrefix(req.UserID, "user_") {
+		fail(c, 40001, "参数 user_id 非法")
 		return
 	}
 	if req.MaxResults <= 0 {
-		req.MaxResults = 5
+		req.MaxResults = 10
 	}
 	if req.MaxResults > 10 {
 		req.MaxResults = 10
@@ -368,20 +371,47 @@ func (a *App) searchQuery(c *gin.Context) {
 	}
 	req.SearchType = normalizeSearchType(req.SearchType)
 
-	n := nowMs()
-	rec := SearchRequestModel{RequestID: req.RequestID, UserID: req.UserID, Query: req.Query, Status: "pending", Duration: 0, CreatedAt: n, UpdatedAt: n}
-	if err := a.db.Create(&rec).Error; err != nil {
-		fail(c, 50000, "创建搜索请求失败")
+	var dup SearchRequestModel
+	if err := a.db.Where("request_id = ?", req.RequestID).First(&dup).Error; err == nil {
+		fail(c, 40001, "request_id 已存在")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		fail(c, 50000, "查询搜索请求失败")
 		return
 	}
-	go a.runSearchAsync(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language, req.SearchType)
-	ok(c, gin.H{"request_id": req.RequestID, "status": "pending"})
+
+	n := nowMs()
+	rec := SearchRequestModel{
+		RequestID: req.RequestID,
+		UserID:    req.UserID,
+		Query:     req.Query,
+		Status:    "pending",
+		Results:   "[]",
+		Summary:   "",
+		Duration:  0,
+		CreatedAt: n,
+		UpdatedAt: n,
+	}
+	if err := a.db.Create(&rec).Error; err != nil {
+		fail(c, 50000, "保存搜索记录失败")
+		return
+	}
+
+	go a.runSearchJob(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language, req.SearchType)
+
+	ok(c, gin.H{
+		"request_id": req.RequestID,
+		"status":     "pending",
+		"results":    []SearchResultItem{},
+		"summary":    "",
+		"duration":   int64(0),
+	})
 }
 
 func (a *App) searchResult(c *gin.Context) {
-	requestID := c.Param("request_id")
-	if !strings.HasPrefix(requestID, "search_") {
-		fail(c, 40001, "request_id 格式非法")
+	requestID := strings.TrimSpace(c.Param("request_id"))
+	if requestID == "" {
+		fail(c, 40001, "request_id 不能为空")
 		return
 	}
 	var rec SearchRequestModel
@@ -397,5 +427,11 @@ func (a *App) searchResult(c *gin.Context) {
 	if rec.Results != "" {
 		_ = json.Unmarshal([]byte(rec.Results), &results)
 	}
-	ok(c, gin.H{"request_id": rec.RequestID, "status": rec.Status, "results": results, "summary": rec.Summary, "duration": rec.Duration})
+	ok(c, gin.H{
+		"request_id": rec.RequestID,
+		"status":     NormalizeStoredStatusForSection8(rec.Status),
+		"results":    results,
+		"summary":    rec.Summary,
+		"duration":   rec.Duration,
+	})
 }

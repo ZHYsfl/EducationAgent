@@ -101,6 +101,27 @@ func TestNormalizeSearchType(t *testing.T) {
 	}
 }
 
+func TestNormalizeStoredStatusForSection8(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"pending":    "pending",
+		"completed":  "completed",
+		"failed":     "failed",
+		"success":    "completed",
+		"partial":    "completed",
+		"SUCCESS":    "completed",
+		"  partial ": "completed",
+		"":           "failed",
+		"weird":      "completed",
+	}
+	for in, want := range cases {
+		if got := server.NormalizeStoredStatusForSection8(in); got != want {
+			t.Fatalf("NormalizeStoredStatusForSection8(%q)=%q want=%q", in, got, want)
+		}
+	}
+}
+
 func TestRefineSnippetAndSummary(t *testing.T) {
 	t.Parallel()
 

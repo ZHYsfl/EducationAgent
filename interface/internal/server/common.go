@@ -18,6 +18,10 @@ func ok(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, APIResponse{Code: 200, Message: "success", Data: data})
 }
 
+func okWithoutData(c *gin.Context) {
+	c.JSON(http.StatusOK, APIResponseNoData{Code: 200, Message: "success"})
+}
+
 func fail(c *gin.Context, code int, message string) {
 	c.JSON(http.StatusOK, APIResponse{Code: code, Message: message, Data: nil})
 }

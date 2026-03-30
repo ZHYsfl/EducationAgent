@@ -6,6 +6,12 @@ type APIResponse struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+// APIResponseNoData is used when the API contract omits a data field (e.g. §7.4 update session).
+type APIResponseNoData struct {
+	Code    int    `json:"code"`
+	Message string `json:"message,omitempty"`
+}
+
 type SessionModel struct {
 	ID        string `gorm:"primaryKey;column:id;size:64"`
 	UserID    string `gorm:"column:user_id;size:64;not null;index:idx_sessions_user"`
