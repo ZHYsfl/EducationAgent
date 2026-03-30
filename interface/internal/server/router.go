@@ -10,6 +10,12 @@ func SetupRouter(app *App) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	{
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/verify", app.authVerify)
+			auth.GET("/profile", app.authProfile)
+		}
+
 		files := v1.Group("/files")
 		files.Use(AuthUserMiddleware())
 		{
