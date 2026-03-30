@@ -222,10 +222,10 @@ qwen_omni/
 # Local planning/agent instruction artifacts
 plans/
 tests/
-PLAN.md
 AGENTS.md
 memory_tech.md
-postgresql_ddl.sql:Zone.Identifier
+.codex
+
 
 # Cursor project files
 .cursor/

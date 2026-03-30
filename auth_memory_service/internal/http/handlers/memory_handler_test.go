@@ -71,7 +71,7 @@ func setupMemoryRouter(t *testing.T) (*gorm.DB, http.Handler, func(), *jwtinfra.
 	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
 	tm := jwtinfra.NewTokenManager("test-secret", 24)
 	authSvc := service.NewAuthService(authRepo, tm, mailer.NoopMailer{}, 24, "http://localhost:3000/verify-email")
-	memSvc := service.NewMemoryService(authRepo, memRepo, workingRepo, extractor.RuleBasedExtractor{})
+	memSvc := service.NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 
 	authHandler := handlers.NewAuthHandler(authSvc)
 	memoryHandler := handlers.NewMemoryHandler(memSvc)

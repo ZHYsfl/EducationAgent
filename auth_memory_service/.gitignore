@@ -2,3 +2,6 @@
 .gomodcache/
 
 server
+.env.example
+/scripts
+.smoke_logs

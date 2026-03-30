@@ -57,7 +57,7 @@ func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
 	authRepo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
 	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
-	svc := NewMemoryService(authRepo, memRepo, workingRepo, extractor.RuleBasedExtractor{})
+	svc := NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 	return svc, db
 }
 
@@ -95,16 +95,35 @@ func TestWorkingMemorySaveGetAndMissing(t *testing.T) {
 func TestExtractUpsertAndSummaryDurable(t *testing.T) {
 	svc, db := setupMemoryService(t)
 	ctx := context.Background()
-	req := MemoryExtractRequest{UserID: "user_u1", SessionID: "sess_1", Messages: []model.ConversationTurn{{Role: "user", Content: "I teach math and prefer interactive style"}}}
+	req := MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_1",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "I teach math at a high school and I prefer a clean minimalist PPT style."},
+			{Role: "user", Content: "The knowledge points include limits, derivatives, and tangent lines."},
+			{Role: "user", Content: "The teaching goals are helping students understand derivative intuition and apply tangent line ideas."},
+			{Role: "user", Content: "This lesson is for grade 11 students and should fit into 45 minutes."},
+		},
+	}
 	resp, err := svc.Extract(ctx, req)
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
 	if len(resp.ExtractedFacts) == 0 || len(resp.ExtractedPreferences) == 0 {
-		t.Fatalf("extract should persist facts and preferences")
+		t.Fatalf("extract should persist durable facts and preferences")
 	}
 	if !strings.HasPrefix(resp.ExtractedFacts[0].ID, "mem_") {
 		t.Fatalf("memory id should use mem_ prefix")
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_1")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) == 0 || len(wm.ExtractedElements.TeachingGoals) == 0 {
+		t.Fatalf("teaching elements should be written to working memory")
+	}
+	if wm.ExtractedElements.TargetAudience == "" || wm.ExtractedElements.Duration == "" {
+		t.Fatalf("target audience and duration should be normalized into working memory")
 	}
 	var count int64
 	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ?", "user_u1", "summary").Count(&count).Error; err != nil {
@@ -119,11 +138,18 @@ func TestExtractUpsertAndSummaryDurable(t *testing.T) {
 		t.Fatalf("extract second time: %v", err)
 	}
 	var prefCount int64
-	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "teaching_style").Count(&prefCount).Error; err != nil {
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "output_style").Count(&prefCount).Error; err != nil {
 		t.Fatalf("query preference: %v", err)
 	}
 	if prefCount != 1 {
 		t.Fatalf("extract should upsert by user_id/key/context")
+	}
+	var lessonTopicCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND key IN ?", "user_u1", []string{"knowledge_points", "teaching_goals", "target_audience", "duration"}).Count(&lessonTopicCount).Error; err != nil {
+		t.Fatalf("query lesson-specific entries: %v", err)
+	}
+	if lessonTopicCount != 0 {
+		t.Fatalf("session-specific lesson requirements should not be persisted as long-term memory entries")
 	}
 }
 
@@ -172,5 +198,189 @@ func TestProfileAggregationAndPartialUpdate(t *testing.T) {
 	}
 	if p2.VisualPreferences["color_scheme"] != "teal" {
 		t.Fatalf("visual preference update missing")
+	}
+}
+
+func TestExtractMergesTeachingElementsWithoutDroppingExistingWorkingMemory(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: "sess_merge",
+		UserID:    "user_u1",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"existing point"},
+			OutputStyle:     "existing style",
+		},
+		RecentTopics: []string{"previous topic"},
+	})
+	if err != nil {
+		t.Fatalf("seed working memory: %v", err)
+	}
+
+	_, err = svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_merge",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "The teaching goals are helping students compare derivatives with slope ideas."},
+			{Role: "user", Content: "This lesson is for grade 10 students."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	wm, err := svc.GetWorkingMemory(ctx, "sess_merge")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) != 1 || wm.ExtractedElements.KnowledgePoints[0] != "existing point" {
+		t.Fatalf("existing knowledge points should be preserved when no better replacement is extracted")
+	}
+	if len(wm.ExtractedElements.TeachingGoals) == 0 {
+		t.Fatalf("new teaching goals should be merged into working memory")
+	}
+	if wm.ExtractedElements.TargetAudience == "" {
+		t.Fatalf("new target audience should be merged into working memory")
+	}
+	if wm.ExtractedElements.OutputStyle != "existing style" {
+		t.Fatalf("existing output style should be preserved when the new extract call has no confident style")
+	}
+}
+
+func TestExtractUpdatesWorkingMemoryWithStrongerNormalizedValuesAndDedupesLists(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: "sess_upgrade",
+		UserID:    "user_u1",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"limits", "limits"},
+			TargetAudience:  "students",
+			Duration:        "30 minutes",
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed working memory: %v", err)
+	}
+
+	_, err = svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_upgrade",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "The knowledge points include limits, derivatives."},
+			{Role: "user", Content: "This lesson is for first-year calculus students and should fit into 45 minutes."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	wm, err := svc.GetWorkingMemory(ctx, "sess_upgrade")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if wm.ExtractedElements.TargetAudience != "This lesson is for first-year calculus students and should fit into 45 minutes" {
+		t.Fatalf("expected stronger target audience value to overwrite weaker prior value, got %q", wm.ExtractedElements.TargetAudience)
+	}
+	if wm.ExtractedElements.Duration != "45 minutes" {
+		t.Fatalf("expected duration update, got %q", wm.ExtractedElements.Duration)
+	}
+	countLimits := 0
+	hasDerivatives := false
+	for _, point := range wm.ExtractedElements.KnowledgePoints {
+		if strings.EqualFold(point, "limits") {
+			countLimits++
+		}
+		if strings.EqualFold(point, "derivatives") {
+			hasDerivatives = true
+		}
+	}
+	if countLimits != 1 || !hasDerivatives {
+		t.Fatalf("expected deduped knowledge points with preserved new coverage, got %#v", wm.ExtractedElements.KnowledgePoints)
+	}
+}
+
+func TestExtractKeepsUnsupportedPlanningFieldsInSummaryOnly(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	resp, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_summary",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "First teach force concepts, then compare examples, and finally use a short quiz."},
+			{Role: "user", Content: "Use the uploaded textbook PDF only for diagrams and mimic the layout of my previous PPT."},
+			{Role: "user", Content: "Add a quick interaction with an animation if possible."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if !strings.Contains(resp.ConversationSummary, "teaching logic") {
+		t.Fatalf("expected teaching logic note in summary")
+	}
+	if !strings.Contains(resp.ConversationSummary, "reference usage") {
+		t.Fatalf("expected reference usage note in summary")
+	}
+	if !strings.Contains(resp.ConversationSummary, "interaction") {
+		t.Fatalf("expected interaction note in summary")
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_summary")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) != 0 || len(wm.ExtractedElements.TeachingGoals) != 0 || wm.ExtractedElements.OutputStyle != "" {
+		t.Fatalf("unsupported planning fields should stay out of teaching elements: %#v", wm.ExtractedElements)
+	}
+	var pollutedCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND key IN ?", "user_u1", []string{"teaching_logic", "interaction_design", "reference_file_usage"}).Count(&pollutedCount).Error; err != nil {
+		t.Fatalf("query planning-field pollution: %v", err)
+	}
+	if pollutedCount != 0 {
+		t.Fatalf("unsupported planning fields should not be persisted as long-term memory")
+	}
+}
+
+func TestExtractPreventsLongTermPollutionFromOneOffLessonRequirements(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	_, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_policy",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "For this lesson only, make a comic-style deck on Newton's laws for grade 8 students."},
+			{Role: "user", Content: "The duration is 40 minutes and the teaching goals are comparing force and motion."},
+			{Role: "user", Content: "Use the uploaded PDF just for reference examples and keep the teaching logic as concept first, examples second."},
+			{Role: "user", Content: "Across all my lessons I prefer clean minimalist slides."},
+			{Role: "user", Content: "I teach physics in high school."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	var durableCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND key IN ?", "user_u1", []string{"subject", "school_context", "output_style"}).Count(&durableCount).Error; err != nil {
+		t.Fatalf("query durable entries: %v", err)
+	}
+	if durableCount == 0 {
+		t.Fatalf("expected durable facts/preferences to persist")
+	}
+
+	var lessonOnlyCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND key IN ?", "user_u1", []string{
+		"topic", "target_audience", "duration", "teaching_logic", "reference_file_usage",
+	}).Count(&lessonOnlyCount).Error; err != nil {
+		t.Fatalf("query one-off lesson entries: %v", err)
+	}
+	if lessonOnlyCount != 0 {
+		t.Fatalf("one-off lesson requirements should not pollute long-term memory")
+	}
+
+	var oneOffStyleCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND value LIKE ?", "user_u1", "preference", "%comic-style%").Count(&oneOffStyleCount).Error; err != nil {
+		t.Fatalf("query one-off style: %v", err)
+	}
+	if oneOffStyleCount != 0 {
+		t.Fatalf("one-off output style should not persist as a durable preference")
 	}
 }
