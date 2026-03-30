@@ -13,7 +13,7 @@ import (
 var ErrPageNotFound = errors.New("page not found")
 
 type PPTRepository interface {
-	InitCanvas(taskID string) (model.CanvasStatusResponse, error)
+	InitCanvas(taskID string, totalPages int) (model.CanvasStatusResponse, error)
 	GetCanvasStatus(taskID string) (model.CanvasStatusResponse, error)
 	GetPageRender(taskID, pageID string) (model.PageRenderResponse, error)
 	UpdatePageCode(taskID, pageID, pyCode, renderURL string) (model.PageRenderResponse, error)
@@ -32,16 +32,31 @@ func NewInMemoryPPTRepository() *InMemoryPPTRepository {
 	}
 }
 
-func (r *InMemoryPPTRepository) InitCanvas(taskID string) (model.CanvasStatusResponse, error) {
+func (r *InMemoryPPTRepository) InitCanvas(taskID string, totalPages int) (model.CanvasStatusResponse, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	now := time.Now().UnixMilli()
-	pageIDs := []string{"page_" + uuid.NewString(), "page_" + uuid.NewString()}
-	pagesInfo := []model.PageStatusInfo{
-		{PageID: pageIDs[0], Status: "completed", LastUpdate: now, RenderURL: ""},
-		{PageID: pageIDs[1], Status: "completed", LastUpdate: now, RenderURL: ""},
+	if totalPages < 1 {
+		totalPages = 1
 	}
+
+	now := time.Now().UnixMilli()
+
+	pageIDs := make([]string, 0, totalPages)
+	for i := 0; i < totalPages; i++ {
+		pageIDs = append(pageIDs, "page_"+uuid.NewString())
+	}
+
+	pagesInfo := make([]model.PageStatusInfo, 0, totalPages)
+	for _, id := range pageIDs {
+		pagesInfo = append(pagesInfo, model.PageStatusInfo{
+			PageID:     id,
+			Status:     "completed",
+			LastUpdate: now,
+			RenderURL:  "",
+		})
+	}
+
 	canvas := model.CanvasStatusResponse{
 		TaskID:               taskID,
 		PageOrder:            pageIDs,

@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,10 +16,10 @@ import (
 )
 
 var (
-	ErrEmptyIntents         = errors.New("intents is required")
-	ErrInvalidReplyContext  = errors.New("reply_to_context_id is required for resolve_conflict")
-	ErrContextNotMatched    = errors.New("reply_to_context_id does not match suspended context")
-	ErrNoSuspendedConflict  = errors.New("resolve_conflict requires an active suspended conflict")
+	ErrInvalidReplyContext = errors.New("reply_to_context_id is required for resolve_conflict")
+	ErrContextNotMatched   = errors.New("reply_to_context_id does not match suspended context")
+	ErrNoSuspendedConflict = errors.New("resolve_conflict requires an active suspended conflict")
+	ErrInvalidBatchGenerateRequest = errors.New("invalid batch generate request")
 )
 
 type FeedbackService struct {
@@ -37,10 +39,6 @@ func NewFeedbackService(
 }
 
 func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest) (model.FeedbackResponse, error) {
-	if len(req.Intents) == 0 {
-		return model.FeedbackResponse{}, ErrEmptyIntents
-	}
-
 	resolveConflict := hasResolveConflictIntent(req.Intents)
 	if resolveConflict && strings.TrimSpace(req.ReplyToContextID) == "" {
 		return model.FeedbackResponse{}, ErrInvalidReplyContext
@@ -114,7 +112,7 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 	if err != nil {
 		return model.FeedbackResponse{}, err
 	}
-	return model.FeedbackResponse{AcceptedIntents: len(req.Intents), Queued: true}, nil
+	return model.FeedbackResponse{AcceptedIntents: len(req.Intents), Queued: false}, nil
 }
 
 func hasResolveConflictIntent(intents []model.Intent) bool {
@@ -160,4 +158,134 @@ func (s *FeedbackService) ProcessTimeoutTick(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// GeneratePages runs merge+write for multiple pages concurrently.
+// Current project does not have a real "renderer", so this method writes a mock render_url.
+func (s *FeedbackService) GeneratePages(ctx context.Context, req model.BatchGeneratePagesRequest) (model.BatchGeneratePagesResponse, error) {
+	taskID := strings.TrimSpace(req.TaskID)
+	if taskID == "" || req.BaseTimestamp <= 0 || strings.TrimSpace(req.RawText) == "" {
+		return model.BatchGeneratePagesResponse{}, ErrInvalidBatchGenerateRequest
+	}
+
+	var pageIDs []string
+	if len(req.PageIDs) > 0 {
+		pageIDs = make([]string, 0, len(req.PageIDs))
+		for _, id := range req.PageIDs {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				pageIDs = append(pageIDs, id)
+			}
+		}
+	} else {
+		canvas, err := s.pptRepo.GetCanvasStatus(taskID)
+		if err != nil {
+			return model.BatchGeneratePagesResponse{}, err
+		}
+		pageIDs = canvas.PageOrder
+	}
+	if len(pageIDs) == 0 {
+		return model.BatchGeneratePagesResponse{}, ErrInvalidBatchGenerateRequest
+	}
+
+	maxParallel := req.MaxParallel
+	if maxParallel <= 0 {
+		maxParallel = 4
+	}
+	if maxParallel > len(pageIDs) {
+		maxParallel = len(pageIDs)
+	}
+	if maxParallel <= 0 {
+		maxParallel = 1
+	}
+
+	results := make([]model.BatchGeneratePageResult, len(pageIDs))
+	sem := make(chan struct{}, maxParallel)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i, pageID := range pageIDs {
+		i := i
+		pageID := pageID
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			current, err := s.pptRepo.GetPageRender(taskID, pageID)
+			if err != nil {
+				mu.Lock()
+				results[i] = model.BatchGeneratePageResult{
+					PageID: pageID, Status: "failed", Error: err.Error(),
+				}
+				mu.Unlock()
+				return
+			}
+
+			perPageIntents := make([]model.Intent, len(req.Intents))
+			for j := range req.Intents {
+				perPageIntents[j] = req.Intents[j]
+				perPageIntents[j].TargetPageID = pageID
+			}
+
+			fbReq := model.FeedbackRequest{
+				TaskID:           taskID,
+				BaseTimestamp:    req.BaseTimestamp,
+				ViewingPageID:    pageID,
+				ReplyToContextID: "",
+				RawText:          req.RawText,
+				Intents:          perPageIntents,
+			}
+
+			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
+			if err != nil {
+				mu.Lock()
+				results[i] = model.BatchGeneratePageResult{
+					PageID: pageID, Status: "failed", Error: err.Error(),
+				}
+				mu.Unlock()
+				return
+			}
+
+			if mergeResult.MergeStatus != "auto_resolved" {
+				mu.Lock()
+				results[i] = model.BatchGeneratePageResult{
+					PageID: pageID, Status: "failed", Error: mergeResult.QuestionForUser,
+				}
+				mu.Unlock()
+				return
+			}
+
+			renderURL := strings.TrimSpace(current.RenderURL)
+			if renderURL == "" {
+				renderURL = fmt.Sprintf("mock://render/%s/%s", taskID, pageID)
+			}
+			updated, err := s.pptRepo.UpdatePageCode(taskID, pageID, mergeResult.MergedPyCode, renderURL)
+			if err != nil {
+				mu.Lock()
+				results[i] = model.BatchGeneratePageResult{
+					PageID: pageID, Status: "failed", RenderURL: renderURL, Error: err.Error(),
+				}
+				mu.Unlock()
+				return
+			}
+
+			mu.Lock()
+			results[i] = model.BatchGeneratePageResult{
+				PageID:    pageID,
+				Status:    "completed",
+				RenderURL: updated.RenderURL,
+				Version:   updated.Version,
+			}
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+	return model.BatchGeneratePagesResponse{
+		TaskID:  taskID,
+		Results: results,
+	}, nil
 }

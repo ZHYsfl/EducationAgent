@@ -29,6 +29,7 @@ func NewRouter(
 	ppt := v1.Group("/ppt")
 	{
 		ppt.POST("/init", authMiddleware.RequireInternalKey(), pptHandler.Init)
+		ppt.POST("/generate_pages", authMiddleware.RequireInternalKey(), feedbackHandler.GeneratePages)
 		ppt.POST("/feedback", authMiddleware.RequireInternalKey(), feedbackHandler.Feedback)
 		ppt.POST("/export", authMiddleware.RequireInternalKey(), exportHandler.Create)
 		ppt.GET("/export/:export_id", authMiddleware.RequireInternalKey(), exportHandler.Get)
@@ -36,6 +37,7 @@ func NewRouter(
 	}
 
 	v1.GET("/canvas/status", authMiddleware.RequireInternalKey(), pptHandler.CanvasStatus)
+	v1.POST("/canvas/vad-event", authMiddleware.RequireInternalKey(), pptHandler.VADEvent)
 	v1.POST("/internal/feedback/timeout_tick", authMiddleware.RequireInternalKey(), feedbackHandler.TickTimeout)
 
 	return r

@@ -32,14 +32,29 @@ func (r *RedisPPTRepository) snapshotKey(taskID string, ts int64) string {
 	return fmt.Sprintf("snapshot:%s:%d", taskID, ts)
 }
 
-func (r *RedisPPTRepository) InitCanvas(taskID string) (model.CanvasStatusResponse, error) {
+func (r *RedisPPTRepository) InitCanvas(taskID string, totalPages int) (model.CanvasStatusResponse, error) {
 	ctx := context.Background()
 	now := time.Now().UnixMilli()
-	pageIDs := []string{"page_" + uuid.NewString(), "page_" + uuid.NewString()}
-	pagesInfo := []model.PageStatusInfo{
-		{PageID: pageIDs[0], Status: "completed", LastUpdate: now, RenderURL: ""},
-		{PageID: pageIDs[1], Status: "completed", LastUpdate: now, RenderURL: ""},
+
+	if totalPages < 1 {
+		totalPages = 1
 	}
+
+	pageIDs := make([]string, 0, totalPages)
+	for i := 0; i < totalPages; i++ {
+		pageIDs = append(pageIDs, "page_"+uuid.NewString())
+	}
+
+	pagesInfo := make([]model.PageStatusInfo, 0, totalPages)
+	for _, id := range pageIDs {
+		pagesInfo = append(pagesInfo, model.PageStatusInfo{
+			PageID:     id,
+			Status:     "completed",
+			LastUpdate: now,
+			RenderURL:  "",
+		})
+	}
+
 	canvas := model.CanvasStatusResponse{
 		TaskID:               taskID,
 		PageOrder:            pageIDs,

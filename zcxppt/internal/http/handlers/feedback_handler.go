@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"zcxppt/internal/contract"
@@ -23,24 +25,33 @@ func (h *FeedbackHandler) Feedback(c *gin.Context) {
 		contract.Error(c, contract.CodeInvalidParam, "invalid request body")
 		return
 	}
-	if len(req.Intents) == 0 {
-		contract.Error(c, contract.CodeInvalidParam, "intents is required")
+	if strings.TrimSpace(req.TaskID) == "" ||
+		strings.TrimSpace(req.ViewingPageID) == "" ||
+		req.BaseTimestamp <= 0 ||
+		strings.TrimSpace(req.RawText) == "" {
+		contract.Error(c, contract.CodeInvalidParam, "missing required fields for feedback")
 		return
 	}
-	resp, err := h.feedbackService.Handle(c.Request.Context(), req)
+	for _, intent := range req.Intents {
+		if !isValidActionType(intent.ActionType) {
+			contract.Error(c, contract.CodeInvalidParam, "invalid action_type")
+			return
+		}
+	}
+	_, err := h.feedbackService.Handle(c.Request.Context(), req)
 	if err != nil {
 		if err == repository.ErrTaskNotFound || err == repository.ErrPageNotFound {
 			contract.Error(c, contract.CodeTaskNotFound, "task/page not found")
 			return
 		}
-		if err == service.ErrEmptyIntents || err == service.ErrInvalidReplyContext || err == service.ErrContextNotMatched || err == service.ErrNoSuspendedConflict {
+		if err == service.ErrInvalidReplyContext || err == service.ErrContextNotMatched || err == service.ErrNoSuspendedConflict {
 			contract.Error(c, contract.CodeInvalidParam, err.Error())
 			return
 		}
 		contract.Error(c, contract.CodeInternalError, err.Error())
 		return
 	}
-	contract.Success(c, resp, "")
+	contract.Success(c, nil, "success")
 }
 
 func (h *FeedbackHandler) TickTimeout(c *gin.Context) {
@@ -49,4 +60,35 @@ func (h *FeedbackHandler) TickTimeout(c *gin.Context) {
 		return
 	}
 	contract.Success(c, gin.H{"ok": true}, "")
+}
+
+// GeneratePages runs merge+write for multiple pages concurrently.
+func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
+	var req model.BatchGeneratePagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		contract.Error(c, contract.CodeInvalidParam, "invalid request body")
+		return
+	}
+
+	resp, err := h.feedbackService.GeneratePages(c.Request.Context(), req)
+	if err != nil {
+		if err == service.ErrInvalidBatchGenerateRequest {
+			contract.Error(c, contract.CodeInvalidParam, err.Error())
+			return
+		}
+		contract.Error(c, contract.CodeInternalError, err.Error())
+		return
+	}
+
+	contract.Success(c, resp, "success")
+}
+
+func isValidActionType(actionType string) bool {
+	actionType = strings.TrimSpace(strings.ToLower(actionType))
+	switch actionType {
+	case "modify", "insert", "delete", "reorder", "style":
+		return true
+	default:
+		return false
+	}
 }

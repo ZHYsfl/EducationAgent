@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sharedoss "educationagent/oss"
+
 	"github.com/redis/go-redis/v9"
 
 	"zcxppt/internal/config"
@@ -82,7 +83,7 @@ func main() {
 	}
 
 	taskService := service.NewTaskService(taskRepo)
-	pptService := service.NewPPTService(taskRepo, pptRepo)
+	pptService := service.NewPPTService(taskRepo, pptRepo, feedbackRepo)
 	notifyService := service.NewNotifyService(cfg.VoiceAgentURL)
 	feedbackService := service.NewFeedbackService(
 		pptRepo,
