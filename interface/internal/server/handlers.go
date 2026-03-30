@@ -414,6 +414,10 @@ func (a *App) searchResult(c *gin.Context) {
 		fail(c, 40001, "request_id 不能为空")
 		return
 	}
+	if !strings.HasPrefix(requestID, "search_") {
+		fail(c, 40001, "request_id 格式非法")
+		return
+	}
 	var rec SearchRequestModel
 	if err := a.db.First(&rec, "request_id = ?", requestID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
