@@ -145,10 +145,16 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 	}
 
 	if sessionID != "" {
-		wm := model.WorkingMemory{SessionID: sessionID, UserID: req.UserID, ConversationSummary: res.ConversationSummary, UpdatedAt: util.NowMilli()}
+		wm := model.WorkingMemory{
+			SessionID:           sessionID,
+			UserID:              req.UserID,
+			ConversationSummary: res.ConversationSummary,
+			ExtractedElements:   res.TeachingElements(),
+			UpdatedAt:           util.NowMilli(),
+		}
 		existing, err := s.workingRepo.Get(ctx, sessionID)
 		if err == nil {
-			wm.ExtractedElements = existing.ExtractedElements
+			wm.ExtractedElements = mergeTeachingElements(existing.ExtractedElements, wm.ExtractedElements)
 			wm.RecentTopics = existing.RecentTopics
 		}
 		if err := s.workingRepo.Save(ctx, wm); err != nil {
@@ -341,6 +347,41 @@ func rankEntries(entries []model.MemoryEntry, query string, topK int) []model.Me
 	out := make([]model.MemoryEntry, 0, topK)
 	for i := 0; i < topK; i++ {
 		out = append(out, scoredItems[i].e)
+	}
+	return out
+}
+
+func mergeTeachingElements(existing, incoming model.TeachingElements) model.TeachingElements {
+	out := existing
+	out.KnowledgePoints = appendUniqueStrings(out.KnowledgePoints, incoming.KnowledgePoints...)
+	out.TeachingGoals = appendUniqueStrings(out.TeachingGoals, incoming.TeachingGoals...)
+	out.KeyDifficulties = appendUniqueStrings(out.KeyDifficulties, incoming.KeyDifficulties...)
+	if strings.TrimSpace(incoming.TargetAudience) != "" {
+		out.TargetAudience = strings.TrimSpace(incoming.TargetAudience)
+	}
+	if strings.TrimSpace(incoming.Duration) != "" {
+		out.Duration = strings.TrimSpace(incoming.Duration)
+	}
+	if strings.TrimSpace(incoming.OutputStyle) != "" {
+		out.OutputStyle = strings.TrimSpace(incoming.OutputStyle)
+	}
+	return out
+}
+
+func appendUniqueStrings(base []string, incoming ...string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(base)+len(incoming))
+	for _, item := range append(append([]string{}, base...), incoming...) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
 	}
 	return out
 }

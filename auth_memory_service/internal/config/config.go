@@ -19,6 +19,12 @@ type Config struct {
 	VerifyTokenTTLHours int
 	FrontendVerifyURL   string
 	InternalKey         string
+	ExtractorLLMEnabled bool
+	ExtractorLLMModel   string
+	ExtractorTimeoutMS  int
+	ExtractorMaxTurns   int
+	DeepSeekAPIKey      string
+	DeepSeekBaseURL     string
 }
 
 func Load() Config {
@@ -35,6 +41,12 @@ func Load() Config {
 		VerifyTokenTTLHours: getEnvInt("VERIFY_TOKEN_TTL_HOURS", 24),
 		FrontendVerifyURL:   getEnv("FRONTEND_VERIFY_URL", "http://localhost:3000/verify-email"),
 		InternalKey:         getEnv("INTERNAL_KEY", ""),
+		ExtractorLLMEnabled: getEnvBool("EXTRACTOR_LLM_ENABLED", false),
+		ExtractorLLMModel:   getEnv("EXTRACTOR_LLM_MODEL", "deepseek-chat"),
+		ExtractorTimeoutMS:  getEnvInt("EXTRACTOR_LLM_TIMEOUT_MS", 2000),
+		ExtractorMaxTurns:   getEnvInt("EXTRACTOR_MAX_TURNS", 16),
+		DeepSeekAPIKey:      getEnv("DEEPSEEK_API_KEY", ""),
+		DeepSeekBaseURL:     getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
 	}
 }
 
@@ -55,4 +67,19 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "1", "true", "TRUE", "True", "yes", "YES", "on", "ON":
+		return true
+	case "0", "false", "FALSE", "False", "no", "NO", "off", "OFF":
+		return false
+	default:
+		return fallback
+	}
 }
