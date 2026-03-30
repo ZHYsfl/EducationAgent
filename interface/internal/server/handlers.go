@@ -439,3 +439,49 @@ func (a *App) searchResult(c *gin.Context) {
 		"duration":   rec.Duration,
 	})
 }
+
+// authVerify implements §6.1 认证服务接口：验证用户Token。
+func (a *App) authVerify(c *gin.Context) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 40001, "请求体格式错误")
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		ok(c, gin.H{
+			"user_id": "",
+			"valid":   false,
+		})
+		return
+	}
+
+	// token 是去掉 "Bearer " 前缀后的内容
+	userID := parseUserID("Bearer " + token)
+
+	ok(c, gin.H{
+		"user_id": userID,
+		"valid":   userID != "",
+	})
+}
+
+// authProfile implements §6.2 认证服务接口：获取用户基础信息。
+func (a *App) authProfile(c *gin.Context) {
+	userID := parseUserID(c.GetHeader("Authorization"))
+	if userID == "" {
+		fail(c, 40100, "未授权或 token 非法")
+		return
+	}
+
+	now := nowMs()
+	ok(c, gin.H{
+		"user_id":      userID,
+		"username":     userID,
+		"email":        "",
+		"display_name": userID,
+		"avatar_url":   "",
+		"created_at":   now,
+	})
+}
