@@ -49,6 +49,11 @@ func (p *Pipeline) DrainContextQueue() []ContextMessage {
 	return p.drainContextQueue()
 }
 
+// BuildFullSystemPrompt calls the unexported buildFullSystemPrompt method.
+func (p *Pipeline) BuildFullSystemPrompt(ctx context.Context, includeContextQueue bool) string {
+	return p.buildFullSystemPrompt(ctx, includeContextQueue)
+}
+
 // AsyncExtractMemory calls the unexported asyncExtractMemory method.
 func (p *Pipeline) AsyncExtractMemory(userText, assistantText string) {
 	p.asyncExtractMemory(userText, assistantText)
@@ -69,6 +74,11 @@ func (p *Pipeline) TTSWorker(ctx context.Context, sentenceCh <-chan string) {
 // EnqueueContextMessage calls the unexported enqueueContextMessage method.
 func (p *Pipeline) EnqueueContextMessage(ctx context.Context, msg ContextMessage) {
 	p.enqueueContextMessage(ctx, msg)
+}
+
+// NewTestRequirements creates a test requirements object.
+func NewTestRequirements() *TaskRequirements {
+	return NewTaskRequirements("test_session", "test_user")
 }
 
 // ---------------------------------------------------------------------------
