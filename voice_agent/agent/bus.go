@@ -9,14 +9,14 @@ import (
 )
 
 func (p *Pipeline) drainContextQueue() []ContextMessage {
-	var msgs []ContextMessage
-
 	p.pendingMu.Lock()
+	defer p.pendingMu.Unlock()
+
+	var msgs []ContextMessage
 	if len(p.pendingContexts) > 0 {
 		msgs = append(msgs, p.pendingContexts...)
-		p.pendingContexts = p.pendingContexts[:0]
+		p.pendingContexts = nil
 	}
-	p.pendingMu.Unlock()
 
 	for {
 		select {
@@ -67,7 +67,7 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 					// system_notify 被打断就放弃，不重试
 					if msg.MsgType == "system_notify" {
 						log.Printf("[high-priority] system_notify interrupted, skipping")
-						return
+						continue
 					}
 
 					// conflict_question 重试机制
@@ -97,7 +97,7 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 							p.pendingMu.Unlock()
 						}
 					}
-					return
+					continue
 				}
 				if msg.MsgType == "conflict_question" {
 					pageID := msg.Metadata["page_id"]

@@ -15,69 +15,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 	p.history.AddUser(userText)
 
-	contextMsgs := p.drainContextQueue()
-	contextPrompt := FormatContextForLLM(contextMsgs)
-
-	systemPrompt := p.config.SystemPrompt
-	p.session.reqMu.RLock()
-	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
-	p.session.reqMu.RUnlock()
-	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
-		var profile *UserProfile
-		if p.clients != nil {
-			if pInfo, err := p.clients.GetUserProfile(ctx, reqSnapshot.UserID); err == nil {
-				profile = &pInfo
-			}
-		}
-		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
-	}
-
-	taskListContext := p.buildTaskListContext()
-	if taskListContext != "" {
-		systemPrompt += taskListContext
-	}
-	pendingQContext := p.buildPendingQuestionsContext()
-	if pendingQContext != "" {
-		systemPrompt += pendingQContext
-	}
-	if contextPrompt != "" {
-		systemPrompt += contextPrompt
-	}
-
-	// Add protocol instructions
-	systemPrompt += `
-
-## 动作协议
-执行操作时使用: @{type|key:value|key:value}
-内部思考使用: #{思考内容}（可选，不显示给用户）
-
-支持的动作:
-- update_requirements: @{update_requirements|字段:值} - 更新需求信息（包括初始化topic）
-- ppt_init: @{ppt_init|topic:主题|desc:描述} - 开始制作PPT（需先收集完所有必填信息）
-- ppt_mod: @{ppt_mod|task:任务ID|raw_text:用户原话} - 修改PPT（task参数可选，默认使用当前活跃任务；多任务时必须明确指定）
-- kb_query: @{kb_query|query:查询内容}
-- web_search: @{web_search|query:搜索关键词}
-
-## 需求收集流程
-1. 用户提出制作PPT需求 → @{update_requirements|topic:主题}
-2. 逐步询问用户（每次1-2个问题），收集信息后 → @{update_requirements|字段:值}
-3. 所有必填信息收集完成 → @{ppt_init|topic:主题|desc:描述}
-
-必填字段（12个）: topic, subject, audience, total_pages, knowledge_points, teaching_goals, teaching_logic, key_difficulties, duration, global_style, interaction_design, output_formats
-
-## PPT修改流程
-- 单任务场景: @{ppt_mod|raw_text:用户原话} （task参数可省略）
-- 多任务场景: 根据用户提到的任务主题，明确指定task参数 @{ppt_mod|task:任务ID|raw_text:用户原话}
-
-示例:
-用户: "帮我做个高等数学的PPT"
-你: 好的。@{update_requirements|topic:高等数学} 请问目标听众是谁？
-用户: "大学生"
-你: 明白了。@{update_requirements|audience:大学生} 需要多少页？
-
-用户: "把物理课件的第3页改成蓝色"
-你: 好的。@{ppt_mod|task:task_physics_id|raw_text:把第3页改成蓝色}
-`
+	systemPrompt := p.buildFullSystemPrompt(ctx, true)
 
 	log.Printf("Processing user input: %s", truncate(userText, 100))
 
@@ -328,8 +266,7 @@ func (p *Pipeline) cancelThinkStream() {
 func (p *Pipeline) runThinkStream(ctx context.Context, userInput string, warmup bool) {
 	p.history.AddUser(userInput)
 
-	contextMsgs := p.drainContextQueue()
-	systemPrompt := p.buildSystemPrompt(contextMsgs)
+	systemPrompt := p.buildSystemPrompt(ctx)
 
 	messages := p.history.ToOpenAIWithThoughtAndPrompt("", systemPrompt)
 	tokenCh := p.largeLLM.StreamChat(ctx, messages)
@@ -347,53 +284,8 @@ func (p *Pipeline) runThinkStream(ctx context.Context, userInput string, warmup 
 	}
 }
 
-func (p *Pipeline) buildSystemPrompt(contextMsgs []ContextMessage) string {
-	contextPrompt := FormatContextForLLM(contextMsgs)
-	systemPrompt := p.config.SystemPrompt
-
-	p.session.reqMu.RLock()
-	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
-	p.session.reqMu.RUnlock()
-
-	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
-		var profile *UserProfile
-		if p.clients != nil {
-			if pInfo, err := p.clients.GetUserProfile(context.Background(), reqSnapshot.UserID); err == nil {
-				profile = &pInfo
-			}
-		}
-		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
-	}
-
-	taskListContext := p.buildTaskListContext()
-	if taskListContext != "" {
-		systemPrompt += taskListContext
-	}
-
-	pendingQContext := p.buildPendingQuestionsContext()
-	if pendingQContext != "" {
-		systemPrompt += pendingQContext
-	}
-
-	if contextPrompt != "" {
-		systemPrompt += contextPrompt
-	}
-
-	systemPrompt += `
-
-## 动作协议
-执行操作时使用: @{type|key:value|key:value}
-内部思考使用: #{思考内容}（可选，不显示给用户）
-
-支持的动作:
-- update_requirements: @{update_requirements|字段:值}
-- ppt_init: @{ppt_init|topic:主题|desc:描述}
-- ppt_mod: @{ppt_mod|task:任务ID|raw_text:用户原话}
-- kb_query: @{kb_query|query:查询内容}
-- web_search: @{web_search|query:搜索关键词}
-`
-
-	return systemPrompt
+func (p *Pipeline) buildSystemPrompt(ctx context.Context) string {
+	return p.buildFullSystemPrompt(ctx, false)
 }
 
 func (p *Pipeline) outputLoop(ctx context.Context) {
