@@ -44,7 +44,7 @@ func (h *FeedbackHandler) Feedback(c *gin.Context) {
 			contract.Error(c, contract.CodeTaskNotFound, "task/page not found")
 			return
 		}
-		if err == service.ErrInvalidReplyContext || err == service.ErrContextNotMatched || err == service.ErrNoSuspendedConflict {
+		if err == service.ErrInvalidReplyContext || err == service.ErrContextNotMatched || err == service.ErrNoSuspendedConflict || err == service.ErrUnsupportedActionType || err == service.ErrTargetPageNotFound {
 			contract.Error(c, contract.CodeInvalidParam, err.Error())
 			return
 		}
@@ -86,7 +86,7 @@ func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
 func isValidActionType(actionType string) bool {
 	actionType = strings.TrimSpace(strings.ToLower(actionType))
 	switch actionType {
-	case "modify", "insert", "delete", "reorder", "style":
+	case "modify", "insert_before", "insert_after", "delete", "global_modify", "reorder", "resolve_conflict":
 		return true
 	default:
 		return false

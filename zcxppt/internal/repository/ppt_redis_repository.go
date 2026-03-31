@@ -32,6 +32,10 @@ func (r *RedisPPTRepository) snapshotKey(taskID string, ts int64) string {
 	return fmt.Sprintf("snapshot:%s:%d", taskID, ts)
 }
 
+func (r *RedisPPTRepository) pageToTaskKey(pageID string) string {
+	return "canvas:page:" + pageID
+}
+
 func (r *RedisPPTRepository) InitCanvas(taskID string, totalPages int) (model.CanvasStatusResponse, error) {
 	ctx := context.Background()
 	now := time.Now().UnixMilli()
@@ -147,6 +151,126 @@ func (r *RedisPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL st
 	}
 	_ = r.saveSnapshot(ctx, taskID, canvas)
 	return page, nil
+}
+
+func (r *RedisPPTRepository) InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error {
+	ctx := context.Background()
+	canvas, err := r.GetCanvasStatus(taskID)
+	if err != nil {
+		return err
+	}
+	pos := -1
+	for i, pid := range canvas.PageOrder {
+		if pid == afterPageID {
+			pos = i + 1
+			break
+		}
+	}
+	if pos < 0 {
+		return ErrPageNotFound
+	}
+
+	canvas.PageOrder = append(canvas.PageOrder[:pos], append([]string{newPage.PageID}, canvas.PageOrder[pos:]...)...)
+	canvas.PagesInfo = append(canvas.PagesInfo[:pos], append([]model.PageStatusInfo{{PageID: newPage.PageID, Status: newPage.Status, LastUpdate: newPage.UpdatedAt, RenderURL: newPage.RenderURL}}, canvas.PagesInfo[pos:]...)...)
+
+	if err := r.setPage(ctx, newPage); err != nil {
+		return err
+	}
+	if err := r.setCanvas(ctx, canvas); err != nil {
+		return err
+	}
+	_ = r.saveSnapshot(ctx, taskID, canvas)
+	return nil
+}
+
+func (r *RedisPPTRepository) InsertPageBefore(taskID, beforePageID string, newPage model.PageRenderResponse) error {
+	ctx := context.Background()
+	canvas, err := r.GetCanvasStatus(taskID)
+	if err != nil {
+		return err
+	}
+	pos := -1
+	for i, pid := range canvas.PageOrder {
+		if pid == beforePageID {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return ErrPageNotFound
+	}
+
+	canvas.PageOrder = append(canvas.PageOrder[:pos], append([]string{newPage.PageID}, canvas.PageOrder[pos:]...)...)
+	canvas.PagesInfo = append(canvas.PagesInfo[:pos], append([]model.PageStatusInfo{{PageID: newPage.PageID, Status: newPage.Status, LastUpdate: newPage.UpdatedAt, RenderURL: newPage.RenderURL}}, canvas.PagesInfo[pos:]...)...)
+
+	if err := r.setPage(ctx, newPage); err != nil {
+		return err
+	}
+	if err := r.setCanvas(ctx, canvas); err != nil {
+		return err
+	}
+	_ = r.saveSnapshot(ctx, taskID, canvas)
+	return nil
+}
+
+func (r *RedisPPTRepository) DeletePage(taskID, pageID string) error {
+	ctx := context.Background()
+	canvas, err := r.GetCanvasStatus(taskID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, pid := range canvas.PageOrder {
+		if pid == pageID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrPageNotFound
+	}
+
+	newOrder := make([]string, 0, len(canvas.PageOrder)-1)
+	for _, pid := range canvas.PageOrder {
+		if pid != pageID {
+			newOrder = append(newOrder, pid)
+		}
+	}
+	newPagesInfo := make([]model.PageStatusInfo, 0, len(canvas.PagesInfo)-1)
+	for _, pi := range canvas.PagesInfo {
+		if pi.PageID != pageID {
+			newPagesInfo = append(newPagesInfo, pi)
+		}
+	}
+	if len(newOrder) > 0 {
+		canvas.CurrentViewingPageID = newOrder[0]
+	}
+	canvas.PageOrder = newOrder
+	canvas.PagesInfo = newPagesInfo
+
+	if err := r.client.Del(ctx, r.pageKey(taskID, pageID)).Err(); err != nil {
+		return err
+	}
+	if err := r.setCanvas(ctx, canvas); err != nil {
+		return err
+	}
+	_ = r.saveSnapshot(ctx, taskID, canvas)
+	return nil
+}
+
+func (r *RedisPPTRepository) GetTaskIDByPageID(pageID string) (string, error) {
+	ctx := context.Background()
+	pattern := "canvas:page:*:" + pageID
+	iter := r.client.Scan(ctx, 0, pattern, 1).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		if len(key) > len("canvas:page:") {
+			taskID := key[len("canvas:page:"):len(key)-len(pageID)-1]
+			return taskID, nil
+		}
+	}
+	_ = iter.Err()
+	return "", ErrPageNotFound
 }
 
 func (r *RedisPPTRepository) setCanvas(ctx context.Context, canvas model.CanvasStatusResponse) error {

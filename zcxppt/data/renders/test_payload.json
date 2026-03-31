@@ -1,0 +1,12 @@
+{
+  "page_index": 0,
+  "page_title": "Test Page",
+  "output_path": "e:/PPT agent/EducationAgent/zcxppt/data/renders/test_single.pptx",
+  "py_code": "add_rect(slide, 0, 0, 10, 1.2, fill=\"1F4E79\")\nset_slide_title(slide, \"Welcome to AI Basics\", font_size=36, color=\"FFFFFF\", bg_color=\"1F4E79\")\nadd_textbox(slide, \"Today we will learn about:\", 0.5, 1.5, 9, 0.5, font_size=20, bold=True, color=\"333333\")\nadd_textbox(slide, \"1. What is Artificial Intelligence?\", 1.0, 2.2, 7, 0.5, font_size=16, color=\"555555\")\nadd_textbox(slide, \"2. Machine Learning Basics\", 1.0, 2.8, 7, 0.5, font_size=16, color=\"555555\")\nadd_textbox(slide, \"3. Deep Learning Introduction\", 1.0, 3.4, 7, 0.5, font_size=16, color=\"555555\")",
+  "render_config": {
+    "width_inches": 10,
+    "height_inches": 7.5,
+    "bg_color": "FFFFFF",
+    "font_name": "Microsoft YaHei"
+  }
+}
