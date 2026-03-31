@@ -40,5 +40,13 @@ func NewRouter(
 	v1.POST("/canvas/vad-event", authMiddleware.RequireInternalKey(), pptHandler.VADEvent)
 	v1.POST("/internal/feedback/timeout_tick", authMiddleware.RequireInternalKey(), feedbackHandler.TickTimeout)
 
+	// Health check (no auth required)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"code": 200, "message": "ok", "service": "zcxppt"})
+	})
+	r.GET("/ready", func(c *gin.Context) {
+		c.JSON(200, gin.H{"code": 200, "message": "ready"})
+	})
+
 	return r
 }

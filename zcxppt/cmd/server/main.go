@@ -18,6 +18,7 @@ import (
 	"zcxppt/internal/http/middleware"
 	"zcxppt/internal/infra/llm"
 	"zcxppt/internal/infra/oss"
+	"zcxppt/internal/infra/renderer"
 	"zcxppt/internal/repository"
 	"zcxppt/internal/service"
 )
@@ -82,17 +83,44 @@ func main() {
 		log.Fatalf("failed to init oss client: %v", err)
 	}
 
-	taskService := service.NewTaskService(taskRepo)
-	pptService := service.NewPPTService(taskRepo, pptRepo, feedbackRepo)
 	notifyService := service.NewNotifyService(cfg.VoiceAgentURL)
+	llmRuntime := llm.NewToolRuntime(llm.RuntimeConfig{Mode: cfg.LLMRuntimeMode, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, BaseURL: cfg.LLMBaseURL})
+
+	var pptRenderer *renderer.Renderer
+	if strings.EqualFold(cfg.RendererMode, "real") {
+		pptRenderer = renderer.NewRendererWithConfig(renderer.Config{
+			PythonPath:      cfg.PythonPath,
+			ScriptPath:     cfg.RenderScriptPath,
+			RenderDir:       cfg.RenderDir,
+			RenderURLPrefix: cfg.RenderURLPrefix,
+			TimeoutSeconds:  cfg.RenderTimeoutSec,
+		}, ossClient)
+	}
+
+	pptService := service.NewPPTService(taskRepo, pptRepo, feedbackRepo)
+	pptService.ConfigureInitGenerator(
+		cfg.KBServiceURL,
+		service.LLMClientConfig{APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, BaseURL: cfg.LLMBaseURL},
+	)
+	if pptRenderer != nil {
+		pptService.AttachRenderer(pptRenderer)
+	}
+
 	feedbackService := service.NewFeedbackService(
 		pptRepo,
 		feedbackRepo,
-		llm.NewToolRuntime(llm.RuntimeConfig{Mode: cfg.LLMRuntimeMode, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, BaseURL: cfg.LLMBaseURL}),
+		llmRuntime,
 		notifyService,
 	)
+	if pptRenderer != nil {
+		feedbackService.AttachRenderer(pptRenderer)
+	}
 	exportService := service.NewExportService(exportRepo, ossClient)
+	if pptRepo != nil {
+		exportService.AttachPPTRepository(pptRepo)
+	}
 
+	taskService := service.NewTaskService(taskRepo)
 	taskHandler := handlers.NewTaskHandler(taskService)
 	pptHandler := handlers.NewPPTHandler(pptService)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackService)
@@ -117,11 +145,6 @@ func validateConfig(cfg config.Config) error {
 	}
 	if strings.TrimSpace(cfg.InternalKey) == "" {
 		return errors.New("INTERNAL_KEY is required")
-	}
-	if strings.EqualFold(cfg.LLMRuntimeMode, "real") {
-		if strings.TrimSpace(cfg.LLMAPIKey) == "" || strings.TrimSpace(cfg.LLMModel) == "" || strings.TrimSpace(cfg.LLMBaseURL) == "" {
-			return errors.New("LLM_API_KEY, LLM_MODEL and LLM_BASE_URL are required when LLM_RUNTIME_MODE=real")
-		}
 	}
 	return nil
 }

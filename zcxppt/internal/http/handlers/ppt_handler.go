@@ -25,23 +25,17 @@ func (h *PPTHandler) Init(c *gin.Context) {
 		contract.Error(c, contract.CodeInvalidParam, "invalid request body")
 		return
 	}
+	// 系统规范: topic/description 必填，其他可选
 	if strings.TrimSpace(req.UserID) == "" ||
 		strings.TrimSpace(req.SessionID) == "" ||
 		strings.TrimSpace(req.Topic) == "" ||
-		strings.TrimSpace(req.Subject) == "" ||
-		strings.TrimSpace(req.Description) == "" ||
-		req.TotalPages <= 0 ||
-		strings.TrimSpace(req.Audience) == "" ||
-		strings.TrimSpace(req.GlobalStyle) == "" {
-		contract.Error(c, contract.CodeInvalidParam, "missing required fields for ppt init")
+		strings.TrimSpace(req.Description) == "" {
+		contract.Error(c, contract.CodeInvalidParam, "missing required fields: user_id, session_id, topic, description")
 		return
 	}
-	if req.TeachingElements == nil || !validateTeachingElements(*req.TeachingElements) {
-		contract.Error(c, contract.CodeInvalidParam, "invalid teaching_elements")
-		return
-	}
+	// ReferenceFiles 格式校验（如果提供了的话）
 	if !validateReferenceFiles(req.ReferenceFiles) {
-		contract.Error(c, contract.CodeInvalidParam, "invalid reference_files")
+		contract.Error(c, contract.CodeInvalidParam, "invalid reference_files format")
 		return
 	}
 	taskID, err := h.pptService.Init(req)
@@ -50,16 +44,6 @@ func (h *PPTHandler) Init(c *gin.Context) {
 		return
 	}
 	contract.Success(c, gin.H{"task_id": taskID, "status": "created"}, "success")
-}
-
-func validateTeachingElements(el model.InitTeachingElements) bool {
-	return len(el.KnowledgePoints) > 0 &&
-		len(el.TeachingGoals) > 0 &&
-		strings.TrimSpace(el.TeachingLogic) != "" &&
-		len(el.KeyDifficulties) > 0 &&
-		strings.TrimSpace(el.Duration) != "" &&
-		strings.TrimSpace(el.InteractionDesign) != "" &&
-		len(el.OutputFormats) > 0
 }
 
 func validateReferenceFiles(files []model.ReferenceFile) bool {

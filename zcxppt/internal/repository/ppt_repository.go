@@ -17,6 +17,10 @@ type PPTRepository interface {
 	GetCanvasStatus(taskID string) (model.CanvasStatusResponse, error)
 	GetPageRender(taskID, pageID string) (model.PageRenderResponse, error)
 	UpdatePageCode(taskID, pageID, pyCode, renderURL string) (model.PageRenderResponse, error)
+	InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error
+	InsertPageBefore(taskID, beforePageID string, newPage model.PageRenderResponse) error
+	DeletePage(taskID, pageID string) error
+	GetTaskIDByPageID(pageID string) (string, error)
 }
 
 type InMemoryPPTRepository struct {
@@ -136,4 +140,108 @@ func (r *InMemoryPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL
 	}
 	r.canvases[taskID] = canvas
 	return page, nil
+}
+
+func (r *InMemoryPPTRepository) InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	canvas, ok := r.canvases[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	pos := -1
+	for i, pid := range canvas.PageOrder {
+		if pid == afterPageID {
+			pos = i + 1
+			break
+		}
+	}
+	if pos < 0 {
+		return ErrPageNotFound
+	}
+	canvas.PageOrder = append(canvas.PageOrder[:pos], append([]string{newPage.PageID}, canvas.PageOrder[pos:]...)...)
+	canvas.PagesInfo = append(canvas.PagesInfo[:pos], append([]model.PageStatusInfo{{PageID: newPage.PageID, Status: newPage.Status, LastUpdate: newPage.UpdatedAt, RenderURL: newPage.RenderURL}}, canvas.PagesInfo[pos:]...)...)
+	r.canvases[taskID] = canvas
+	if _, ok := r.pages[taskID]; !ok {
+		r.pages[taskID] = make(map[string]model.PageRenderResponse)
+	}
+	r.pages[taskID][newPage.PageID] = newPage
+	return nil
+}
+
+func (r *InMemoryPPTRepository) InsertPageBefore(taskID, beforePageID string, newPage model.PageRenderResponse) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	canvas, ok := r.canvases[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	pos := -1
+	for i, pid := range canvas.PageOrder {
+		if pid == beforePageID {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return ErrPageNotFound
+	}
+	canvas.PageOrder = append(canvas.PageOrder[:pos], append([]string{newPage.PageID}, canvas.PageOrder[pos:]...)...)
+	canvas.PagesInfo = append(canvas.PagesInfo[:pos], append([]model.PageStatusInfo{{PageID: newPage.PageID, Status: newPage.Status, LastUpdate: newPage.UpdatedAt, RenderURL: newPage.RenderURL}}, canvas.PagesInfo[pos:]...)...)
+	r.canvases[taskID] = canvas
+	if _, ok := r.pages[taskID]; !ok {
+		r.pages[taskID] = make(map[string]model.PageRenderResponse)
+	}
+	r.pages[taskID][newPage.PageID] = newPage
+	return nil
+}
+
+func (r *InMemoryPPTRepository) DeletePage(taskID, pageID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	canvas, ok := r.canvases[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	found := false
+	for _, pid := range canvas.PageOrder {
+		if pid == pageID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrPageNotFound
+	}
+	newOrder := make([]string, 0, len(canvas.PageOrder)-1)
+	for _, pid := range canvas.PageOrder {
+		if pid != pageID {
+			newOrder = append(newOrder, pid)
+		}
+	}
+	newPagesInfo := make([]model.PageStatusInfo, 0, len(canvas.PagesInfo)-1)
+	for _, pi := range canvas.PagesInfo {
+		if pi.PageID != pageID {
+			newPagesInfo = append(newPagesInfo, pi)
+		}
+	}
+	if len(newOrder) > 0 {
+		canvas.CurrentViewingPageID = newOrder[0]
+	}
+	canvas.PageOrder = newOrder
+	canvas.PagesInfo = newPagesInfo
+	r.canvases[taskID] = canvas
+	delete(r.pages[taskID], pageID)
+	return nil
+}
+
+func (r *InMemoryPPTRepository) GetTaskIDByPageID(pageID string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for taskID, pages := range r.pages {
+		if _, ok := pages[pageID]; ok {
+			return taskID, nil
+		}
+	}
+	return "", ErrPageNotFound
 }
