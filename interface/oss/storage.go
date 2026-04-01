@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -36,29 +37,20 @@ type SignedURLVerifier interface {
 
 // Config contains OSS configuration.
 type Config struct {
-	Provider   string // "local", "tencent", "aliyun", "s3"
-	Bucket     string
-	Region     string
-	SecretID   string // Cloud provider credentials
-	SecretKey  string // Cloud provider credentials
+	Provider   string // only "local" is supported
 	SigningKey string // Key for signing URLs
 	BaseURL    string // For local storage or custom domain
 	LocalPath  string // For local storage only
-	Endpoint   string // For S3/MinIO endpoint, e.g. "127.0.0.1:9000"
-	UseSSL     bool   // For S3/MinIO endpoint
 }
 
 // New creates a new Storage instance based on configuration.
 func New(cfg Config) (Storage, error) {
-	switch cfg.Provider {
+	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	switch provider {
 	case "", "local":
 		return NewLocalStorage(cfg.LocalPath, cfg.BaseURL, cfg.SigningKey)
-	case "minio", "s3":
-		return NewS3Storage(cfg)
-	case "tencent":
-		return NewTencentCOS(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported storage provider: %s", cfg.Provider)
+		return nil, fmt.Errorf("unsupported storage provider: %s (only local is available)", cfg.Provider)
 	}
 }
 

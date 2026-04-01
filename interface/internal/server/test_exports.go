@@ -35,15 +35,15 @@ func (a *App) SearchQuery(c *gin.Context)  { a.searchQuery(c) }
 func (a *App) SearchResult(c *gin.Context) { a.searchResult(c) }
 
 // Exported service wrappers for tests.
-func (a *App) FetchSearchResults(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
+func (a *App) FetchSearchResults(query string, maxResults int, language string) ([]SearchResultItem, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
 	defer cancel()
-	return a.fetchSearchResults(ctx, query, maxResults, language, searchType)
+	return a.fetchSearchResults(ctx, query, maxResults, language)
 }
 
-func (a *App) SearchBySerpAPI(query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
+func (a *App) SearchBySerpAPI(query string, maxResults int, language string) ([]SearchResultItem, string, error) {
 	p := SerpAPIProvider{apiKey: a.serpAPIKey, client: &http.Client{Timeout: 15 * time.Second}}
-	items, err := p.Search(context.Background(), query, maxResults, language, searchType)
+	items, err := p.Search(context.Background(), query, maxResults, language)
 	if err != nil {
 		return nil, "", err
 	}

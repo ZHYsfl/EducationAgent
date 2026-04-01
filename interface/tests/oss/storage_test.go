@@ -30,18 +30,6 @@ func TestNew_UnsupportedProvider(t *testing.T) {
 	}
 }
 
-func TestNew_TencentStub(t *testing.T) {
-	t.Parallel()
-
-	s, err := oss.New(oss.Config{Provider: "tencent"})
-	if err == nil {
-		t.Fatal("expected error because tencent provider is stub")
-	}
-	if s != nil {
-		t.Fatal("expected nil storage for tencent stub")
-	}
-}
-
 func TestGenerateObjectKey_WithExtension(t *testing.T) {
 	t.Parallel()
 

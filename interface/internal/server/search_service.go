@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func (a *App) runSearchPipeline(ctx context.Context, userID, query string, maxResults int, language, searchType string) (results []SearchResultItem, summary string, duration int64, status string) {
+func (a *App) runSearchPipeline(ctx context.Context, userID, query string, maxResults int, language string) (results []SearchResultItem, summary string, duration int64, status string) {
 	start := time.Now()
 	elapsed := func() int64 { return time.Since(start).Milliseconds() }
 
@@ -22,7 +22,7 @@ func (a *App) runSearchPipeline(ctx context.Context, userID, query string, maxRe
 		}
 	}
 
-	results, summary, err := a.fetchSearchResults(ctx, query, maxResults, language, searchType)
+	results, summary, err := a.fetchSearchResults(ctx, query, maxResults, language)
 	if err != nil {
 		return nil, err.Error(), elapsed(), "failed"
 	}
@@ -35,8 +35,8 @@ func (a *App) runSearchPipeline(ctx context.Context, userID, query string, maxRe
 	return results, summary, elapsed(), "success"
 }
 
-func (a *App) fetchSearchResults(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
-	return a.fetchSearchResultsParallel(ctx, query, maxResults, language, searchType)
+func (a *App) fetchSearchResults(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, string, error) {
+	return a.fetchSearchResultsParallel(ctx, query, maxResults, language)
 }
 
 // mapPipelineStatusToSection8 maps internal pipeline outcomes to §8 polling states:
@@ -93,10 +93,10 @@ func (a *App) markSearchJobPersistFailed(requestID string, duration int64, cause
 	}
 }
 
-func (a *App) runSearchJob(requestID, userID, query string, maxResults int, language, searchType string) {
+func (a *App) runSearchJob(requestID, userID, query string, maxResults int, language string) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
 	defer cancel()
-	results, summary, duration, pipelineStatus := a.runSearchPipeline(ctx, userID, query, maxResults, language, searchType)
+	results, summary, duration, pipelineStatus := a.runSearchPipeline(ctx, userID, query, maxResults, language)
 	status := mapPipelineStatusToSection8(pipelineStatus)
 	resultsJSON := "[]"
 	if len(results) > 0 {

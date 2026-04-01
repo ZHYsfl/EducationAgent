@@ -14,7 +14,7 @@ import (
 
 // SearchProvider is an external web search backend used by fetchSearchResultsParallel.
 type SearchProvider interface {
-	Search(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, error)
+	Search(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, error)
 }
 
 // SerpAPIProvider uses https://serpapi.com (engine=google).
@@ -23,7 +23,7 @@ type SerpAPIProvider struct {
 	client *http.Client
 }
 
-func (p *SerpAPIProvider) Search(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, error) {
+func (p *SerpAPIProvider) Search(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, error) {
 	if strings.TrimSpace(p.apiKey) == "" {
 		return nil, fmt.Errorf("SERPAPI_KEY 未配置")
 	}
@@ -100,7 +100,7 @@ type DuckDuckGoProvider struct {
 	client *http.Client
 }
 
-func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, error) {
+func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, error) {
 	if maxResults <= 0 {
 		maxResults = 10
 	}
@@ -180,7 +180,7 @@ type MetasoProvider struct {
 	client  *http.Client
 }
 
-func (p *MetasoProvider) Search(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, error) {
+func (p *MetasoProvider) Search(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, error) {
 	if strings.TrimSpace(p.apiKey) == "" {
 		return nil, fmt.Errorf("METASO_API_KEY 未配置")
 	}
@@ -223,7 +223,7 @@ func buildSearchProviders(csv, legacy, serpKey, metasoKey, metasoURL string) ([]
 	return list, nil
 }
 
-func (a *App) fetchSearchResultsParallel(ctx context.Context, query string, maxResults int, language, searchType string) ([]SearchResultItem, string, error) {
+func (a *App) fetchSearchResultsParallel(ctx context.Context, query string, maxResults int, language string) ([]SearchResultItem, string, error) {
 	if len(a.searchProviders) == 0 {
 		return nil, "", fmt.Errorf("未配置搜索提供方")
 	}
@@ -233,7 +233,7 @@ func (a *App) fetchSearchResultsParallel(ctx context.Context, query string, maxR
 
 	if strings.EqualFold(a.searchStrategy, "first_success") {
 		for _, p := range a.searchProviders {
-			items, err := p.Search(ctx, query, maxResults, language, searchType)
+			items, err := p.Search(ctx, query, maxResults, language)
 			if err == nil && len(items) > 0 {
 				return items, buildSummary(query, items), nil
 			}
@@ -251,7 +251,7 @@ func (a *App) fetchSearchResultsParallel(ctx context.Context, query string, maxR
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			items, err := p.Search(ctx, query, maxResults, language, searchType)
+			items, err := p.Search(ctx, query, maxResults, language)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err)
