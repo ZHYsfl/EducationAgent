@@ -88,6 +88,7 @@ zcxppt/
 │   ├── infra/
 │   │   ├── llm/tool_runtime.go    ← LLM 运行时（真实/Mock）
 │   │   ├── oss/client.go         ← OSS 存储客户端
+│   │   ├── reference_file_parser.go  ← 多格式文件解析（PDF/DOCX/PPTX/Image/Video）
 │   │   └── renderer/
 │   │       ├── renderer.go        ← Go 渲染服务（调用 Python）
 │   │       └── render_page.py    ← Python 渲染脚本
@@ -103,8 +104,9 @@ zcxppt/
 │   │   └── export_repository.go / export_redis_repository.go
 │   └── service/
 │       ├── task_service.go
-│       ├── ppt_service.go         ← Init + KB 查询 + LLM 生成 + Renderer 调度
-│       ├── feedback_service.go     ← 反馈处理（6 种意图 + 解悬挂 + 挂起队列）
+│       ├── ppt_service.go         ← Init + KB 查询 + ReferenceFiles融合 + LLM 生成 + Renderer 调度
+│       ├── feedback_service.go     ← 反馈处理（6 种意图 + 解悬挂 + 挂起队列 + 参考资料重融合）
+│       ├── ref_fusion_service.go   ← 定向解析 + 片段抽取 + 风格映射
 │       ├── export_service.go      ← PPTX/DOCX/HTML5 导出
 │       ├── merge_service.go
 │       └── notify_service.go      ← 通知 Voice Agent
@@ -153,6 +155,8 @@ zcxppt/
 | `RENDER_DIR` | 临时渲染目录 | `./data/renders` |
 | `RENDER_URL_PREFIX` | OSS URL 前缀 | 空 |
 | `RENDER_TIMEOUT_SEC` | 渲染超时秒数 | `60` |
+| `OCR_BASE_URL` | OCR 服务地址（解析图片用） | 空 |
+| `TRANS_BASE_URL` | 文件转写服务地址（解析 PDF/DOCX/Video 用） | 空 |
 
 ---
 
@@ -170,6 +174,20 @@ zcxppt/
 | `GET` | `/canvas/status?task_id=` | 查询画布状态（页面路由表） |
 | `POST` | `/canvas/vad-event` | 通知 VAD 事件（解悬挂） |
 | `GET` | `/ppt/page/:page_id/render?task_id=` | 查询单页渲染结果 |
+
+### 5.2 ReferenceFiles 多格式融合（新增）
+
+`/ppt/init` 和 `/ppt/feedback` 的 `reference_files` 字段支持以下类型，每种类型均有专门的解析策略：
+
+| 类型 | 解析策略 | 提取内容 |
+|---|---|---|
+| `pdf` | OCR/文本提取 + LLM 定向抽取 | 文本段落、知识要点 |
+| `docx` | 文本解析 + LLM 定向抽取 | 文本内容、结构 |
+| `pptx` | Python 解析 ZIP/XML + LLM 样式抽取 | 文本 + 主题色/字体/版式 |
+| `image` | OCR 识别（需配置 `OCR_BASE_URL`） | 图片文字内容 |
+| `video` | 关键帧提取 + 音频转写（需配置 `TRANS_BASE_URL`） | 视频字幕、场景描述 |
+
+**feedback 阶段重融合**：修改页面时，ReferenceFiles 会重新参与融合，抽取与当前反馈指令相关的片段后注入 LLM，确保参考内容正确应用到页面中。
 
 ### 5.2 任务管理接口
 
@@ -224,15 +242,20 @@ zcxppt/
 1. 创建 Task（状态 `generating`）
 2. 在 Redis 中初始化 Canvas（生成 N 个 page）
 3. 查询 KB Service 获取 RAG 知识摘要（`Subject` 字段已传入）
-4. 调用 Kimi k2.5 LLM，生成每页的 `python-pptx` 代码
-5. Renderer 子进程执行 Python 代码 → 生成单页 `.pptx` 文件
-6. 上传至 OSS，获取签名下载 URL
-7. 更新每页 `render_url`，任务状态置为 `completed`
+4. **解析 ReferenceFiles**（新增）：
+   - 对每个 ReferenceFile 按类型（PDF/DOCX/PPTX/Image/Video）并发解析
+   - 通过 LLM 执行定向抽取，只保留与用户指令和页面主题相关的内容片段
+   - PPTX 文件额外提取主题色、字体、版式布局作为 StyleGuide
+5. 调用 Kimi k2.5 LLM，**融合 KB 摘要 + 解析后的参考资料 + 样式指南**，生成每页的 `python-pptx` 代码
+6. Renderer 子进程执行 Python 代码 → 生成单页 `.pptx` 文件
+7. 上传至 OSS，获取签名下载 URL
+8. 更新每页 `render_url`，任务状态置为 `completed`
 
 ### 7.2 反馈处理（`/ppt/feedback`）
 
 - **解悬挂优先**：若页面处于 `suspended_for_human` 状态，`resolve_conflict` 意图先解悬挂，然后递归处理待处理队列
 - **6 种意图路由**：`modify`/`insert_before`/`insert_after`/`delete`/`global_modify`/`reorder`
+- **参考资料重融合（新增）**：`modify` 和 `global_modify` 意图在调用 LLM 之前，会将 ReferenceFiles 重新解析并抽取与当前反馈指令相关的片段，连同 StyleGuide 和 TopicHints 一并注入 LLM 上下文
 - **冲突保护**：LLM 返回 `ask_human` 时，页面挂起，通过 `notify_service` 通知 Voice Agent
 - **渲染后更新**：每次合并成功后立即重新渲染，更新 `render_url`
 
@@ -297,4 +320,7 @@ PYTHON_PATH=python
 RENDER_SCRIPT_PATH=./internal/infra/renderer/render_page.py
 RENDER_DIR=./data/renders
 RENDER_TIMEOUT_SEC=60
+# 多格式解析服务（可选，未配置时使用内置 Python 解析）
+OCR_BASE_URL=http://localhost:9300
+TRANS_BASE_URL=http://localhost:9300
 ```

@@ -74,6 +74,9 @@ type BatchGeneratePagesRequest struct {
 
 	// MaxParallel controls goroutine concurrency; if <=0, service chooses a reasonable default.
 	MaxParallel int `json:"max_parallel,omitempty"`
+
+	// ReferenceFiles carries reference materials into the batch generate loop for re-fusion.
+	ReferenceFiles []ReferenceFile `json:"reference_files,omitempty"`
 }
 
 type BatchGeneratePagesResponse struct {

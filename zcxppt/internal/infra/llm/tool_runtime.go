@@ -99,8 +99,28 @@ func (r *ToolCallingRuntime) RunFeedbackLoop(ctx context.Context, req model.Feed
 	if r.chat == nil {
 		return model.MergeResult{}, errors.New("tool runtime chat function is not configured")
 	}
-	sys := openai.SystemMessage("You are a PPT merge orchestrator. For every request, reason over ambiguous natural language intents and conflicts. You MUST finalize by calling emit_merge_result exactly once. Do not return free text.")
-	user := openai.UserMessage(fmt.Sprintf("task_id=%s page_id=%s current_code=%s raw_text=%s intents=%v", req.TaskID, req.ViewingPageID, current.PyCode, req.RawText, req.Intents))
+
+	refContext := r.buildReferenceContext(req)
+
+	sys := openai.SystemMessage(`你是一个PPT反馈合并编排器。请对每一条用户反馈指令进行语义理解，处理歧义和冲突，最终必须调用 emit_merge_result 一次完成合并。不要输出自由文本。
+
+指令格式说明：
+- modify: 修改指定页面内容（target_page_id 指定页面）
+- insert_before/insert_after: 在目标页前/后插入新页
+- delete: 删除指定页面
+- global_modify: 全局修改所有页面
+- reorder: 页面重排
+
+当用户引用了参考文件（reference_files）时：
+1) 先理解参考文件中与本条反馈意图相关的内容片段
+2) 将参考内容与当前页面代码进行融合，确保参考内容被正确应用到页面中
+3) 如果参考文件的样式指南（style_guide）存在，请在修改时遵循该样式
+4) 特别重要：当参考内容与当前页面内容存在冲突时，以参考文件的内容为准
+
+请结合以下参考上下文，对当前页面代码进行融合修改：` + "\n\n" + refContext)
+
+	user := openai.UserMessage(fmt.Sprintf("task_id=%s page_id=%s current_code=%s raw_text=%s intents=%v",
+		req.TaskID, req.ViewingPageID, current.PyCode, req.RawText, req.Intents))
 
 	msgs, err := r.chat(ctx, []openai.ChatCompletionMessageParamUnion{sys, user})
 	if err != nil {
@@ -125,6 +145,60 @@ func (r *ToolCallingRuntime) RunFeedbackLoop(ctx context.Context, req model.Feed
 		return model.MergeResult{}, errors.New("question_for_user is required when merge_status=ask_human")
 	}
 	return result, nil
+}
+
+// buildReferenceContext serializes the reference file context for injection into the LLM prompt.
+// If RefFusionResult is already pre-computed, use it directly; otherwise, build a summary from ReferenceFiles.
+func (r *ToolCallingRuntime) buildReferenceContext(req model.FeedbackRequest) string {
+	if len(req.ReferenceFiles) == 0 && req.RefFusionResult == nil {
+		return "[无参考资料]"
+	}
+
+	var parts []string
+
+	if req.RefFusionResult != nil {
+		rf := req.RefFusionResult
+		if rf.ExtractedText != "" {
+			parts = append(parts, "[参考内容摘要]\n"+rf.ExtractedText)
+		}
+		if rf.StyleGuide != "" {
+			parts = append(parts, "[样式指南]\n"+rf.StyleGuide)
+		}
+		if len(rf.TopicHints) > 0 {
+			parts = append(parts, "[知识补充]\n"+strings.Join(rf.TopicHints, "\n"))
+		}
+	}
+
+	if len(req.ReferenceFiles) > 0 && req.RefFusionResult == nil {
+		// Fallback: list reference files without pre-computed fusion
+		parts = append(parts, "[参考文件]")
+		for _, f := range req.ReferenceFiles {
+			ft := strings.ToLower(strings.TrimSpace(f.FileType))
+			var typeLabel string
+			switch ft {
+			case "pdf":
+				typeLabel = "PDF文档"
+			case "docx":
+				typeLabel = "Word文档"
+			case "pptx":
+				typeLabel = "PPT演示文稿"
+			case "image", "img", "png", "jpg", "jpeg":
+				typeLabel = "图片"
+			case "video", "mp4":
+				typeLabel = "视频"
+			default:
+				typeLabel = ft
+			}
+			part := fmt.Sprintf("- 文件ID=%s 类型=%s", f.FileID, typeLabel)
+			if f.Instruction != "" {
+				part += fmt.Sprintf(" 抽取指令=%s", f.Instruction)
+			}
+			parts = append(parts, part)
+		}
+		parts = append(parts, "（如需使用参考内容，请结合上述文件信息与当前页面代码进行融合）")
+	}
+
+	return strings.Join(parts, "\n")
 }
 
 func extractMergeResultFromMessages(msgs []openai.ChatCompletionMessageParamUnion) (model.MergeResult, bool) {

@@ -34,6 +34,7 @@ type FeedbackService struct {
 	llmRuntime   llm.ToolRuntime
 	notify       *NotifyService
 	renderer     *renderer.Renderer
+	refFusion    *RefFusionService
 }
 
 func NewFeedbackService(
@@ -47,6 +48,10 @@ func NewFeedbackService(
 
 func (s *FeedbackService) AttachRenderer(r *renderer.Renderer) {
 	s.renderer = r
+}
+
+func (s *FeedbackService) AttachRefFusionService(r *RefFusionService) {
+	s.refFusion = r
 }
 
 func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest) (model.FeedbackResponse, error) {
@@ -82,12 +87,13 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			return model.FeedbackResponse{AcceptedIntents: len(req.Intents), Queued: false}, nil
 		}
 		pending := model.PendingFeedback{
-			TaskID:        req.TaskID,
-			PageID:        req.ViewingPageID,
-			BaseTimestamp: req.BaseTimestamp,
-			RawText:       req.RawText,
-			Intents:       req.Intents,
-			CreatedAt:     time.Now().UnixMilli(),
+			TaskID:         req.TaskID,
+			PageID:         req.ViewingPageID,
+			BaseTimestamp:  req.BaseTimestamp,
+			RawText:        req.RawText,
+			Intents:        req.Intents,
+			CreatedAt:      time.Now().UnixMilli(),
+			ReferenceFiles: req.ReferenceFiles,
 		}
 		_ = s.feedbackRepo.EnqueuePending(req.TaskID, req.ViewingPageID, pending)
 		_ = s.notify.SendPPTMessage(ctx, map[string]any{
@@ -123,6 +129,8 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 					continue
 				}
 			}
+
+			// === 反馈阶段重融合：把参考资料再次拉入并重新融合 ===
 			fbReq := model.FeedbackRequest{
 				TaskID:           req.TaskID,
 				ViewingPageID:     pageID,
@@ -130,7 +138,20 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				RawText:           intent.Instruction,
 				ReplyToContextID:  "",
 				Intents:          []model.Intent{{ActionType: "modify", TargetPageID: pageID, Instruction: intent.Instruction}},
+				ReferenceFiles:    req.ReferenceFiles,
 			}
+			if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
+				fusionResult, fusionErr := s.refFusion.FuseForFeedback(ctx, req.ReferenceFiles, intent.Instruction, pageID)
+				if fusionErr == nil && fusionResult != nil {
+					// 将融合结果序列化后注入 FeedbackRequest
+					fbReq.RefFusionResult = &model.FusionResultPayload{
+						ExtractedText: s.serializeFusionResult(fusionResult),
+						StyleGuide:    s.serializeStyleGuide(&fusionResult.StyleGuide),
+						TopicHints:    fusionResult.TopicHints,
+					}
+				}
+			}
+
 			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
 			if err != nil {
 				continue
@@ -429,6 +450,29 @@ func (s *FeedbackService) handleReorder(ctx context.Context, taskID, instruction
 	return nil
 }
 
+// serializeFusionResult converts a FusionResult to a human-readable string for LLM injection.
+func (s *FeedbackService) serializeFusionResult(fr *FusionResult) string {
+	return FusionResultToPrompt(fr, 0, "")
+}
+
+// serializeStyleGuide converts a StyleGuide to a prompt-friendly string.
+func (s *FeedbackService) serializeStyleGuide(sg *StyleGuide) string {
+	if sg == nil {
+		return ""
+	}
+	var parts []string
+	if len(sg.ThemeColors) > 0 {
+		parts = append(parts, "主色调: "+strings.Join(sg.ThemeColors, ", "))
+	}
+	if len(sg.Fonts) > 0 {
+		parts = append(parts, "字体: "+strings.Join(sg.Fonts, ", "))
+	}
+	if len(sg.Layouts) > 0 {
+		parts = append(parts, "版式: "+strings.Join(sg.Layouts, ", "))
+	}
+	return strings.Join(parts, "\n")
+}
+
 func hasResolveConflictIntent(intents []model.Intent) bool {
 	for _, it := range intents {
 		if strings.EqualFold(strings.TrimSpace(it.ActionType), "resolve_conflict") {
@@ -551,6 +595,18 @@ func (s *FeedbackService) GeneratePages(ctx context.Context, req model.BatchGene
 				ReplyToContextID: "",
 				RawText:          req.RawText,
 				Intents:          perPageIntents,
+				ReferenceFiles:    req.ReferenceFiles,
+			}
+
+			if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
+				fusionResult, fusionErr := s.refFusion.FuseForFeedback(ctx, req.ReferenceFiles, req.RawText, pageID)
+				if fusionErr == nil && fusionResult != nil {
+					fbReq.RefFusionResult = &model.FusionResultPayload{
+						ExtractedText: s.serializeFusionResult(fusionResult),
+						StyleGuide:    s.serializeStyleGuide(&fusionResult.StyleGuide),
+						TopicHints:    fusionResult.TopicHints,
+					}
+				}
 			}
 
 			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)

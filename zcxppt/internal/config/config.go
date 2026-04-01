@@ -40,6 +40,8 @@ type Config struct {
 	RenderURLPrefix  string
 	RenderTimeoutSec int
 	KBToolURL        string
+	OCRBaseURL       string
+	TransBaseURL     string
 }
 
 func Load() Config {
@@ -77,6 +79,8 @@ func Load() Config {
 		RenderURLPrefix:  getEnv("RENDER_URL_PREFIX", ""),
 		RenderTimeoutSec: getEnvInt("RENDER_TIMEOUT_SEC", 60),
 		KBToolURL:        getEnv("KB_TOOL_URL", ""),
+		OCRBaseURL:       getEnv("OCR_BASE_URL", ""),
+		TransBaseURL:     getEnv("TRANS_BASE_URL", ""),
 	}
 }
 
