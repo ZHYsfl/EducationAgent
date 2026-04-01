@@ -7,12 +7,25 @@ type Intent struct {
 }
 
 type FeedbackRequest struct {
-	TaskID           string   `json:"task_id"`
-	BaseTimestamp    int64    `json:"base_timestamp"`
-	ViewingPageID    string   `json:"viewing_page_id"`
-	ReplyToContextID string   `json:"reply_to_context_id"`
-	RawText          string   `json:"raw_text"`
-	Intents          []Intent `json:"intents"`
+	TaskID           string               `json:"task_id"`
+	BaseTimestamp    int64                `json:"base_timestamp"`
+	ViewingPageID    string               `json:"viewing_page_id"`
+	ReplyToContextID string               `json:"reply_to_context_id"`
+	RawText          string               `json:"raw_text"`
+	Intents          []Intent             `json:"intents"`
+	// ReferenceFiles carries the original reference files into the feedback loop so that
+	// the LLM can re-fuse and merge them against the current page code + instruction.
+	ReferenceFiles []ReferenceFile `json:"reference_files,omitempty"`
+	// RefFusionResult pre-computed fusion result from ReferenceFiles (optional;
+	// if empty, the runtime will compute it on the fly).
+	RefFusionResult *FusionResultPayload `json:"ref_fusion_result,omitempty"`
+}
+
+// FusionResultPayload is the serialized FusionResult carried in FeedbackRequest.
+type FusionResultPayload struct {
+	ExtractedText string   `json:"extracted_text,omitempty"`
+	StyleGuide    string   `json:"style_guide,omitempty"`
+	TopicHints    []string `json:"topic_hints,omitempty"`
 }
 
 type FeedbackResponse struct {
@@ -21,12 +34,13 @@ type FeedbackResponse struct {
 }
 
 type PendingFeedback struct {
-	TaskID        string   `json:"task_id"`
-	PageID        string   `json:"page_id"`
-	BaseTimestamp int64    `json:"base_timestamp"`
-	RawText       string   `json:"raw_text"`
-	Intents       []Intent `json:"intents"`
-	CreatedAt     int64    `json:"created_at"`
+	TaskID         string            `json:"task_id"`
+	PageID         string            `json:"page_id"`
+	BaseTimestamp  int64             `json:"base_timestamp"`
+	RawText        string            `json:"raw_text"`
+	Intents        []Intent          `json:"intents"`
+	CreatedAt      int64             `json:"created_at"`
+	ReferenceFiles []ReferenceFile   `json:"reference_files,omitempty"`
 }
 
 type SuspendState struct {

@@ -16,6 +16,7 @@ import (
 	"zcxppt/internal/http"
 	"zcxppt/internal/http/handlers"
 	"zcxppt/internal/http/middleware"
+	"zcxppt/internal/infra"
 	"zcxppt/internal/infra/llm"
 	"zcxppt/internal/infra/oss"
 	"zcxppt/internal/infra/renderer"
@@ -86,6 +87,14 @@ func main() {
 	notifyService := service.NewNotifyService(cfg.VoiceAgentURL)
 	llmRuntime := llm.NewToolRuntime(llm.RuntimeConfig{Mode: cfg.LLMRuntimeMode, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, BaseURL: cfg.LLMBaseURL})
 
+	// RefFusionService: per-file parsing + targeted extraction + style mapping
+	refParser := infra.NewFileParser(cfg.OCRBaseURL, cfg.TransBaseURL)
+	refFusion := service.NewRefFusionService(refParser, service.LLMClientConfig{
+		APIKey:  cfg.LLMAPIKey,
+		Model:   cfg.LLMModel,
+		BaseURL: cfg.LLMBaseURL,
+	}, cfg.KBServiceURL)
+
 	var pptRenderer *renderer.Renderer
 	if strings.EqualFold(cfg.RendererMode, "real") {
 		pptRenderer = renderer.NewRendererWithConfig(renderer.Config{
@@ -110,6 +119,7 @@ func main() {
 	if pptRenderer != nil {
 		pptService.AttachRenderer(pptRenderer)
 	}
+	pptService.AttachRefFusionService(refFusion)
 
 	feedbackService := service.NewFeedbackService(
 		pptRepo,
@@ -120,6 +130,15 @@ func main() {
 	if pptRenderer != nil {
 		feedbackService.AttachRenderer(pptRenderer)
 	}
+	feedbackService.AttachRefFusionService(refFusion)
+
+	// IntentParser: parses RawText -> []Intent when Voice Agent sends empty Intents
+	intentParser := service.NewIntentParser(pptRepo, service.LLMClientConfig{
+		APIKey:  cfg.LLMAPIKey,
+		Model:   cfg.LLMModel,
+		BaseURL: cfg.LLMBaseURL,
+	})
+
 	exportService := service.NewExportService(exportRepo, ossClient)
 	if pptRepo != nil {
 		exportService.AttachPPTRepository(pptRepo)
@@ -128,7 +147,7 @@ func main() {
 	taskService := service.NewTaskService(taskRepo)
 	taskHandler := handlers.NewTaskHandler(taskService)
 	pptHandler := handlers.NewPPTHandler(pptService)
-	feedbackHandler := handlers.NewFeedbackHandler(feedbackService)
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackService, intentParser)
 	exportHandler := handlers.NewExportHandler(exportService)
 	authMW := middleware.NewAuthMiddleware(cfg.JWTSecret, cfg.InternalKey)
 

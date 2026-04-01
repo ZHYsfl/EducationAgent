@@ -30,13 +30,14 @@ type LLMClientConfig struct {
 }
 
 type PPTService struct {
-	taskRepo    repository.TaskRepository
-	pptRepo     repository.PPTRepository
-	feedback    repository.FeedbackRepository
-	httpClient  *http.Client
-	kbBaseURL   string
-	llmConfig   LLMClientConfig
-	renderer    *renderer.Renderer
+	taskRepo       repository.TaskRepository
+	pptRepo        repository.PPTRepository
+	feedback       repository.FeedbackRepository
+	httpClient     *http.Client
+	kbBaseURL      string
+	llmConfig      LLMClientConfig
+	renderer       *renderer.Renderer
+	refFusion      *RefFusionService
 }
 
 func NewPPTService(taskRepo repository.TaskRepository, pptRepo repository.PPTRepository, feedbackRepo repository.FeedbackRepository) *PPTService {
@@ -50,6 +51,10 @@ func NewPPTService(taskRepo repository.TaskRepository, pptRepo repository.PPTRep
 
 func (s *PPTService) AttachRenderer(r *renderer.Renderer) {
 	s.renderer = r
+}
+
+func (s *PPTService) AttachRefFusionService(r *RefFusionService) {
+	s.refFusion = r
 }
 
 func (s *PPTService) ConfigureInitGenerator(kbBaseURL string, llmCfg LLMClientConfig) {
@@ -94,7 +99,16 @@ func (s *PPTService) Init(req model.PPTInitRequest) (string, error) {
 			return "", err
 		}
 
-		generatedPages, err := s.generateInitialPages(context.Background(), req, kbSummary)
+		// 对 reference_files 执行定向解析+片段抽取+风格映射
+		var fusionResult *FusionResult
+		if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
+			fusionResult, err = s.refFusion.Fuse(context.Background(), req, 0, req.Topic)
+			if err != nil {
+				// 融合失败不影响主流程，只打日志
+			}
+		}
+
+		generatedPages, err := s.generateInitialPages(context.Background(), req, kbSummary, fusionResult)
 		if err != nil {
 			_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
 			return "", err
@@ -276,7 +290,7 @@ type generatedPage struct {
 	RenderURL string `json:"render_url,omitempty"`
 }
 
-func (s *PPTService) generateInitialPages(ctx context.Context, req model.PPTInitRequest, kbSummary string) ([]generatedPage, error) {
+func (s *PPTService) generateInitialPages(ctx context.Context, req model.PPTInitRequest, kbSummary string, fusionResult *FusionResult) ([]generatedPage, error) {
 	if strings.TrimSpace(s.llmConfig.APIKey) == "" || strings.TrimSpace(s.llmConfig.Model) == "" || strings.TrimSpace(s.llmConfig.BaseURL) == "" {
 		return nil, errors.New("llm config is not complete")
 	}
@@ -306,6 +320,10 @@ python-pptx 代码规范（必须严格遵循）：
 - 所有数值单位为英寸（inches）
 - 不要导入任何外部图片
 - 代码必须完整可执行，不能有语法错误
+
+` + s.buildStyleGuideSection(fusionResult) + `
+
+` + s.buildFusionPromptSection(fusionResult) + `
 
 示例 py_code：
 add_rect(slide, 0, 0, 10, 1.2, fill="1F4E79")
@@ -486,6 +504,32 @@ func (s *PPTService) HandleVADEvent(req model.VADEventRequest) error {
 		}
 	}
 	return nil
+}
+
+// buildStyleGuideSection returns the style guide section for the system prompt.
+func (s *PPTService) buildStyleGuideSection(fr *FusionResult) string {
+	if fr == nil || len(fr.StyleGuide.ThemeColors) == 0 && len(fr.StyleGuide.Fonts) == 0 && len(fr.StyleGuide.Layouts) == 0 {
+		return ""
+	}
+	var parts []string
+	if len(fr.StyleGuide.ThemeColors) > 0 {
+		parts = append(parts, "主题颜色: "+strings.Join(fr.StyleGuide.ThemeColors, ", "))
+	}
+	if len(fr.StyleGuide.Fonts) > 0 {
+		parts = append(parts, "推荐字体: "+strings.Join(fr.StyleGuide.Fonts, ", "))
+	}
+	if len(fr.StyleGuide.Layouts) > 0 {
+		parts = append(parts, "参考版式: "+strings.Join(fr.StyleGuide.Layouts, ", "))
+	}
+	return "[样式指南]\n" + strings.Join(parts, "\n") + "\n请尽量遵循上述样式进行代码生成。\n"
+}
+
+// buildFusionPromptSection returns the extracted reference content section for the user prompt.
+func (s *PPTService) buildFusionPromptSection(fr *FusionResult) string {
+	if fr == nil {
+		return ""
+	}
+	return FusionResultToPrompt(fr, 0, "")
 }
 
 func normalizePageStatus(status string) string {

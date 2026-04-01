@@ -13,10 +13,11 @@ import (
 
 type FeedbackHandler struct {
 	feedbackService *service.FeedbackService
+	intentParser   *service.IntentParser
 }
 
-func NewFeedbackHandler(feedbackService *service.FeedbackService) *FeedbackHandler {
-	return &FeedbackHandler{feedbackService: feedbackService}
+func NewFeedbackHandler(feedbackService *service.FeedbackService, intentParser *service.IntentParser) *FeedbackHandler {
+	return &FeedbackHandler{feedbackService: feedbackService, intentParser: intentParser}
 }
 
 func (h *FeedbackHandler) Feedback(c *gin.Context) {
@@ -32,6 +33,21 @@ func (h *FeedbackHandler) Feedback(c *gin.Context) {
 		contract.Error(c, contract.CodeInvalidParam, "missing required fields for feedback")
 		return
 	}
+
+	// 如果 Voice Agent 没有传 Intents，则由 PPT Agent 自己解析 RawText
+	if len(req.Intents) == 0 && h.intentParser != nil {
+		intents, err := h.intentParser.Parse(c.Request.Context(), req.TaskID, req.ViewingPageID, req.RawText)
+		if err != nil {
+			contract.Error(c, contract.CodeInternalError, "intent parse failed: "+err.Error())
+			return
+		}
+		if len(intents) == 0 {
+			contract.Error(c, contract.CodeInvalidParam, "cannot parse any intent from raw_text")
+			return
+		}
+		req.Intents = intents
+	}
+
 	for _, intent := range req.Intents {
 		if !isValidActionType(intent.ActionType) {
 			contract.Error(c, contract.CodeInvalidParam, "invalid action_type")
@@ -68,6 +84,25 @@ func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		contract.Error(c, contract.CodeInvalidParam, "invalid request body")
 		return
+	}
+	if strings.TrimSpace(req.TaskID) == "" || req.BaseTimestamp <= 0 ||
+		strings.TrimSpace(req.RawText) == "" {
+		contract.Error(c, contract.CodeInvalidParam, "missing required fields for batch generate")
+		return
+	}
+
+	// 如果没有传 Intents，从 RawText 解析
+	if len(req.Intents) == 0 && h.intentParser != nil {
+		intents, err := h.intentParser.Parse(c.Request.Context(), req.TaskID, "", req.RawText)
+		if err != nil {
+			contract.Error(c, contract.CodeInternalError, "intent parse failed: "+err.Error())
+			return
+		}
+		if len(intents) == 0 {
+			contract.Error(c, contract.CodeInvalidParam, "cannot parse any intent from raw_text")
+			return
+		}
+		req.Intents = intents
 	}
 
 	resp, err := h.feedbackService.GeneratePages(c.Request.Context(), req)
