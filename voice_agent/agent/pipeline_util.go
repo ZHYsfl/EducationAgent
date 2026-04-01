@@ -7,8 +7,9 @@ import (
 	"toolcalling"
 	"unicode"
 
-	"github.com/openai/openai-go/v3"
 	"voiceagent/internal/think"
+
+	"github.com/openai/openai-go/v3"
 )
 
 const interruptDetectionPrompt = `你是语音意图检测模型。给定一段ASR识别文本，判断其是否包含有意义的用户意图。
