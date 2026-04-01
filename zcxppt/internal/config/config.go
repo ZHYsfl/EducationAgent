@@ -39,6 +39,7 @@ type Config struct {
 	RenderDir        string
 	RenderURLPrefix  string
 	RenderTimeoutSec int
+	KBToolURL        string
 }
 
 func Load() Config {
@@ -75,6 +76,7 @@ func Load() Config {
 		RenderDir:        getEnv("RENDER_DIR", "./data/renders"),
 		RenderURLPrefix:  getEnv("RENDER_URL_PREFIX", ""),
 		RenderTimeoutSec: getEnvInt("RENDER_TIMEOUT_SEC", 60),
+		KBToolURL:        getEnv("KB_TOOL_URL", ""),
 	}
 }
 

@@ -100,7 +100,12 @@ func main() {
 	pptService := service.NewPPTService(taskRepo, pptRepo, feedbackRepo)
 	pptService.ConfigureInitGenerator(
 		cfg.KBServiceURL,
-		service.LLMClientConfig{APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, BaseURL: cfg.LLMBaseURL},
+		service.LLMClientConfig{
+			APIKey:    cfg.LLMAPIKey,
+			Model:     cfg.LLMModel,
+			BaseURL:   cfg.LLMBaseURL,
+			KBToolURL: cfg.KBToolURL,
+		},
 	)
 	if pptRenderer != nil {
 		pptService.AttachRenderer(pptRenderer)
