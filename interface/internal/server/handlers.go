@@ -339,7 +339,6 @@ func (a *App) searchQuery(c *gin.Context) {
 		Query      string `json:"query"`
 		MaxResults int    `json:"max_results"`
 		Language   string `json:"language"`
-		SearchType string `json:"search_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 40001, "请求体格式错误")
@@ -369,7 +368,6 @@ func (a *App) searchQuery(c *gin.Context) {
 	if req.Language == "" {
 		req.Language = "zh"
 	}
-	req.SearchType = normalizeSearchType(req.SearchType)
 
 	var dup SearchRequestModel
 	if err := a.db.Where("request_id = ?", req.RequestID).First(&dup).Error; err == nil {
@@ -397,7 +395,7 @@ func (a *App) searchQuery(c *gin.Context) {
 		return
 	}
 
-	go a.runSearchJob(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language, req.SearchType)
+	go a.runSearchJob(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language)
 
 	ok(c, gin.H{
 		"request_id": req.RequestID,

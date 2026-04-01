@@ -40,11 +40,13 @@ func TestLocalStorage_UploadDownloadExistsDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Download error: %v", err)
 	}
-	defer r.Close()
 
 	gotBytes, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("ReadAll error: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
 	}
 	if string(gotBytes) != body {
 		t.Fatalf("downloaded content mismatch, got=%q want=%q", string(gotBytes), body)

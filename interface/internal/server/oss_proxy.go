@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -42,26 +41,11 @@ func (a *App) publicObjectURL(objectKey string) string {
 	if a.ossPublicBaseURL != "" {
 		return joinURL(a.ossPublicBaseURL, escaped)
 	}
-
-	switch strings.ToLower(a.ossProvider) {
-	case "", "local":
-		return joinURL(a.ossBaseURL, "oss/"+escaped)
-	case "minio", "s3":
-		scheme := "http"
-		if a.ossUseSSL {
-			scheme = "https"
-		}
-		if a.ossEndpoint != "" && a.ossBucket != "" {
-			return fmt.Sprintf("%s://%s/%s/%s", scheme, strings.TrimSuffix(a.ossEndpoint, "/"), url.PathEscape(a.ossBucket), escaped)
-		}
-		return ""
-	default:
-		return ""
-	}
+	return joinURL(a.ossBaseURL, "oss/"+escaped)
 }
 
 func (a *App) serveOSSObject(c *gin.Context) {
-	// Only meaningful for local storage. For MinIO/S3, signed URLs are served by the storage endpoint itself.
+	// Local-only storage endpoint.
 	if strings.ToLower(a.ossProvider) != "" && strings.ToLower(a.ossProvider) != "local" {
 		c.Status(http.StatusNotFound)
 		return

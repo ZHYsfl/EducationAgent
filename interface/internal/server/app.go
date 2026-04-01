@@ -19,9 +19,6 @@ type App struct {
 	ossProvider      string
 	ossBaseURL       string
 	ossPublicBaseURL string
-	ossBucket        string
-	ossEndpoint      string
-	ossUseSSL        bool
 	ossAllowUnsigned bool
 	searchProvider   string // legacy: single provider (kept for backward compatibility)
 	searchProviders  []SearchProvider
@@ -42,33 +39,20 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("连接 PostgreSQL 失败: %w", err)
 	}
-	if err = db.AutoMigrate(&SessionModel{}, &FileModel{}, &FileDeleteJobModel{}, &SearchRequestModel{}); err != nil {
+	schemaFile := getenv("DB_SCHEMA_FILE", "./sql/schema.sql")
+	if err = applySchemaSQL(db, schemaFile); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
-	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
-	_ = db.Exec(`ALTER TABLE files ADD COLUMN IF NOT EXISTS checksum VARCHAR(128) NOT NULL DEFAULT ''`)
-	_ = db.Exec(`ALTER TABLE file_delete_jobs ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT ''`)
-	_ = db.Exec(`DROP TRIGGER IF EXISTS after_files_delete_enqueue_job ON files`)
-	_ = db.Exec(`DROP FUNCTION IF EXISTS trg_enqueue_file_delete_job()`)
 
 	ossProvider := strings.ToLower(getenv("OSS_PROVIDER", "local"))
 	ossBaseURL := getenv("OSS_BASE_URL", "http://localhost:9500")
 	ossPublicBaseURL := getenv("OSS_PUBLIC_BASE_URL", "")
-	ossBucket := getenv("OSS_BUCKET", getenv("MINIO_BUCKET", ""))
-	ossEndpoint := getenv("OSS_ENDPOINT", getenv("MINIO_ENDPOINT", ""))
-	ossUseSSL := strings.EqualFold(getenv("OSS_USE_SSL", getenv("MINIO_USE_SSL", "false")), "true")
 	ossAllowUnsigned := strings.EqualFold(getenv("OSS_ALLOW_UNSIGNED", "false"), "true")
 	storage, err := oss.New(oss.Config{
 		Provider:   ossProvider,
 		BaseURL:    ossBaseURL,
 		LocalPath:  getenv("OSS_LOCAL_PATH", "./storage"),
 		SigningKey: getenv("OSS_SIGNING_KEY", ""),
-		Bucket:     ossBucket,
-		Region:     getenv("OSS_REGION", ""),
-		SecretID:   getenv("OSS_SECRET_ID", getenv("MINIO_ACCESS_KEY", "")),
-		SecretKey:  getenv("OSS_SECRET_KEY", getenv("MINIO_SECRET_KEY", "")),
-		Endpoint:   ossEndpoint,
-		UseSSL:     ossUseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("初始化 OSS 客户端失败: %w", err)
@@ -105,9 +89,6 @@ func InitApp() (*App, error) {
 		ossProvider:      ossProvider,
 		ossBaseURL:       ossBaseURL,
 		ossPublicBaseURL: ossPublicBaseURL,
-		ossBucket:        ossBucket,
-		ossEndpoint:      ossEndpoint,
-		ossUseSSL:        ossUseSSL,
 		ossAllowUnsigned: ossAllowUnsigned,
 		searchProvider:   legacyProvider,
 		searchProviders:  providers,
@@ -127,4 +108,31 @@ func (a *App) Start() error {
 	a.startFileDeleteWorker(a.baseCtx)
 	r := SetupRouter(a)
 	return r.Run(":" + getenv("PORT", "9500"))
+}
+
+func applySchemaSQL(db *gorm.DB, schemaFile string) error {
+	sqlBytes, err := os.ReadFile(schemaFile)
+	if err != nil {
+		return fmt.Errorf("读取 SQL 文件失败 (%s): %w", schemaFile, err)
+	}
+	lines := strings.Split(string(sqlBytes), "\n")
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		cleaned = append(cleaned, line)
+	}
+	statements := strings.Split(strings.Join(cleaned, "\n"), ";")
+	for _, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("执行 SQL 失败: %w", err)
+		}
+	}
+	return nil
 }
