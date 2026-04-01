@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	openai "github.com/openai/openai-go/v3"
@@ -22,9 +23,10 @@ import (
 var ErrInvalidVADRequest = errors.New("invalid vad event request")
 
 type LLMClientConfig struct {
-	APIKey  string
-	Model   string
-	BaseURL string
+	APIKey     string
+	Model      string
+	BaseURL    string
+	KBToolURL  string // KB service base URL; if empty, kb_query tool is not registered
 }
 
 type PPTService struct {
@@ -100,45 +102,63 @@ func (s *PPTService) Init(req model.PPTInitRequest) (string, error) {
 
 		_, _ = s.taskRepo.UpdateStatus(task.TaskID, "generating", 50)
 
+		// 并行渲染所有页面
+		type pageResult struct {
+			pageID    string
+			pyCode    string
+			pageTitle string
+			renderURL string
+			renderErr error
+		}
+		sem := make(chan struct{}, 8) // 最多8个并发渲染进程
+		var wg sync.WaitGroup
+		results := make([]pageResult, len(canvas.PageOrder))
 		for i, pageID := range canvas.PageOrder {
 			if i >= len(generatedPages) {
 				break
 			}
 			pyCode := strings.TrimSpace(generatedPages[i].PyCode)
-			if pyCode == "" {
+			pageTitle := generatedPages[i].Title
+			idx := i
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				url := fmt.Sprintf("mock://render/%s/%s", task.TaskID, pageID)
+				if s.renderer != nil && pyCode != "" {
+					renderCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					result, err := s.renderer.Render(renderCtx, renderer.RenderRequest{
+						PageIndex: idx,
+						PageTitle: pageTitle,
+						PyCode:    pyCode,
+						RenderConfig: renderer.RenderConfig{
+							WidthInches:  10,
+							HeightInches: 7.5,
+							BgColor:      "FFFFFF",
+							FontName:     "Microsoft YaHei",
+						},
+					})
+					cancel()
+					if err == nil && result.Success {
+						url = result.RenderURL
+					}
+				}
+				results[idx] = pageResult{pageID: pageID, pyCode: pyCode, pageTitle: pageTitle, renderURL: url, renderErr: nil}
+			}()
+		}
+		wg.Wait()
+
+		for _, res := range results {
+			if res.pageID == "" {
 				continue
 			}
-			renderURL := ""
-
-			if s.renderer != nil && pyCode != "" {
-				renderCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				result, err := s.renderer.Render(renderCtx, renderer.RenderRequest{
-					PageIndex: i,
-					PageTitle: generatedPages[i].Title,
-					PyCode:    pyCode,
-					RenderConfig: renderer.RenderConfig{
-						WidthInches:  10,
-						HeightInches: 7.5,
-						BgColor:      "FFFFFF",
-						FontName:     "Microsoft YaHei",
-					},
-				})
-				cancel()
-				if err == nil && result.Success {
-					renderURL = result.RenderURL
-				}
-			}
-
-			if renderURL == "" {
-				renderURL = fmt.Sprintf("mock://render/%s/%s", task.TaskID, pageID)
-			}
-
-			if _, err := s.pptRepo.UpdatePageCode(task.TaskID, pageID, pyCode, renderURL); err != nil {
+			if _, err := s.pptRepo.UpdatePageCode(task.TaskID, res.pageID, res.pyCode, res.renderURL); err != nil {
 				_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
 				return "", err
 			}
-			_, _ = s.taskRepo.UpdateStatus(task.TaskID, "generating", 50+i*(40/len(canvas.PageOrder)))
 		}
+		_, _ = s.taskRepo.UpdateStatus(task.TaskID, "generating", 95)
 	}
 
 	_, err = s.taskRepo.UpdateStatus(task.TaskID, "completed", 100)
@@ -261,11 +281,17 @@ func (s *PPTService) generateInitialPages(ctx context.Context, req model.PPTInit
 		return nil, errors.New("llm config is not complete")
 	}
 
+	kbToolURL := strings.TrimSpace(s.llmConfig.KBToolURL)
+	kbToolDesc := ""
+	if kbToolURL != "" {
+		kbToolDesc = "\n\n[可用工具]\n当你需要查询具体知识、定义或事实时，可以调用 kb_query 工具随机调用知识库获取补充内容。工具参数：query（搜索词）、subject（学科，可选）、top_k（返回数量，默认5）。"
+	}
+
 	system := `你是资深教学PPT生成助手。请基于用户需求和知识库检索内容，直接生成可用于后续渲染的初版多页PPT代码。
 严格输出 JSON 对象，格式：{"pages":[{"title":"页面标题","py_code":"python代码","render_url":""}]}
 要求：
 1) pages 数量应尽量等于 total_pages；
-2) py_code 必须是可执行的 python-pptx 代码，生成单张幻灯片内容，完整可运行；
+2) py_code 必须是可执行的 python-pptx 代码，生成单张幻灯片内容，完整可运行；` + kbToolDesc + `
 3) 不要输出任何 JSON 之外的文字。
 
 python-pptx 代码规范（必须严格遵循）：
@@ -301,20 +327,121 @@ add_textbox(slide, "3. 深度学习入门", 1.0, 3.4, 7, 0.5, font_size=16, colo
 	)
 
 	agent := toolcalling.NewAgent(toolcalling.LLMConfig{APIKey: s.llmConfig.APIKey, BaseURL: s.llmConfig.BaseURL, Model: s.llmConfig.Model})
+
+	// 注册 KB 查询工具（LLM 可在需要时随机调用知识库）
+	if kbToolURL != "" {
+		kbTool := toolcalling.Tool{
+			Name:        "kb_query",
+			Description: "Query the Knowledge Base to retrieve relevant knowledge. Use this when you need factual knowledge, definitions, or domain-specific information. Returns structured KB results including summaries, source titles, and relevance scores.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "Search query in natural language, e.g. '什么是导数的几何意义'",
+					},
+					"subject": map[string]any{
+						"type":        "string",
+						"description": "Subject domain (optional), e.g. '数学', '物理', '化学'",
+					},
+					"top_k": map[string]any{
+						"type":        "number",
+						"description": "Max results to return (default 5, max 10)",
+					},
+				},
+				"required": []any{"query"},
+			},
+			Function: s.buildKBToolFunc(kbToolURL),
+		}
+		agent.AddTool(kbTool)
+	}
+
 	msgs := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(system), openai.UserMessage(prompt)}
-	resp, err := agent.ChatText(ctx, msgs)
+	resp, err := agent.Chat(ctx, msgs)
 	if err != nil {
 		return nil, err
 	}
 
+	// 从最后一条 assistant 消息提取 JSON
+	lastText := ""
+	for i := len(resp) - 1; i >= 0; i-- {
+		if resp[i].OfAssistant != nil && resp[i].OfAssistant.Content.OfString.Valid() {
+			lastText = resp[i].OfAssistant.Content.OfString.Value
+			break
+		}
+	}
+	if lastText == "" {
+		return nil, errors.New("llm returned no assistant message")
+	}
+
 	var out generatedPPT
-	if err := json.Unmarshal([]byte(resp), &out); err != nil {
-		return nil, fmt.Errorf("llm output is not valid json: %w", err)
+	// 尝试从文本中提取 JSON（去掉 markdown 代码块）
+	cleaned := strings.TrimSpace(lastText)
+	cleaned = strings.TrimPrefix(cleaned, "```json")
+	cleaned = strings.TrimPrefix(cleaned, "```")
+	cleaned = strings.TrimSuffix(cleaned, "```")
+	cleaned = strings.TrimSpace(cleaned)
+	if err := json.Unmarshal([]byte(cleaned), &out); err != nil {
+		return nil, fmt.Errorf("llm output is not valid json: %w, raw: %s", err, lastText)
 	}
 	if len(out.Pages) == 0 {
 		return nil, errors.New("llm returned empty pages")
 	}
 	return out.Pages, nil
+}
+
+// buildKBToolFunc 返回一个 KB 查询工具函数。
+func (s *PPTService) buildKBToolFunc(kbBaseURL string) toolcalling.ToolFunc {
+	client := &http.Client{Timeout: 15 * time.Second}
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		query, _ := args["query"].(string)
+		query = strings.TrimSpace(query)
+		if query == "" {
+			return "", fmt.Errorf("query must not be empty")
+		}
+		subject, _ := args["subject"].(string)
+		topK := 5
+		if v, ok := args["top_k"].(float64); ok && int(v) > 0 {
+			topK = int(v)
+			if topK > 10 {
+				topK = 10
+			}
+		}
+		payload := map[string]any{
+			"query":           query,
+			"subject":          strings.TrimSpace(subject),
+			"top_k":            topK,
+			"score_threshold":  0.35,
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return "", err
+		}
+		endpoint := strings.TrimSuffix(kbBaseURL, "/") + "/api/v1/kb/query"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode >= 300 {
+			return "", fmt.Errorf("kb returned %d: %s", resp.StatusCode, string(b))
+		}
+		var env struct {
+			Code    int             `json:"code"`
+			Message string          `json:"message"`
+			Data    json.RawMessage `json:"data"`
+		}
+		if json.Unmarshal(b, &env) == nil && env.Data != nil {
+			return string(env.Data), nil
+		}
+		return string(b), nil
+	}
 }
 
 func (s *PPTService) GetCanvasStatus(taskID string) (model.CanvasStatusResponse, error) {
