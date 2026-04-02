@@ -47,3 +47,10 @@ GOCACHE=$(pwd)/.gocache GOMODCACHE=$(pwd)/.gomodcache go test ./...
 - `0001_users.sql`
 - `0005_sessions.sql`
 - `0006_memory_entries.sql`
+
+## Recall behavior notes (internal)
+
+- `POST /api/v1/memory/recall` response fields remain unchanged.
+- Recall ranking is deterministic and service-layer owned (no vector DB).
+- `top_k` is treated as a compactness budget across facts + preferences for prompt-ready output.
+- Working memory remains the primary session-state carrier; `profile_summary` stays durable-first with only a minimal session addon for clear continuation/current-task queries.

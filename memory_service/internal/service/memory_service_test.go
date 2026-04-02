@@ -384,3 +384,140 @@ func TestExtractPreventsLongTermPollutionFromOneOffLessonRequirements(t *testing
 		t.Fatalf("one-off output style should not persist as a durable preference")
 	}
 }
+
+func TestRecallUsesHybridCompactBudgetAndPreferenceBias(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	now := util.NowMilli()
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_fact_a','user_u1','fact','subject','mathematics teacher','general',1.0,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_fact_b','user_u1','fact','school_context','high school class','general',1.0,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_pref_a','user_u1','preference','output_style','minimal blue style','visual_preferences',0.9,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_pref_b','user_u1','preference','color_scheme','blue','visual_preferences',0.9,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_pref_c','user_u1','preference','font_style','clean sans-serif style','visual_preferences',0.9,'explicit',?,?);`, now, now)
+
+	resp, err := svc.Recall(context.Background(), MemoryRecallRequest{
+		UserID: "user_u1",
+		Query:  "what style and color do I prefer",
+		TopK:   3,
+	})
+	if err != nil {
+		t.Fatalf("recall: %v", err)
+	}
+	total := len(resp.Facts) + len(resp.Preferences)
+	if total > 3 {
+		t.Fatalf("hybrid budget should cap total returned entries by top_k, got %d", total)
+	}
+	if len(resp.Preferences) < len(resp.Facts) {
+		t.Fatalf("preference-focused query should bias compact budget toward preferences")
+	}
+}
+
+func TestRecallSessionSignalsAndSessionSourceBoostFactRanking(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	now := util.NowMilli()
+	sessID := "sess_continue"
+
+	if err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: sessID,
+		UserID:    "user_u1",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"derivatives"},
+			TargetAudience:  "grade 11 students",
+			Duration:        "45 minutes",
+		},
+		RecentTopics: []string{"limits"},
+	}); err != nil {
+		t.Fatalf("save working memory: %v", err)
+	}
+
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,source_session_id,created_at,updated_at) VALUES ('mem_fact_match','user_u1','fact','lesson_focus','derivatives and tangent line intuition','general',1.0,'inferred',?,?,?);`, sessID, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_fact_other','user_u1','fact','lesson_topic','geometry proof structure','general',1.0,'inferred',?,?);`, now, now)
+
+	resp, err := svc.Recall(ctx, MemoryRecallRequest{
+		UserID:    "user_u1",
+		SessionID: sessID,
+		Query:     "continue this lesson",
+		TopK:      2,
+	})
+	if err != nil {
+		t.Fatalf("recall: %v", err)
+	}
+	if len(resp.Facts) == 0 {
+		t.Fatalf("expected ranked facts")
+	}
+	if resp.Facts[0].ID != "mem_fact_match" {
+		t.Fatalf("session-aligned fact should rank first, got %s", resp.Facts[0].ID)
+	}
+}
+
+func TestRecallProfileSummaryIsDurableFirstAndSessionConditional(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	now := util.NowMilli()
+	sessID := "sess_summary_mode"
+
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_style','user_u1','preference','teaching_style','interactive','general',1.0,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_hist','user_u1','summary','conversation_summary','Teacher usually asks for concise visual decks with clear logic progression.','general',1.0,'inferred',?,?);`, now, now)
+	if err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: sessID,
+		UserID:    "user_u1",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"derivatives"},
+			TeachingGoals:   []string{"compare derivatives and slopes"},
+			TargetAudience:  "grade 11 students",
+			Duration:        "45 minutes",
+		},
+		RecentTopics: []string{"limits"},
+	}); err != nil {
+		t.Fatalf("save working memory: %v", err)
+	}
+
+	durableOnly, err := svc.Recall(ctx, MemoryRecallRequest{
+		UserID:    "user_u1",
+		SessionID: sessID,
+		Query:     "what is my teaching style preference",
+		TopK:      3,
+	})
+	if err != nil {
+		t.Fatalf("recall durable-only: %v", err)
+	}
+	if strings.Contains(durableOnly.ProfileSummary, "Current session:") {
+		t.Fatalf("non-continuation query should keep profile summary durable-first without session snapshot")
+	}
+
+	continuation, err := svc.Recall(ctx, MemoryRecallRequest{
+		UserID:    "user_u1",
+		SessionID: sessID,
+		Query:     "continue this lesson using current context",
+		TopK:      3,
+	})
+	if err != nil {
+		t.Fatalf("recall continuation: %v", err)
+	}
+	if !strings.Contains(continuation.ProfileSummary, "Current session:") {
+		t.Fatalf("continuation query should include compact session addon in profile summary")
+	}
+	if len([]rune(continuation.ProfileSummary)) > 320 {
+		t.Fatalf("profile summary should be compact and capped")
+	}
+}
+
+func TestRecallTopKDefaultStillAppliesWhenNonPositive(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	now := util.NowMilli()
+	for i := 0; i < 12; i++ {
+		execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?);`,
+			fmt.Sprintf("mem_pref_%d", i), "user_u1", "preference", fmt.Sprintf("style_%d", i), "style preference", "general", 0.9, "explicit", now, now)
+	}
+	resp, err := svc.Recall(context.Background(), MemoryRecallRequest{
+		UserID: "user_u1",
+		Query:  "style preference",
+		TopK:   0,
+	})
+	if err != nil {
+		t.Fatalf("recall: %v", err)
+	}
+	if len(resp.Facts)+len(resp.Preferences) > 10 {
+		t.Fatalf("top_k default should keep compactness budget at 10 when request top_k<=0")
+	}
+}
