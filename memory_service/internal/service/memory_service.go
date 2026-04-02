@@ -2,9 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"math"
-	"sort"
 	"strings"
 
 	"memory_service/internal/contract"
@@ -173,6 +170,7 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 	if topK <= 0 {
 		topK = 10
 	}
+	sessionID := strings.TrimSpace(req.SessionID)
 	facts, err := s.memRepo.ListMemoryByUserAndCategory(req.UserID, "fact")
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
@@ -181,18 +179,9 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
-	facts = rankEntries(facts, req.Query, topK)
-	prefs = rankEntries(prefs, req.Query, topK)
-	for i := range prefs {
-		decayed := decayConfidence(prefs[i].Confidence, prefs[i].UpdatedAt)
-		prefs[i].Confidence = decayed
-		if decayed < 0.3 {
-			prefs[i].Value = "[Low Confidence] " + prefs[i].Value
-		}
-	}
 	var wm *model.WorkingMemory
-	if strings.TrimSpace(req.SessionID) != "" {
-		v, err := s.workingRepo.Get(ctx, strings.TrimSpace(req.SessionID))
+	if sessionID != "" {
+		v, err := s.workingRepo.Get(ctx, sessionID)
 		if err == nil {
 			wm = v
 		}
@@ -200,12 +189,43 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 			return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 		}
 	}
+	q := normalizeQuery(req.Query)
+	hints := detectIntentHints(q, sessionID != "")
+	ws := extractWorkingSignals(wm, sessionID)
+	nowMs := util.NowMilli()
+
+	factCandidates := make([]ScoredCandidate, 0, len(facts))
+	for _, fact := range facts {
+		factCandidates = append(factCandidates, scoreCandidate(fact, "fact", q, hints, ws, nowMs))
+	}
+	prefCandidates := make([]ScoredCandidate, 0, len(prefs))
+	for _, pref := range prefs {
+		decayed := applyPreferenceDecay(pref, nowMs)
+		prefCandidates = append(prefCandidates, scoreCandidate(decayed, "preference", q, hints, ws, nowMs))
+	}
+
+	minScore := recallMinScore
+	if len(q.Tokens) == 0 && q.Normalized == "" {
+		minScore = 0
+	}
+	factCandidates = filterByMinScore(factCandidates, minScore)
+	prefCandidates = filterByMinScore(prefCandidates, minScore)
+	factCandidates = rankCandidates(factCandidates)
+	prefCandidates = rankCandidates(prefCandidates)
+	budget := buildBudget(topK, hints, len(factCandidates), len(prefCandidates))
+	selectedFacts, selectedPrefs := selectWithBudget(factCandidates, prefCandidates, budget)
+
 	profile, err := s.GetProfile(req.UserID)
 	if err != nil {
 		return MemoryRecallResponse{}, err
 	}
-	profileSummary := buildProfileSummary(profile)
-	return MemoryRecallResponse{Facts: facts, Preferences: prefs, WorkingMemory: wm, ProfileSummary: profileSummary}, nil
+	profileSummary := composeProfileSummary(profile, wm, hints)
+	return MemoryRecallResponse{
+		Facts:          selectedFacts,
+		Preferences:    selectedPrefs,
+		WorkingMemory:  wm,
+		ProfileSummary: profileSummary,
+	}, nil
 }
 
 func (s *MemoryService) GetProfile(userID string) (UserProfile, error) {
@@ -314,43 +334,6 @@ func (s *MemoryService) GetWorkingMemory(ctx context.Context, sessionID string) 
 	return wm, nil
 }
 
-func rankEntries(entries []model.MemoryEntry, query string, topK int) []model.MemoryEntry {
-	q := strings.ToLower(strings.TrimSpace(query))
-	tokens := strings.Fields(q)
-	type scored struct {
-		e     model.MemoryEntry
-		score int
-	}
-	scoredItems := make([]scored, 0, len(entries))
-	for _, e := range entries {
-		text := strings.ToLower(e.Key + " " + e.Value + " " + e.Context)
-		score := 0
-		if q != "" && strings.Contains(text, q) {
-			score += 4
-		}
-		for _, t := range tokens {
-			if strings.Contains(text, t) {
-				score++
-			}
-		}
-		scoredItems = append(scoredItems, scored{e: e, score: score})
-	}
-	sort.SliceStable(scoredItems, func(i, j int) bool {
-		if scoredItems[i].score == scoredItems[j].score {
-			return scoredItems[i].e.UpdatedAt > scoredItems[j].e.UpdatedAt
-		}
-		return scoredItems[i].score > scoredItems[j].score
-	})
-	if topK > len(scoredItems) {
-		topK = len(scoredItems)
-	}
-	out := make([]model.MemoryEntry, 0, topK)
-	for i := 0; i < topK; i++ {
-		out = append(out, scoredItems[i].e)
-	}
-	return out
-}
-
 func mergeTeachingElements(existing, incoming model.TeachingElements) model.TeachingElements {
 	out := existing
 	out.KnowledgePoints = appendUniqueStrings(out.KnowledgePoints, incoming.KnowledgePoints...)
@@ -384,33 +367,4 @@ func appendUniqueStrings(base []string, incoming ...string) []string {
 		out = append(out, item)
 	}
 	return out
-}
-
-func decayConfidence(conf float64, updatedAt int64) float64 {
-	if conf <= 0 {
-		return 0
-	}
-	days := float64(util.NowMilli()-updatedAt) / float64(24*60*60*1000)
-	if days < 30 {
-		return conf
-	}
-	steps := math.Floor(days / 30)
-	return conf * math.Pow(0.9, steps)
-}
-
-func buildProfileSummary(p UserProfile) string {
-	parts := make([]string, 0, 4)
-	if p.Subject != "" {
-		parts = append(parts, fmt.Sprintf("Subject: %s", p.Subject))
-	}
-	if p.TeachingStyle != "" {
-		parts = append(parts, fmt.Sprintf("Teaching style: %s", p.TeachingStyle))
-	}
-	if p.ContentDepth != "" {
-		parts = append(parts, fmt.Sprintf("Content depth: %s", p.ContentDepth))
-	}
-	if p.HistorySummary != "" {
-		parts = append(parts, p.HistorySummary)
-	}
-	return strings.Join(parts, "; ")
 }
