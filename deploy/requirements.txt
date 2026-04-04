@@ -1,0 +1,13 @@
+# Voice Agent model service dependencies
+# Install with: uv pip install -r deploy/requirements.txt
+
+# ASR — Fun-ASR-Nano
+funasr>=1.2.0
+websockets>=12.0
+numpy>=1.24
+soundfile>=0.12
+huggingface_hub>=0.24     # for downloading model.py
+
+# TTS — CosyVoice3 (torch/torchaudio already installed by vLLM, skip here)
+fastapi>=0.115
+uvicorn[standard]>=0.30
