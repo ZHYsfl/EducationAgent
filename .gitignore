@@ -58,9 +58,6 @@ cover/
 # Django stuff:
 *.log
 local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
 # Flask stuff:
 instance/
 .webassets-cache
@@ -217,6 +214,7 @@ Qwen3___5-0___8B/
 qwen_omni/
 
 # Go binaries
+/bin/
 *.exe
 
 # Cursor project files

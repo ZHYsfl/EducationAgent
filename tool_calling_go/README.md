@@ -11,12 +11,16 @@ A Go implementation of the `tool_calling` SDK. Built on [openai-go/v3](https://g
 - **Managed Orchestration Runtime** — Run IDs, realtime event bus, task status table, terminate/terminated_ack protocol
 - **Pluggable WorkerExecutor** — In-process by default; can be replaced with process/remote executors
 - **Parallel tool execution** — Multiple tool calls in a single turn are dispatched via goroutines
+- **ChatCompletionSimple** — Single-turn chat without tools (temperature / max_tokens / JSON mode), shared OpenAI client with `Agent`; used by **PPTAgent_go** `infer` package
+- **ChatCompletionForwardJSON** — Parse a full OpenAI `chat/completions` request body and forward via openai-go (used by **PPTAgent_go** `/v1/chat/completions` proxy)
 
 ## Directory Layout
 
 ```
 tool_calling_go/
 ├── agent.go              # Core: LLMConfig / Tool / Agent / Chat
+├── completion_simple.go  # ChatCompletionSimple (no tools, optional JSON mode)
+├── chat_forward.go       # ChatCompletionForwardJSON — OpenAI-compatible /v1/chat/completions body forward
 ├── batch.go              # Batch concurrent dispatch
 ├── race.go               # BatchRace competitive dispatch with cascading termination
 ├── orchestrator.go       # High-level orchestration wrapper over BatchRace
@@ -105,6 +109,27 @@ agent.RemoveTool("tool_name")
 messages, err := agent.Chat(ctx, []openai.ChatCompletionMessageParamUnion{
     openai.UserMessage("your question"),
 })
+```
+
+### ChatCompletionSimple
+
+```go
+// One-shot completion without tools (optional JSON mode, temperature, max_tokens).
+temp := 0.2
+text, err := ChatCompletionSimple(ctx, config, []openai.ChatCompletionMessageParamUnion{
+    openai.SystemMessage("You are a helper."),
+    openai.UserMessage("Hello"),
+}, &SimpleCompletionOptions{
+    Temperature:        &temp,
+    ResponseFormatJSON: true,
+})
+```
+
+### ChatCompletionForwardJSON
+
+```go
+// Forward raw JSON (e.g. HTTP body) to upstream chat/completions; non-streaming only.
+out, err := ChatCompletionForwardJSON(ctx, config, requestBodyBytes, defaultModelIfMissing)
 ```
 
 ### Batch
@@ -234,12 +259,16 @@ Return full conversation history
 - **BatchRace** — 竞速并发调用，任一任务成功后立即级联终止其他任务
 - **OrchestrationAgent** — 更高层编排封装，将 BatchRace 作为编排原语
 - **并行工具执行** — 同一轮多个 tool call 通过 goroutine 并行执行
+- **ChatCompletionSimple** — 无工具的单轮补全（温度 / max_tokens / JSON 模式），与 Agent 共用客户端；**PPTAgent_go** 的 infer 包使用
+- **ChatCompletionForwardJSON** — 解析完整 chat/completions 请求 JSON 并转发；**PPTAgent_go** 的 `/v1/chat/completions` 代理使用
 
 ## 目录结构
 
 ```
 tool_calling_go/
 ├── agent.go              # 核心：LLMConfig / Tool / Agent / Chat
+├── completion_simple.go  # ChatCompletionSimple
+├── chat_forward.go       # ChatCompletionForwardJSON（PPTAgent_go 代理用）
 ├── batch.go              # Batch 批量并发调度
 ├── race.go               # BatchRace 竞速调度与级联终止
 ├── orchestrator.go       # 基于 BatchRace 的高层编排封装
@@ -323,6 +352,15 @@ agent.RemoveTool("tool_name")
 messages, err := agent.Chat(ctx, []openai.ChatCompletionMessageParamUnion{
     openai.UserMessage("你的问题"),
 })
+```
+
+### ChatCompletionSimple / ChatCompletionForwardJSON
+
+```go
+temp := 0.2
+text, err := ChatCompletionSimple(ctx, config, msgs, &SimpleCompletionOptions{Temperature: &temp})
+
+out, err := ChatCompletionForwardJSON(ctx, config, requestBodyBytes, defaultModelIfMissing)
 ```
 
 ### Batch
