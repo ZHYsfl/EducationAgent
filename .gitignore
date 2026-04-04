@@ -225,6 +225,7 @@ memory_tech.md
 .codex
 storage/
 
+PLAN.md
 
 # Cursor project files
 .cursor/
@@ -233,3 +234,4 @@ storage/
 .specstory/
 
 models/
+

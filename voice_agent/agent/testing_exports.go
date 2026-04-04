@@ -23,7 +23,6 @@ func (p *Pipeline) StartProcessing(ctx context.Context, userText string) {
 	p.startProcessing(ctx, userText)
 }
 
-
 // PostProcessResponse calls the unexported postProcessResponse method.
 func (p *Pipeline) PostProcessResponse(ctx context.Context, userText, llmResponse string, actions []protocol.Action) {
 	p.postProcessResponse(ctx, userText, llmResponse, actions)
@@ -68,8 +67,6 @@ func (p *Pipeline) HighPriorityListener(ctx context.Context) {
 func (p *Pipeline) TTSWorker(ctx context.Context, sentenceCh <-chan string) {
 	p.ttsWorker(ctx, sentenceCh)
 }
-
-
 
 // EnqueueContextMessage calls the unexported enqueueContextMessage method.
 func (p *Pipeline) EnqueueContextMessage(ctx context.Context, msg ContextMessage) {
@@ -195,8 +192,6 @@ func Truncate(s string, maxLen int) string {
 func FormatProfileSummary(profile *UserProfile) string {
 	return formatProfileSummary(profile)
 }
-
-
 
 // DecodeAPIData calls the unexported decodeAPIData function.
 func DecodeAPIData(raw []byte, out any) error {
