@@ -6,211 +6,79 @@
 <title>Voice Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: #fafafa;
-    color: #1a1a1a;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  /* ---- Header ---- */
-  .header {
-    width: 100%;
-    max-width: 720px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1.25rem 0;
-    margin-top: 1rem;
-  }
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .header-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #1a1a1a;
-    letter-spacing: -0.01em;
-  }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #ccc;
-    transition: background 0.3s;
-  }
-  .status-dot.idle       { background: #ccc; }
-  .status-dot.listening  { background: #3b82f6; }
-  .status-dot.processing { background: #f59e0b; }
-  .status-dot.speaking   { background: #22c55e; }
-  .status-text {
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #999;
-  }
-
-  #start-btn {
-    padding: 0.45rem 1.4rem;
-    background: #fff;
-    color: #1a1a1a;
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    font-family: inherit;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  #start-btn:hover { background: #f5f5f5; border-color: #bbb; }
-  #start-btn.active { background: #fef2f2; border-color: #f87171; color: #dc2626; }
-  #start-btn.active:hover { background: #fee2e2; }
-
-  /* ---- Divider ---- */
-  .divider {
-    width: 100%;
-    max-width: 720px;
-    height: 1px;
-    background: #e5e5e5;
-  }
-
-  /* ---- Chat area ---- */
-  #chat-container {
-    width: 100%;
-    max-width: 720px;
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem 0;
-    min-height: 300px;
-  }
-  .chat-empty {
-    text-align: center;
-    color: #bbb;
-    font-size: 0.85rem;
-    margin-top: 4rem;
-  }
-  .msg-block {
-    display: flex;
-    gap: 0;
-    margin-bottom: 0.25rem;
-  }
-  .msg-bar {
-    width: 3px;
-    border-radius: 2px;
-    flex-shrink: 0;
-    margin-right: 0.75rem;
-  }
-  .msg-bar.user { background: #3b82f6; }
-  .msg-bar.ai   { background: #d4d4d4; }
-  .msg-body {
-    flex: 1;
-    padding: 0.6rem 0;
-  }
-  .msg-label {
-    font-size: 0.7rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #999;
-    margin-bottom: 0.25rem;
-  }
-  .msg-text {
-    font-size: 0.9rem;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #1a1a1a;
-  }
-  .msg-text.finalizing {
-    animation: flash 0.4s ease;
-  }
-  @keyframes flash {
-    0%   { background: #dbeafe; }
-    100% { background: transparent; }
-  }
-
-  /* ---- Event log ---- */
-  .log-section {
-    width: 100%;
-    max-width: 720px;
-    border-top: 1px solid #e5e5e5;
-    margin-top: auto;
-  }
-  .log-toggle {
-    width: 100%;
-    background: none;
-    border: none;
-    padding: 0.6rem 0;
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: #999;
-    cursor: pointer;
-    text-align: left;
-    letter-spacing: 0.04em;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .log-toggle:hover { color: #666; }
-  .log-arrow {
-    font-size: 0.6rem;
-    transition: transform 0.2s;
-  }
-  .log-arrow.open { transform: rotate(90deg); }
-  #event-log {
-    display: none;
-    max-height: 200px;
-    overflow-y: auto;
-    padding-bottom: 1rem;
-  }
-  #event-log.open { display: block; }
-  .log-line {
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.72rem;
-    line-height: 1.6;
-    color: #666;
-    white-space: pre;
-  }
-  .log-line .ts  { color: #999; }
-  .log-line .evt { color: #1a1a1a; font-weight: 500; }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Main Container -->
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1 class="app-title">Voice Agent</h1>
+          <div class="status-badge">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-text" id="status-text">Idle</span>
+          </div>
+        </div>
+        <button class="btn-primary" id="start-btn">Start</button>
+      </div>
+    </header>
 
-  <div class="header">
-    <div class="header-left">
-      <span class="header-title">Voice Agent</span>
-      <span class="status-dot idle" id="status-dot"></span>
-      <span class="status-text" id="status-text">IDLE</span>
+    <!-- Chat Area -->
+    <main class="chat-main" id="chat-container">
+      <div class="chat-empty" id="chat-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <p>Start a conversation</p>
+      </div>
+    </main>
+
+    <!-- Requirements Card Modal -->
+    <div class="modal-overlay hidden" id="requirements-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>课件需求确认</h2>
+          <div class="progress-text" id="progress-text">已收集 12/12 个字段</div>
+        </div>
+        <div class="modal-body">
+          <div class="req-grid">
+            <div class="req-item"><label>主题</label><span id="req-topic"></span></div>
+            <div class="req-item"><label>学科</label><span id="req-subject"></span></div>
+            <div class="req-item"><label>目标受众</label><span id="req-audience"></span></div>
+            <div class="req-item"><label>页数</label><span id="req-pages"></span></div>
+            <div class="req-item"><label>知识点</label><span id="req-focus"></span></div>
+            <div class="req-item"><label>教学目标</label><span id="req-goals"></span></div>
+            <div class="req-item"><label>讲授逻辑</label><span id="req-logic"></span></div>
+            <div class="req-item"><label>重点难点</label><span id="req-difficulty"></span></div>
+            <div class="req-item"><label>课时长度</label><span id="req-duration"></span></div>
+            <div class="req-item"><label>全局风格</label><span id="req-style"></span></div>
+            <div class="req-item"><label>互动设计</label><span id="req-interactive"></span></div>
+            <div class="req-item"><label>输出格式</label><span id="req-formats"></span></div>
+            <div class="req-item full-width"><label>补充说明</label><span id="req-notes"></span></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <p class="voice-hint">💬 请语音确认或提出修改意见</p>
+        </div>
+      </div>
     </div>
-    <button id="start-btn" onclick="toggleVoice()">Start</button>
+
+    <!-- Event Log -->
+    <footer class="app-footer">
+      <button class="log-toggle" id="log-toggle">
+        <span class="log-arrow" id="log-arrow">›</span>
+        Event Log
+      </button>
+      <div class="log-content hidden" id="log-content"></div>
+    </footer>
   </div>
 
-  <div class="divider"></div>
-
-  <div id="chat-container">
-    <div class="chat-empty" id="chat-empty">Tap Start to begin a conversation</div>
-  </div>
-
-  <div class="log-section">
-    <button class="log-toggle" onclick="toggleLog()">
-      <span class="log-arrow" id="log-arrow">&#9654;</span>
-      EVENT LOG
-    </button>
-    <div id="event-log"></div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.19/dist/bundle.min.js"></script>
+  <script src="ort.min.js"></script>
+  <script>ort.env.wasm.wasmPaths = "/";</script>
+  <script src="vad-web.min.js"></script>
+  <script>window.vad_web=window.vad_web||window.vad;</script>
   <script src="app.js"></script>
 </body>
 </html>
