@@ -75,14 +75,19 @@ type Agent struct {
 	maxToolRetries int
 }
 
-func NewAgent(config LLMConfig, opts ...AgentOption) *Agent {
+// NewOpenAIClient 创建与 LLMConfig 对应的 openai-go 客户端（供 Agent、ChatCompletionSimple、ChatCompletionForwardJSON 等复用）。
+func NewOpenAIClient(config LLMConfig) openai.Client {
 	clientOpts := []option.RequestOption{
 		option.WithAPIKey(config.APIKey),
 	}
 	if config.BaseURL != "" {
 		clientOpts = append(clientOpts, option.WithBaseURL(config.BaseURL))
 	}
-	client := openai.NewClient(clientOpts...)
+	return openai.NewClient(clientOpts...)
+}
+
+func NewAgent(config LLMConfig, opts ...AgentOption) *Agent {
+	client := NewOpenAIClient(config)
 
 	a := &Agent{
 		client:         client,
