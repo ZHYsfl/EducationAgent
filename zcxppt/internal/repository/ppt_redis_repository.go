@@ -53,7 +53,7 @@ func (r *RedisPPTRepository) InitCanvas(taskID string, totalPages int) (model.Ca
 	for _, id := range pageIDs {
 		pagesInfo = append(pagesInfo, model.PageStatusInfo{
 			PageID:     id,
-			Status:     "completed",
+			Status:     "rendering",
 			LastUpdate: now,
 			RenderURL:  "",
 		})
@@ -72,7 +72,7 @@ func (r *RedisPPTRepository) InitCanvas(taskID string, totalPages int) (model.Ca
 		page := model.PageRenderResponse{
 			TaskID:    taskID,
 			PageID:    id,
-			Status:    "completed",
+			Status:    "rendering",
 			RenderURL: "",
 			PyCode:    "# mock pyppt page code",
 			Version:   1,
@@ -100,6 +100,30 @@ func (r *RedisPPTRepository) GetCanvasStatus(taskID string) (model.CanvasStatusR
 		return model.CanvasStatusResponse{}, err
 	}
 	return out, nil
+}
+
+func (r *RedisPPTRepository) SetCurrentViewingPageID(taskID, pageID string) error {
+	ctx := context.Background()
+	canvas, err := r.GetCanvasStatus(taskID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, pid := range canvas.PageOrder {
+		if pid == pageID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrPageNotFound
+	}
+	canvas.CurrentViewingPageID = pageID
+	if err := r.setCanvas(ctx, canvas); err != nil {
+		return err
+	}
+	_ = r.saveSnapshot(ctx, taskID, canvas)
+	return nil
 }
 
 func (r *RedisPPTRepository) GetPageRender(taskID, pageID string) (model.PageRenderResponse, error) {

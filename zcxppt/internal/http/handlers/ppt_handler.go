@@ -38,12 +38,12 @@ func (h *PPTHandler) Init(c *gin.Context) {
 		contract.Error(c, contract.CodeInvalidParam, "invalid reference_files format")
 		return
 	}
-	taskID, err := h.pptService.Init(req)
+	taskID, status, err := h.pptService.Init(req)
 	if err != nil {
 		contract.Error(c, contract.CodeInternalError, err.Error())
 		return
 	}
-	contract.Success(c, gin.H{"task_id": taskID, "status": "created"}, "success")
+	contract.Success(c, gin.H{"task_id": taskID, "status": status}, "success")
 }
 
 func validateReferenceFiles(files []model.ReferenceFile) bool {
