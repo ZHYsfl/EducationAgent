@@ -358,7 +358,7 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 
 **接口路径**: `POST /api/v1/kb/ingest-from-search`
 
-**调用方**: 搜索服务（search-service），搜索完成后主动调用此接口将结果写入 kb-service。voice agent 不直接调用。
+**调用方**: 搜索服务（search-service）。搜索完成后直接调用此接口将结果写入 kb-service，无需回调 voice agent。
 
 **请求参数**:
 
@@ -445,23 +445,7 @@ curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
 {
   "task_id": "string",           // 对应 session_id
   "msg_type": "kb_result",
-  "chunks": [
-    {
-      "chunk_id": "string",
-      "content": "string",
-      "source": "string",
-      "score": 0.0,
-      "metadata": {}
-    }
-  ],
-  "profile_summary": "string",
-  "facts": [
-    {
-      "key": "string",
-      "content": "string",
-      "confidence": 0.0
-    }
-  ]
+  "summary": "string"            // 必填，基于检索结果生成的摘要文本
 }
 ```
 
@@ -480,42 +464,9 @@ curl -X POST http://memory-service-url/api/v1/memory/recall \
 
 ---
 
-### 3.2 获取用户画像
+### ~~3.2 获取用户画像~~（已废弃）
 
-**接口路径**: `GET /api/v1/memory/profile/{user_id}`
-
-**说明**: voice agent 在会话开始时调用一次，用于构建 system prompt 中的用户背景信息。画像由记忆模块根据历史对话归纳维护，`history_summary` 字段来自历次 `context/push` 后的摘要提炼。
-
-**请求参数**:
-
-- `user_id` (path parameter): 必填，用户ID
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "user_id": "string",
-    "display_name": "string",
-    "subject": "string",
-    "school": "string",
-    "teaching_style": "string",
-    "content_depth": "string",
-    "preferences": { "key": "value" },
-    "visual_preferences": { "key": "value" },
-    "history_summary": "string",   // 由历次 context/push 归纳而来
-    "last_active_at": 0
-  }
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X GET http://memory-service-url/api/v1/memory/profile/user_001
-```
+> **废弃原因**: 用户画像信息通过 `POST /api/v1/memory/recall` 的回调 summary 携带，无需单独拉取。
 
 ---
 
@@ -1145,9 +1096,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   "download_url": "string",      // 可选，用于 export_ready
   "format": "string",            // 可选，用于 export_ready
   "error_code": 0,               // 可选，用于 error
-  "chunks": [],                  // 可选，用于 kb_result（记忆模块回调携带的 chunk 列表）
-  "profile_summary": "string",   // 可选，用于 kb_result
-  "facts": []                    // 可选，用于 kb_result
+  "summary": "string"            // 可选，用于 kb_result（记忆模块回调的检索摘要）
 }
 ```
 
