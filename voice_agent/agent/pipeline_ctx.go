@@ -50,6 +50,18 @@ func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
 		return
 	}
 
+	// Handle task_created: register task and notify frontend
+	if msg.MsgType == "task_created" {
+		taskID := msg.Metadata["task_id"]
+		topic := msg.Metadata["topic"]
+		if taskID != "" {
+			p.session.RegisterTask(taskID, topic)
+			p.session.SetActiveTask(taskID)
+			p.session.SendJSON(WSMessage{Type: "task_created", TaskID: taskID, Topic: topic})
+		}
+		return
+	}
+
 	if msg.Priority == "high" {
 		select {
 		case p.highPriorityQueue <- msg:
