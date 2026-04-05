@@ -246,7 +246,6 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 {
   "user_id": "string",           // 必填，用户ID
   "query": "string",             // 必填，查询内容
-  "subject": "string",           // 可选，学科领域
   "top_k": 0,                    // 必填，返回结果数量，整数，>0
   "score_threshold": 0.0         // 可选，相似度阈值，浮点数，0.0-1.0
 }
@@ -272,7 +271,6 @@ curl -X POST http://kb-service-url/api/v1/kb/query \
   -d '{
     "user_id": "user_001",
     "query": "导数的几何意义是什么",
-    "subject": "数学",
     "top_k": 5,
     "score_threshold": 0.7
   }'
