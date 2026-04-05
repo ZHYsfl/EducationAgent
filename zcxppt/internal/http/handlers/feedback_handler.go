@@ -13,7 +13,7 @@ import (
 
 type FeedbackHandler struct {
 	feedbackService *service.FeedbackService
-	intentParser   *service.IntentParser
+	intentParser    *service.IntentParser
 }
 
 func NewFeedbackHandler(feedbackService *service.FeedbackService, intentParser *service.IntentParser) *FeedbackHandler {

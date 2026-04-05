@@ -58,7 +58,8 @@ func TestContextQueue_ConcurrentDrainAndEnqueue(t *testing.T) {
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var wg sync.WaitGroup
 	stop := make(chan bool)
@@ -113,6 +114,7 @@ func TestContextQueue_ConcurrentDrainAndEnqueue(t *testing.T) {
 	// 运行一段时间
 	time.Sleep(500 * time.Millisecond)
 	close(stop)
+	cancel() // 取消context，解除阻塞的goroutines
 	wg.Wait()
 
 	t.Logf("Total drained: %d", atomic.LoadInt32(&drained))
