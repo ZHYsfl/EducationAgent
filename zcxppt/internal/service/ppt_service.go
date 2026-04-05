@@ -442,7 +442,6 @@ func (s *PPTService) buildKBToolFunc(kbBaseURL string) toolcalling.ToolFunc {
 		if query == "" {
 			return "", fmt.Errorf("query must not be empty")
 		}
-		subject, _ := args["subject"].(string)
 		topK := 5
 		if v, ok := args["top_k"].(float64); ok && int(v) > 0 {
 			topK = int(v)
@@ -450,17 +449,23 @@ func (s *PPTService) buildKBToolFunc(kbBaseURL string) toolcalling.ToolFunc {
 				topK = 10
 			}
 		}
+		// Split query into keywords
+		keywords := strings.FieldsFunc(query, func(r rune) bool {
+			return r == ' ' || r == ',' || r == '，' || r == '、'
+		})
+		if len(keywords) == 0 {
+			keywords = []string{query}
+		}
 		payload := map[string]any{
-			"query":           query,
-			"subject":          strings.TrimSpace(subject),
-			"top_k":            topK,
-			"score_threshold":  0.35,
+			"keywords":        keywords,
+			"top_k":           topK,
+			"score_threshold": 0.35,
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
 			return "", err
 		}
-		endpoint := strings.TrimSuffix(kbBaseURL, "/") + "/api/v1/kb/query"
+		endpoint := strings.TrimSuffix(kbBaseURL, "/") + "/api/v1/kb/query-chunks"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 		if err != nil {
 			return "", err

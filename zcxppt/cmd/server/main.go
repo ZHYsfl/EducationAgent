@@ -99,7 +99,7 @@ func main() {
 	if strings.EqualFold(cfg.RendererMode, "real") {
 		pptRenderer = renderer.NewRendererWithConfig(renderer.Config{
 			PythonPath:      cfg.PythonPath,
-			ScriptPath:     cfg.RenderScriptPath,
+			ScriptPath:      cfg.RenderScriptPath,
 			RenderDir:       cfg.RenderDir,
 			RenderURLPrefix: cfg.RenderURLPrefix,
 			TimeoutSeconds:  cfg.RenderTimeoutSec,

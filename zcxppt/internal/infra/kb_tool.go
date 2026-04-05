@@ -122,18 +122,25 @@ func (kb *KBAgent) kbQueryFunc() toolcalling.ToolFunc {
 	}
 }
 
-// doQuery calls the KB Service /api/v1/kb/query endpoint.
+// doQuery calls the KB Service /api/v1/kb/query-chunks endpoint.
 func (kb *KBAgent) doQuery(ctx context.Context, query, subject, userID string, topK int) ([]KBResult, error) {
 	if strings.TrimSpace(kb.cfg.BaseURL) == "" {
 		return nil, nil // KB not configured
 	}
 
+	// Split query into keywords (simple space/comma split)
+	keywords := strings.FieldsFunc(query, func(r rune) bool {
+		return r == ' ' || r == ',' || r == '，' || r == '、'
+	})
+	if len(keywords) == 0 {
+		keywords = []string{query}
+	}
+
 	payload := map[string]any{
-		"query":           query,
-		"subject":          strings.TrimSpace(subject),
-		"user_id":          strings.TrimSpace(userID),
-		"top_k":            topK,
-		"score_threshold":  0.35,
+		"keywords":        keywords,
+		"user_id":         strings.TrimSpace(userID),
+		"top_k":           topK,
+		"score_threshold": 0.35,
 	}
 
 	body, err := json.Marshal(payload)
@@ -142,7 +149,7 @@ func (kb *KBAgent) doQuery(ctx context.Context, query, subject, userID string, t
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(kb.cfg.BaseURL, "/")+"/api/v1/kb/query",
+		strings.TrimSuffix(kb.cfg.BaseURL, "/")+"/api/v1/kb/query-chunks",
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -169,35 +176,33 @@ func (kb *KBAgent) doQuery(ctx context.Context, query, subject, userID string, t
 		return nil, err
 	}
 
-	// Case 1: data is a plain string summary
-	if len(env.Data) > 0 && env.Code == 0 {
-		var summary string
-		if err := json.Unmarshal(env.Data, &summary); err == nil {
-			return []KBResult{{Summary: summary}}, nil
+	if len(env.Data) > 0 && (env.Code == 0 || env.Code == 200) {
+		// Parse chunks array from data
+		var dataObj struct {
+			Chunks []struct {
+				ChunkID  string                 `json:"chunk_id"`
+				Content  string                 `json:"content"`
+				Source   string                 `json:"source"`
+				Score    float64                `json:"score"`
+				Metadata map[string]interface{} `json:"metadata"`
+			} `json:"chunks"`
+			Total int `json:"total"`
 		}
-
-		// Case 2: data is an array of chunks
-		var chunks []struct {
-			Content string  `json:"content"`
-			Score   float64 `json:"score"`
-			DocID   string  `json:"doc_id"`
-		}
-		if err := json.Unmarshal(env.Data, &chunks); err == nil && len(chunks) > 0 {
-			results := make([]KBResult, 0, len(chunks))
-			for _, c := range chunks {
+		if err := json.Unmarshal(env.Data, &dataObj); err == nil && len(dataObj.Chunks) > 0 {
+			results := make([]KBResult, 0, len(dataObj.Chunks))
+			for _, c := range dataObj.Chunks {
 				results = append(results, KBResult{
 					Summary:  c.Content,
-					Score:   c.Score,
-					DocTitle: c.DocID,
+					ChunkID:  c.ChunkID,
+					Score:    c.Score,
+					DocTitle: c.Source,
 				})
 			}
 			return results, nil
 		}
 	}
 
-	// Fallback: treat raw body as summary
-	b, _ := io.ReadAll(resp.Body)
-	return []KBResult{{Summary: strings.TrimSpace(string(b))}}, nil
+	return nil, nil
 }
 
 // QueryRaw performs a direct synchronous KB query without agent orchestration.
@@ -243,25 +248,31 @@ func NewKBTool(baseURL string) toolcalling.Tool {
 		},
 		Function: func(ctx context.Context, args map[string]any) (string, error) {
 			query, _ := args["query"].(string)
-			subject, _ := args["subject"].(string)
 			topK := 5
 			if v, ok := args["top_k"].(float64); ok {
 				topK = int(v)
 			}
 
 			if strings.TrimSpace(baseURL) == "" {
-				return `{"summary":"KB service not configured","results":[]}`, nil
+				return `{"chunks":[],"total":0}`, nil
+			}
+
+			// Split query into keywords
+			keywords := strings.FieldsFunc(query, func(r rune) bool {
+				return r == ' ' || r == ',' || r == '，' || r == '、'
+			})
+			if len(keywords) == 0 {
+				keywords = []string{query}
 			}
 
 			payload := map[string]any{
-				"query":           query,
-				"subject":          subject,
-				"top_k":            topK,
-				"score_threshold":  0.35,
+				"keywords":        keywords,
+				"top_k":           topK,
+				"score_threshold": 0.35,
 			}
 			body, _ := json.Marshal(payload)
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-				strings.TrimSuffix(baseURL, "/")+"/api/v1/kb/query",
+				strings.TrimSuffix(baseURL, "/")+"/api/v1/kb/query-chunks",
 				bytes.NewReader(body))
 			if err != nil {
 				return "", err
