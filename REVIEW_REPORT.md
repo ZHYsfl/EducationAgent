@@ -23,25 +23,7 @@
 
 ## 第二部分：我们提供的接口
 
-### 2.1 回调接口 URL 不匹配
-
-**[CRITICAL]** `main.go`
-
-API 文档 §3（接收异步服务回调）定义路径为：
-```
-POST /api/v1/voice/callback
-```
-
-代码注册的路由是：
-```
-POST /api/v1/voice/ppt_message
-```
-
-外部服务（PPT Agent、搜索服务等）按文档调用 `/api/v1/voice/callback` 会收到 404，所有异步回调全部失效。
-
----
-
-### 2.2 `conflict_ask` 消息从未发送
+### 2.1 `conflict_ask` 消息从未发送
 
 **[CRITICAL]** `agent/http.go` — `HandleServiceCallback`
 
@@ -211,7 +193,6 @@ if p.session.GetState() == StateIdle {
 
 | # | 等级 | 模块 | 问题 |
 |---|------|------|------|
-| 2 | CRITICAL | `main.go` | 回调路由 `/ppt_message` ≠ 文档 `/callback` |
 | 3 | CRITICAL | `http.go` | `conflict_ask` 消息从未发送给客户端 |
 | 4 | CRITICAL | `executor/executor.go` | `resolve_conflict` 动作未处理，冲突解决链路断裂 |
 | 6 | HIGH | `session.go` | `error` 消息用 `text` 字段，应为 `message`，且缺 `code` |
