@@ -97,27 +97,25 @@ type PageStatusInfo struct {
 
 type KBQueryRequest struct {
 	UserID         string  `json:"user_id"`
+	SessionID      string  `json:"session_id"`
 	Query          string  `json:"query"`
 	TopK           int     `json:"top_k"`
 	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 }
 
 type KBQueryResponse struct {
-	Summary string `json:"summary"`
+	Accepted bool `json:"accepted"`
 }
 
 type MemoryRecallRequest struct {
 	UserID    string `json:"user_id"`
-	SessionID string `json:"session_id,omitempty"`
+	SessionID string `json:"session_id"`
 	Query     string `json:"query"`
 	TopK      int    `json:"top_k"`
 }
 
 type MemoryRecallResponse struct {
-	Facts          []MemoryEntry  `json:"facts"`
-	Preferences    []MemoryEntry  `json:"preferences"`
-	WorkingMemory  *WorkingMemory `json:"working_memory"`
-	ProfileSummary string         `json:"profile_summary"`
+	Accepted bool `json:"accepted"`
 }
 
 type MemoryEntry struct {
