@@ -71,6 +71,9 @@ func (e *Executor) Execute(action protocol.Action, sessionCtx SessionContext, ca
 		case "web_search":
 			result = e.executeWebSearch(context.Background(), action.Params, sessionCtx)
 			msgType = "search_result"
+		case "resolve_conflict":
+			result = e.executeResolveConflict(context.Background(), action.Params, sessionCtx)
+			msgType = "conflict_resolved"
 		default:
 			result = fmt.Sprintf("Unknown action: %s", action.Type)
 			msgType = "tool_result"

@@ -113,6 +113,36 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 	return "PPT修改请求已发送"
 }
 
+func (e *Executor) executeResolveConflict(ctx context.Context, params map[string]string, sessionCtx SessionContext) string {
+	if e.clients == nil {
+		return "Error: PPT service not available"
+	}
+
+	taskID := params["task"]
+	if taskID == "" {
+		taskID = sessionCtx.ActiveTaskID
+	}
+	contextID := params["context_id"]
+	if taskID == "" || contextID == "" {
+		return "Error: 缺少 task_id 或 context_id"
+	}
+
+	req := types.PPTFeedbackRequest{
+		TaskID:        taskID,
+		BaseTimestamp: sessionCtx.BaseTimestamp,
+		ViewingPageID: sessionCtx.ViewingPageID,
+		RawText:       fmt.Sprintf("[conflict_resolved] context_id=%s answer=%s", contextID, params["answer"]),
+		Intents:       nil,
+	}
+
+	err := e.clients.SendFeedback(ctx, req)
+	if err != nil {
+		log.Printf("[executor] resolve_conflict error: %v", err)
+		return fmt.Sprintf("冲突解决失败: %v", err)
+	}
+	return "冲突已解决"
+}
+
 func checkRequiredFields(ctx SessionContext) []string {
 	var missing []string
 	if ctx.Topic == "" {
