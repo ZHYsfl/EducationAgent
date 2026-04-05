@@ -74,7 +74,7 @@ func (e *Executor) executePPTInit(ctx context.Context, params map[string]string,
 			ID:         types.NewID("ctx_"),
 			Priority:   "high",
 			ActionType: "system",
-			MsgType:    "task_created",
+			MsgType:    "task_list_update",
 			Metadata:   map[string]string{"task_id": resp.TaskID, "topic": req.Topic},
 			Timestamp:  time.Now().Unix(),
 		})

@@ -39,36 +39,15 @@
 
 ---
 
-### 2.4 `error` 消息字段名错误
+### 2.4 `error` 消息字段名错误 ✅ 已修复
 
-**[HIGH]** `agent/session.go`
-
-API 文档定义 `error` 消息：
-```json
-{ "type": "error", "code": 0, "message": "..." }
-```
-
-代码发送：
-```go
-s.SendJSON(WSMessage{Type: "error", Text: "Invalid message format"})
-```
-
-字段用的是 `Text`（序列化为 `"text"`），文档要求是 `"message"`。且 `code` 字段缺失。客户端按文档解析会拿不到错误信息。
+已将 `Text` 改为 `Message`，并补充 `Code: 40001`。
 
 ---
 
-### 2.5 `task_list_update` 从未发送，发送了非规范的 `task_created`
+### 2.5 `task_list_update` 从未发送，发送了非规范的 `task_created` ✅ 已修复
 
-**[HIGH]** `agent/pipeline_ctx.go`
-
-API 文档定义任务列表更新消息：
-```json
-{ "type": "task_list_update", "active_task_id": "...", "tasks": {"task_id": "topic"} }
-```
-
-代码发送的是：
-```go
-WSMessage{Type: "task_created", TaskID: taskID, Topic: topic}
+已将 `task_created` 改为发送 `task_list_update`，携带 `active_task_id` 和完整 `tasks` map。
 ```
 
 `task_created` 不在文档规范中，客户端无法处理。`task_list_update` 从未被发送，客户端任务列表 UI 永远不会更新。

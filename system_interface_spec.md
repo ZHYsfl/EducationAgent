@@ -434,7 +434,7 @@ After the WebSocket connection is established, text messages (JSON) and binary m
 
 | type | Payload Fields | Description |
 | --------------- | ------------------------------------------------ | -------------- |
-| `task_created` | `task_id`, `topic` | PPT task has been created |
+| `task_list_update` | `active_task_id`, `tasks` | Task list updated (PPT task created) |
 | `task_status` | `task_id`, `status`, `progress` | PPT task status changed |
 | `page_rendered` | `task_id`, `page_id`, `render_url`, `page_index` | Single page rendering completed |
 | `ppt_preview` | `task_id`, `page_order`, `pages_info[]` | Overall PPT preview data |

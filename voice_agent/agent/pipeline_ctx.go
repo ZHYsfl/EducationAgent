@@ -50,14 +50,18 @@ func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
 		return
 	}
 
-	// Handle task_created: register task and notify frontend
-	if msg.MsgType == "task_created" {
+	// Handle task_list_update: register task and notify frontend
+	if msg.MsgType == "task_list_update" {
 		taskID := msg.Metadata["task_id"]
 		topic := msg.Metadata["topic"]
 		if taskID != "" {
 			p.session.RegisterTask(taskID, topic)
 			p.session.SetActiveTask(taskID)
-			p.session.SendJSON(WSMessage{Type: "task_created", TaskID: taskID, Topic: topic})
+			p.session.SendJSON(WSMessage{
+				Type:         "task_list_update",
+				ActiveTaskID: taskID,
+				Tasks:        p.session.GetOwnedTasks(),
+			})
 		}
 		return
 	}
