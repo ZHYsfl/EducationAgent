@@ -23,31 +23,19 @@
 
 ## 第二部分：我们提供的接口
 
-### 2.1 `conflict_ask` 消息从未发送
+### 2.1 `conflict_ask` 消息从未发送 ✅ 已修复
 
 **[CRITICAL]** `agent/http.go` — `HandleServiceCallback`
 
-API 文档定义了 `conflict_ask` 服务端→客户端消息：
-```json
-{ "type": "conflict_ask", "task_id": "...", "page_id": "...", "context_id": "...", "question": "..." }
-```
-
-回调处理的 switch 中，`conflict_question` 分支只设置了 `priority = "high"`，然后 fall-through 到默认分支，**没有向 WebSocket 客户端发送任何消息**。冲突询问流程完全不可用。
+已在 `conflict_question` 分支中添加 `conflict_ask` 消息发送。
 
 ---
 
-### 2.3 `resolve_conflict` 动作未在 executor 中处理
+### 2.3 `resolve_conflict` 动作未在 executor 中处理 ✅ 已修复
 
 **[CRITICAL]** `internal/executor/executor.go`
 
-系统提示（`pipeline_system_prompt.go`）指示 LLM 输出：
-```
-@{resolve_conflict|context_id:xxx}
-```
-
-但 `executor.Execute` 的 switch 只处理：`update_requirements`, `ppt_init`, `ppt_mod`, `kb_query`, `web_search`，**没有 `resolve_conflict` case**，落入 `default` 返回 `"Unknown action: resolve_conflict"`。
-
-冲突解决的完整链路（PPT Agent 问 → 用户答 → Voice Agent 转发）全部断裂。
+已添加 `resolve_conflict` case，通过 `SendFeedback` 将用户答案转发给 PPT Agent，msgType 为 `conflict_resolved`。
 
 ---
 
