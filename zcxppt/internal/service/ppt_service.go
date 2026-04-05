@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -75,7 +76,7 @@ func (s *PPTService) canGenerateInitWithKB() bool {
 		strings.TrimSpace(s.llmConfig.BaseURL) != ""
 }
 
-func (s *PPTService) Init(req model.PPTInitRequest) (string, error) {
+func (s *PPTService) Init(req model.PPTInitRequest) (taskID string, apiStatus string, err error) {
 	task, err := s.taskRepo.Create(model.Task{
 		SessionID: strings.TrimSpace(req.SessionID),
 		Topic:     strings.TrimSpace(req.Topic),
@@ -83,103 +84,126 @@ func (s *PPTService) Init(req model.PPTInitRequest) (string, error) {
 		Progress:  10,
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	canvas, err := s.pptRepo.InitCanvas(task.TaskID, req.TotalPages)
+	_, err = s.pptRepo.InitCanvas(task.TaskID, req.TotalPages)
 	if err != nil {
 		_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
-		return "", err
+		return "", "", err
 	}
 
 	if s.canGenerateInitWithKB() {
-		kbSummary, err := s.queryKBParse(context.Background(), req)
-		if err != nil {
-			_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
-			return "", err
-		}
-
-		// 对 reference_files 执行定向解析+片段抽取+风格映射
-		var fusionResult *FusionResult
-		if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
-			fusionResult, err = s.refFusion.Fuse(context.Background(), req, 0, req.Topic)
-			if err != nil {
-				// 融合失败不影响主流程，只打日志
-			}
-		}
-
-		generatedPages, err := s.generateInitialPages(context.Background(), req, kbSummary, fusionResult)
-		if err != nil {
-			_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
-			return "", err
-		}
-
-		_, _ = s.taskRepo.UpdateStatus(task.TaskID, "generating", 50)
-
-		// 并行渲染所有页面
-		type pageResult struct {
-			pageID    string
-			pyCode    string
-			pageTitle string
-			renderURL string
-			renderErr error
-		}
-		sem := make(chan struct{}, 8) // 最多8个并发渲染进程
-		var wg sync.WaitGroup
-		results := make([]pageResult, len(canvas.PageOrder))
-		for i, pageID := range canvas.PageOrder {
-			if i >= len(generatedPages) {
-				break
-			}
-			pyCode := strings.TrimSpace(generatedPages[i].PyCode)
-			pageTitle := generatedPages[i].Title
-			idx := i
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				url := fmt.Sprintf("mock://render/%s/%s", task.TaskID, pageID)
-				if s.renderer != nil && pyCode != "" {
-					renderCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-					result, err := s.renderer.Render(renderCtx, renderer.RenderRequest{
-						PageIndex: idx,
-						PageTitle: pageTitle,
-						PyCode:    pyCode,
-						RenderConfig: renderer.RenderConfig{
-							WidthInches:  10,
-							HeightInches: 7.5,
-							BgColor:      "FFFFFF",
-							FontName:     "Microsoft YaHei",
-						},
-					})
-					cancel()
-					if err == nil && result.Success {
-						url = result.RenderURL
-					}
-				}
-				results[idx] = pageResult{pageID: pageID, pyCode: pyCode, pageTitle: pageTitle, renderURL: url, renderErr: nil}
-			}()
-		}
-		wg.Wait()
-
-		for _, res := range results {
-			if res.pageID == "" {
-				continue
-			}
-			if _, err := s.pptRepo.UpdatePageCode(task.TaskID, res.pageID, res.pyCode, res.renderURL); err != nil {
-				_, _ = s.taskRepo.UpdateStatus(task.TaskID, "failed", 0)
-				return "", err
-			}
-		}
-		_, _ = s.taskRepo.UpdateStatus(task.TaskID, "generating", 95)
+		go s.runInitGeneration(req, task.TaskID)
+		return task.TaskID, "processing", nil
 	}
 
 	_, err = s.taskRepo.UpdateStatus(task.TaskID, "completed", 100)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return task.TaskID, nil
+	return task.TaskID, "completed", nil
+}
+
+func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("ppt init generation panic: task_id=%s err=%v", taskID, r)
+			_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+		}
+	}()
+
+	ctx := context.Background()
+	kbSummary, err := s.queryKBParse(ctx, req)
+	if err != nil {
+		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+		return
+	}
+
+	var fusionResult *FusionResult
+	if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
+		var fuseErr error
+		fusionResult, fuseErr = s.refFusion.Fuse(ctx, req, 0, req.Topic)
+		if fuseErr != nil {
+			log.Printf("ref fusion failed (ignored): task_id=%s err=%v", taskID, fuseErr)
+		}
+	}
+
+	generatedPages, err := s.generateInitialPages(ctx, req, kbSummary, fusionResult)
+	if err != nil {
+		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+		return
+	}
+
+	_, _ = s.taskRepo.UpdateStatus(taskID, "generating", 50)
+
+	canvas, err := s.pptRepo.GetCanvasStatus(taskID)
+	if err != nil {
+		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+		return
+	}
+
+	type pageResult struct {
+		pageID    string
+		pyCode    string
+		pageTitle string
+		renderURL string
+		renderErr error
+	}
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	results := make([]pageResult, len(canvas.PageOrder))
+	for i, pageID := range canvas.PageOrder {
+		if i >= len(generatedPages) {
+			break
+		}
+		pyCode := strings.TrimSpace(generatedPages[i].PyCode)
+		pageTitle := generatedPages[i].Title
+		idx := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			url := fmt.Sprintf("mock://render/%s/%s", taskID, pageID)
+			if s.renderer != nil && pyCode != "" {
+				renderCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				result, err := s.renderer.Render(renderCtx, renderer.RenderRequest{
+					PageIndex: idx,
+					PageTitle: pageTitle,
+					PyCode:    pyCode,
+					RenderConfig: renderer.RenderConfig{
+						WidthInches:  10,
+						HeightInches: 7.5,
+						BgColor:      "FFFFFF",
+						FontName:     "Microsoft YaHei",
+					},
+				})
+				if err == nil && result.Success {
+					url = result.RenderURL
+				}
+			}
+			results[idx] = pageResult{pageID: pageID, pyCode: pyCode, pageTitle: pageTitle, renderURL: url, renderErr: nil}
+		}()
+	}
+	wg.Wait()
+
+	for _, res := range results {
+		if res.pageID == "" {
+			continue
+		}
+		if _, err := s.pptRepo.UpdatePageCode(taskID, res.pageID, res.pyCode, res.renderURL); err != nil {
+			_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+			return
+		}
+	}
+	_, _ = s.taskRepo.UpdateStatus(taskID, "generating", 95)
+
+	_, err = s.taskRepo.UpdateStatus(taskID, "completed", 100)
+	if err != nil {
+		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
+	}
 }
 
 type kbParseRequest struct {
@@ -334,13 +358,14 @@ add_textbox(slide, "2. 机器学习基础概念", 1.0, 2.8, 7, 0.5, font_size=16
 add_textbox(slide, "3. 深度学习入门", 1.0, 3.4, 7, 0.5, font_size=16, color="555555")
 `
 
-	prompt := fmt.Sprintf("topic=%s\nsubject=%s\ndescription=%s\naudience=%s\nglobal_style=%s\ntotal_pages=%d\nknowledge_from_kb=\n%s",
+	prompt := fmt.Sprintf("topic=%s\nsubject=%s\ndescription=%s\naudience=%s\nglobal_style=%s\ntotal_pages=%d\n%s\nknowledge_from_kb=\n%s",
 		req.Topic,
 		req.Subject,
 		req.Description,
 		req.Audience,
 		req.GlobalStyle,
 		req.TotalPages,
+		formatTeachingElementsForPrompt(req.TeachingElements),
 		kbSummary,
 	)
 
@@ -494,6 +519,9 @@ func (s *PPTService) HandleVADEvent(req model.VADEventRequest) error {
 	if _, err := s.pptRepo.GetPageRender(taskID, pageID); err != nil {
 		return err
 	}
+	if err := s.pptRepo.SetCurrentViewingPageID(taskID, pageID); err != nil {
+		return err
+	}
 	_, suspended, err := s.feedback.GetSuspend(taskID, pageID)
 	if err != nil {
 		return err
@@ -540,4 +568,15 @@ func normalizePageStatus(status string) string {
 	default:
 		return "rendering"
 	}
+}
+
+func formatTeachingElementsForPrompt(te *model.InitTeachingElements) string {
+	if te == nil {
+		return "teaching_elements=(未提供，请尽量依据 topic/description 推断教学结构)"
+	}
+	b, err := json.Marshal(te)
+	if err != nil {
+		return "teaching_elements=(序列化失败)"
+	}
+	return "teaching_elements=" + string(b)
 }

@@ -15,6 +15,7 @@ var ErrPageNotFound = errors.New("page not found")
 type PPTRepository interface {
 	InitCanvas(taskID string, totalPages int) (model.CanvasStatusResponse, error)
 	GetCanvasStatus(taskID string) (model.CanvasStatusResponse, error)
+	SetCurrentViewingPageID(taskID, pageID string) error
 	GetPageRender(taskID, pageID string) (model.PageRenderResponse, error)
 	UpdatePageCode(taskID, pageID, pyCode, renderURL string) (model.PageRenderResponse, error)
 	InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error
@@ -55,7 +56,7 @@ func (r *InMemoryPPTRepository) InitCanvas(taskID string, totalPages int) (model
 	for _, id := range pageIDs {
 		pagesInfo = append(pagesInfo, model.PageStatusInfo{
 			PageID:     id,
-			Status:     "completed",
+			Status:     "rendering",
 			LastUpdate: now,
 			RenderURL:  "",
 		})
@@ -76,7 +77,7 @@ func (r *InMemoryPPTRepository) InitCanvas(taskID string, totalPages int) (model
 		r.pages[taskID][id] = model.PageRenderResponse{
 			TaskID:    taskID,
 			PageID:    id,
-			Status:    "completed",
+			Status:    "rendering",
 			RenderURL: "",
 			PyCode:    "# mock pyppt page code",
 			Version:   1,
@@ -94,6 +95,28 @@ func (r *InMemoryPPTRepository) GetCanvasStatus(taskID string) (model.CanvasStat
 		return model.CanvasStatusResponse{}, ErrTaskNotFound
 	}
 	return canvas, nil
+}
+
+func (r *InMemoryPPTRepository) SetCurrentViewingPageID(taskID, pageID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	canvas, ok := r.canvases[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	found := false
+	for _, pid := range canvas.PageOrder {
+		if pid == pageID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrPageNotFound
+	}
+	canvas.CurrentViewingPageID = pageID
+	r.canvases[taskID] = canvas
+	return nil
 }
 
 func (r *InMemoryPPTRepository) GetPageRender(taskID, pageID string) (model.PageRenderResponse, error) {

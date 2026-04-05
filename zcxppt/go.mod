@@ -1,14 +1,13 @@
 module zcxppt
 
-go 1.25.5
+go 1.26.1
 
 require (
 	educationagent/oss v0.0.0
-	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/openai/openai-go/v3 v3.26.0
+	github.com/openai/openai-go/v3 v3.30.0
 	github.com/redis/go-redis/v9 v9.18.0
 	tool_calling_go v0.0.0
 )
@@ -39,7 +38,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
@@ -50,6 +48,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace tool_calling_go => ../tool_calling_go
+replace tool_calling_go => E:/whole/tool_calling_go
 
-replace educationagent/oss => ../oss
+replace educationagent/oss => E:/whole/oss

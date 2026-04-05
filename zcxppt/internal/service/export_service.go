@@ -36,34 +36,9 @@ func (s *ExportService) Create(taskID, format string) (model.ExportCreateRespons
 		return model.ExportCreateResponse{}, err
 	}
 
-	job.Status = "generating"
-	job.Progress = 10
-	_, _ = s.exportRepo.Update(job)
-
-	ctx := context.Background()
-
-	switch strings.ToLower(format) {
-	case "pptx":
-		if err := s.exportPPTX(ctx, job, taskID); err != nil {
-			job.Status = "failed"
-			job.Error = err.Error()
-			_, _ = s.exportRepo.Update(job)
-			return model.ExportCreateResponse{ExportID: job.ExportID, Status: "failed", EstimatedSeconds: 30}, nil
-		}
-	case "docx":
-		if err := s.exportDOCX(ctx, job, taskID); err != nil {
-			job.Status = "failed"
-			job.Error = err.Error()
-			_, _ = s.exportRepo.Update(job)
-			return model.ExportCreateResponse{ExportID: job.ExportID, Status: "failed", EstimatedSeconds: 30}, nil
-		}
-	case "html":
-		if err := s.exportHTML(ctx, job, taskID); err != nil {
-			job.Status = "failed"
-			job.Error = err.Error()
-			_, _ = s.exportRepo.Update(job)
-			return model.ExportCreateResponse{ExportID: job.ExportID, Status: "failed", EstimatedSeconds: 30}, nil
-		}
+	f := strings.ToLower(strings.TrimSpace(format))
+	switch f {
+	case "pptx", "docx", "html":
 	default:
 		job.Status = "failed"
 		job.Error = fmt.Sprintf("unsupported format: %s", format)
@@ -71,10 +46,65 @@ func (s *ExportService) Create(taskID, format string) (model.ExportCreateRespons
 		return model.ExportCreateResponse{ExportID: job.ExportID, Status: "failed", EstimatedSeconds: 30}, nil
 	}
 
+	job.Status = "generating"
+	job.Progress = 10
+	_, _ = s.exportRepo.Update(job)
+
+	go s.runExportJob(job.ExportID, taskID, f)
+
+	return model.ExportCreateResponse{ExportID: job.ExportID, Status: "generating", EstimatedSeconds: 30}, nil
+}
+
+func (s *ExportService) runExportJob(exportID, taskID, format string) {
+	defer func() {
+		if r := recover(); r != nil {
+			job, err := s.exportRepo.Get(exportID)
+			if err == nil {
+				job.Status = "failed"
+				job.Error = fmt.Sprintf("export panic: %v", r)
+				_, _ = s.exportRepo.Update(job)
+			}
+		}
+	}()
+
+	ctx := context.Background()
+	job, err := s.exportRepo.Get(exportID)
+	if err != nil {
+		return
+	}
+
+	var exportErr error
+	switch format {
+	case "pptx":
+		exportErr = s.exportPPTX(ctx, job, taskID)
+	case "docx":
+		exportErr = s.exportDOCX(ctx, job, taskID)
+	case "html":
+		exportErr = s.exportHTML(ctx, job, taskID)
+	default:
+		job.Status = "failed"
+		job.Error = fmt.Sprintf("unsupported format: %s", format)
+		_, _ = s.exportRepo.Update(job)
+		return
+	}
+
+	if exportErr != nil {
+		job, err = s.exportRepo.Get(exportID)
+		if err == nil {
+			job.Status = "failed"
+			job.Error = exportErr.Error()
+			_, _ = s.exportRepo.Update(job)
+		}
+		return
+	}
+
+	job, err = s.exportRepo.Get(exportID)
+	if err != nil {
+		return
+	}
 	job.Status = "completed"
 	job.Progress = 100
 	_, _ = s.exportRepo.Update(job)
-	return model.ExportCreateResponse{ExportID: job.ExportID, Status: "completed", EstimatedSeconds: 30}, nil
 }
 
 func (s *ExportService) exportPPTX(ctx context.Context, job model.ExportJob, taskID string) error {

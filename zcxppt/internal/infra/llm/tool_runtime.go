@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	openai "github.com/openai/openai-go/v3"
 	toolcalling "tool_calling_go"
@@ -99,6 +100,9 @@ func (r *ToolCallingRuntime) RunFeedbackLoop(ctx context.Context, req model.Feed
 	if r.chat == nil {
 		return model.MergeResult{}, errors.New("tool runtime chat function is not configured")
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
+	defer cancel()
 
 	refContext := r.buildReferenceContext(req)
 
