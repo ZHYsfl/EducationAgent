@@ -103,16 +103,8 @@ type KBQueryRequest struct {
 	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 }
 
-type RetrievedChunk struct {
-	ChunkID  string            `json:"chunk_id"`
-	Content  string            `json:"content"`
-	Score    float64           `json:"score"`
-	Metadata map[string]string `json:"metadata,omitempty"`
-}
-
 type KBQueryResponse struct {
-	Chunks []RetrievedChunk `json:"chunks"`
-	Total  int              `json:"total"`
+	Summary string `json:"summary"`
 }
 
 type MemoryRecallRequest struct {
