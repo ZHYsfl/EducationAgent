@@ -211,6 +211,15 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 	if content == "" {
 		content = "PPT 状态已更新"
 	}
+	if msgType == "conflict_question" {
+		s.SendJSON(WSMessage{
+			Type:      "conflict_ask",
+			TaskID:    req.TaskID,
+			PageID:    req.PageID,
+			ContextID: req.ContextID,
+			Question:  content,
+		})
+	}
 
 	msg := ContextMessage{
 		ID:         NewID("ctx_"),
