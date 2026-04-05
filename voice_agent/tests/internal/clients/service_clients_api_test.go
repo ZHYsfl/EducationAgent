@@ -13,9 +13,7 @@ import (
 )
 
 func TestQueryKB(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(types.KBQueryResponse{
-		Summary: "知识库总结内容",
-	}))
+	srv, svcClients := newTestServer(apiOK(types.KBQueryResponse{Accepted: true}))
 	defer srv.Close()
 
 	resp, err := svcClients.QueryKB(context.Background(), types.KBQueryRequest{
@@ -24,15 +22,13 @@ func TestQueryKB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Summary == "" {
-		t.Error("expected non-empty summary")
+	if !resp.Accepted {
+		t.Error("expected accepted=true")
 	}
 }
 
 func TestRecallMemory(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(types.MemoryRecallResponse{
-		ProfileSummary: "summary",
-	}))
+	srv, svcClients := newTestServer(apiOK(types.MemoryRecallResponse{Accepted: true}))
 	defer srv.Close()
 
 	resp, err := svcClients.RecallMemory(context.Background(), types.MemoryRecallRequest{
@@ -41,21 +37,21 @@ func TestRecallMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.ProfileSummary != "summary" {
-		t.Errorf("summary = %q", resp.ProfileSummary)
+	if !resp.Accepted {
+		t.Errorf("expected accepted=true")
 	}
 }
 
-func TestGetUserProfile(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(types.UserProfile{UserID: "u1", Subject: "数学"}))
+func TestPushContext(t *testing.T) {
+	srv, svcClients := newTestServer(apiOK(nil))
 	defer srv.Close()
 
-	profile, err := svcClients.GetUserProfile(context.Background(), "u1")
+	err := svcClients.PushContext(context.Background(), types.PushContextRequest{
+		UserID: "u1", SessionID: "s1",
+		Messages: []types.ConversationTurn{{Role: "user", Content: "hello"}},
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if profile.Subject != "数学" {
-		t.Errorf("subject = %q", profile.Subject)
 	}
 }
 
@@ -120,50 +116,6 @@ func TestGetCanvasStatus(t *testing.T) {
 	}
 }
 
-func TestExtractMemory(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(types.MemoryExtractResponse{
-		ExtractedFacts: []string{"fact1"},
-	}))
-	defer srv.Close()
-
-	resp, err := svcClients.ExtractMemory(context.Background(), types.MemoryExtractRequest{
-		UserID: "u1", SessionID: "s1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.ExtractedFacts) != 1 {
-		t.Errorf("facts = %d", len(resp.ExtractedFacts))
-	}
-}
-
-func TestSaveWorkingMemory(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(nil))
-	defer srv.Close()
-
-	err := svcClients.SaveWorkingMemory(context.Background(), types.WorkingMemorySaveRequest{
-		SessionID: "s1", UserID: "u1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestGetWorkingMemory(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(types.WorkingMemory{
-		SessionID: "s1", ConversationSummary: "summary",
-	}))
-	defer srv.Close()
-
-	mem, err := svcClients.GetWorkingMemory(context.Background(), "s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mem.ConversationSummary != "summary" {
-		t.Errorf("summary = %q", mem.ConversationSummary)
-	}
-}
-
 func TestNotifyVADEvent(t *testing.T) {
 	var received types.VADEvent
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -182,18 +134,5 @@ func TestNotifyVADEvent(t *testing.T) {
 	}
 	if received.TaskID != "t1" {
 		t.Errorf("task_id = %q", received.TaskID)
-	}
-}
-
-func TestIngestFromSearch(t *testing.T) {
-	srv, svcClients := newTestServer(apiOK(nil))
-	defer srv.Close()
-
-	err := svcClients.IngestFromSearch(context.Background(), types.IngestFromSearchRequest{
-		UserID: "u1",
-		Items:  []types.SearchIngestItem{{Title: "t1", URL: "http://a.com"}},
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }

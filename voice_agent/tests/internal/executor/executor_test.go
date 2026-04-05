@@ -84,7 +84,7 @@ func TestExecute_UpdateRequirements(t *testing.T) {
 func TestExecute_KBQuery(t *testing.T) {
 	mock := &mockClients{
 		queryKBFn: func(ctx context.Context, req types.KBQueryRequest) (types.KBQueryResponse, error) {
-			return types.KBQueryResponse{Summary: "测试总结"}, nil
+			return types.KBQueryResponse{Accepted: true}, nil
 		},
 	}
 	exec := executor.New(mock)

@@ -28,8 +28,8 @@ func (m *mockExternalServices) RecallMemory(ctx context.Context, req types.Memor
 	return types.MemoryRecallResponse{}, nil
 }
 
-func (m *mockExternalServices) GetUserProfile(ctx context.Context, userID string) (types.UserProfile, error) {
-	return types.UserProfile{}, nil
+func (m *mockExternalServices) PushContext(ctx context.Context, req types.PushContextRequest) error {
+	return nil
 }
 
 func (m *mockExternalServices) SearchWeb(ctx context.Context, req types.SearchRequest) (types.SearchResponse, error) {
@@ -44,25 +44,10 @@ func (m *mockExternalServices) UploadFile(r interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (m *mockExternalServices) ExtractMemory(ctx context.Context, req types.MemoryExtractRequest) (types.MemoryExtractResponse, error) {
-	return types.MemoryExtractResponse{}, nil
-}
-
-func (m *mockExternalServices) SaveWorkingMemory(ctx context.Context, req types.WorkingMemorySaveRequest) error {
-	return nil
-}
-
-func (m *mockExternalServices) GetWorkingMemory(ctx context.Context, sessionID string) (*types.WorkingMemory, error) {
-	return nil, nil
-}
-
 func (m *mockExternalServices) NotifyVADEvent(ctx context.Context, event types.VADEvent) error {
 	return nil
 }
 
-func (m *mockExternalServices) IngestFromSearch(ctx context.Context, req types.IngestFromSearchRequest) error {
-	return nil
-}
 
 func TestProtocolIntegration(t *testing.T) {
 	parser := protocol.Parser{}
