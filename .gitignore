@@ -219,7 +219,6 @@ qwen_omni/
 
 # Local planning/agent instruction artifacts
 plans/
-tests/
 AGENTS.md
 memory_tech.md
 .codex
