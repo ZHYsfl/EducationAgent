@@ -131,7 +131,7 @@ func (s *Session) readLoop() {
 			var msg WSMessage
 			if err := json.Unmarshal(data, &msg); err != nil {
 				log.Printf("Invalid JSON: %v", err)
-				s.SendJSON(WSMessage{Type: "error", Text: "Invalid message format"})
+				s.SendJSON(WSMessage{Type: "error", Code: 40001, Message: "Invalid message format"})
 				continue
 			}
 			s.handleTextMessage(msg)
