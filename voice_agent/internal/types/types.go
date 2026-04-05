@@ -96,15 +96,23 @@ type PageStatusInfo struct {
 }
 
 type KBQueryRequest struct {
-	Subject        string  `json:"subject,omitempty"`
+	CollectionID   string  `json:"collection_id,omitempty"`
 	UserID         string  `json:"user_id"`
 	Query          string  `json:"query"`
 	TopK           int     `json:"top_k"`
 	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 }
 
+type RetrievedChunk struct {
+	ChunkID  string            `json:"chunk_id"`
+	Content  string            `json:"content"`
+	Score    float64           `json:"score"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
 type KBQueryResponse struct {
-	Summary string `json:"summary"`
+	Chunks []RetrievedChunk `json:"chunks"`
+	Total  int              `json:"total"`
 }
 
 type MemoryRecallRequest struct {
