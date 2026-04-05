@@ -179,6 +179,16 @@ func NewTestSession(clients ExternalServices) *Session {
 		OwnedTasks:       make(map[string]string),
 		PendingQuestions: make(map[string]PendingQuestion),
 	}
+	// Drain writeCh so SendJSON never blocks in unit tests.
+	go func() {
+		for {
+			select {
+			case <-s.writeCh:
+			case <-s.done:
+				return
+			}
+		}
+	}()
 	return s
 }
 
