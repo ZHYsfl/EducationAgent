@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	openai "github.com/openai/openai-go/v3"
 	toolcalling "tool_calling_go"
+
+	openai "github.com/openai/openai-go/v3"
 
 	"zcxppt/internal/model"
 	"zcxppt/internal/repository"
