@@ -74,6 +74,8 @@ func TestContextQueue_ConcurrentDrainAndEnqueue(t *testing.T) {
 				select {
 				case <-stop:
 					return
+				case <-ctx.Done():
+					return
 				default:
 					p.EnqueueContextMessage(ctx, agent.ContextMessage{
 						ActionType:  "writer",
@@ -99,6 +101,8 @@ func TestContextQueue_ConcurrentDrainAndEnqueue(t *testing.T) {
 			for {
 				select {
 				case <-stop:
+					return
+				case <-ctx.Done():
 					return
 				default:
 					msgs := p.DrainContextQueue()
