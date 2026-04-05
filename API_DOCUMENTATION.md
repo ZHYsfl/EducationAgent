@@ -354,9 +354,55 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 
 ---
 
-### ~~2.2 从搜索结果导入知识库~~（已废弃）
+### 2.2 从搜索结果导入知识库
 
-> **废弃原因**: voice agent 调用 `POST /api/v1/search/query` 后，搜索服务回调将结果直接 push 给 kb-service 入库，voice agent 无需再主动调用此接口。记忆模块只处理用户自身的对话历史，与 web search 无关。
+**接口路径**: `POST /api/v1/kb/ingest-from-search`
+
+**调用方**: 搜索服务（search-service），搜索完成后主动调用此接口将结果写入 kb-service。voice agent 不直接调用。
+
+**请求参数**:
+
+```json
+{
+  "user_id": "string",           // 可选，有则写入用户个人知识库，无则写入公共专业知识库
+  "collection_id": "string",     // 可选，集合ID
+  "items": [
+    {
+      "title": "string",         // 必填，搜索结果标题
+      "url": "string",           // 必填，搜索结果页面URL
+      "content": "string",       // 必填，搜索结果摘要/正文
+      "source": "string"         // 必填，固定为 "web_search"
+    }
+  ]
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success"
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_id": "math_collection",
+    "items": [
+      {
+        "title": "导数的定义与性质",
+        "url": "https://example.com/calculus",
+        "content": "导数是函数在某一点的瞬时变化率...",
+        "source": "web_search"
+      }
+    ]
+  }'
+```
 
 ---
 
