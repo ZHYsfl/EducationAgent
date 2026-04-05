@@ -49,8 +49,10 @@ func ChatCompletionStructured[T any](
 	}
 
 	var lastErr error
+	currentMessages := messages
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		resp, err := ChatCompletionSimple(ctx, config, messages, simpleOpts)
+		resp, err := ChatCompletionSimple(ctx, config, currentMessages, simpleOpts)
 		if err != nil {
 			lastErr = fmt.Errorf("attempt %d: completion failed: %w", attempt+1, err)
 			continue
@@ -62,6 +64,14 @@ func ChatCompletionStructured[T any](
 		// 尝试解析 JSON
 		if err := json.Unmarshal([]byte(cleaned), result); err != nil {
 			lastErr = fmt.Errorf("attempt %d: json parse failed: %w (raw: %q)", attempt+1, err, cleaned)
+
+			// 如果还有重试机会，把错误反馈给 LLM
+			if attempt < maxRetries-1 {
+				currentMessages = append(currentMessages,
+					openai.AssistantMessage(resp),
+					openai.UserMessage(fmt.Sprintf("JSON 解析失败: %v\n请严格按照 JSON 格式输出，不要包含任何额外文字。", err)),
+				)
+			}
 			continue
 		}
 
