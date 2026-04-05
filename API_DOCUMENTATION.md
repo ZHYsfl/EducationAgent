@@ -239,13 +239,62 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 
 ## 2. 知识库服务接口
 
-> **架构说明**: kb-service 同时服务两类调用方，响应格式不同：
-> - **voice agent 直接调用** `POST /api/v1/kb/query` → 返回 `summary` 文本，用于专业知识问答
-> - **记忆模块 / PPT Agent 调用** `POST /api/v1/kb/query-chunks` → 返回 `[]chunk`，用于 RAG 检索
->   - 传 `user_id`：同时检索用户个人知识库（OSS 归档的历史对话）
+> **架构说明**: kb-service 同时服务两类调用方：
+> - **voice agent 调用** `POST /api/v1/kb/query` → 异步受理，结果通过 `ppt_message` 回调（`msg_type: "kb_result"`）返回 summary
+> - **记忆模块 / PPT Agent 调用** `POST /api/v1/kb/query-chunks` → 同步返回 `[]chunk`，用于 RAG 检索
+>   - 传 `user_id`：同时检索用户个人知识库
 >   - 不传 `user_id`：仅检索专业知识库
 
-### 2.1 专业知识查询（voice agent 直接调用）
+### 2.1 专业知识查询（voice agent 调用）
+
+**接口路径**: `POST /api/v1/kb/query`
+
+**说明**: 异步受理，立即返回 `accepted: true`，检索完成后回调 `POST /api/v1/voice/ppt_message`（`msg_type: "kb_result"`）。
+
+**请求参数**:
+
+```json
+{
+  "user_id": "string",           // 必填，用户ID
+  "session_id": "string",        // 必填，会话ID（用于关联回调）
+  "query": "string",             // 必填，查询内容
+  "top_k": 5,                    // 可选，默认5
+  "score_threshold": 0.7         // 可选，0.0-1.0
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { "accepted": true }
+}
+```
+
+**回调格式**:
+
+```json
+{
+  "task_id": "string",           // 对应 session_id
+  "msg_type": "kb_result",
+  "summary": "string"
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X POST http://kb-service-url/api/v1/kb/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_001",
+    "session_id": "sess_abc123",
+    "query": "导数的几何意义是什么",
+    "top_k": 5
+  }'
+```
 
 **接口路径**: `POST /api/v1/kb/query`
 
