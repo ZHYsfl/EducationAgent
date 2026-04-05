@@ -19,7 +19,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 	log.Printf("Processing user input: %s", truncate(userText, 100))
 
-	// Send user text to browser for display
+	// Send user text to browser for display before LLM starts
 	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
 
 	// TTS sentence queue — decouples LLM generation from TTS synthesis
@@ -181,6 +181,8 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		p.postProcessResponse(ctx, userText, finalText, allActions)
 		p.asyncExtractMemory(userText, finalText)
 
+		p.session.SetState(StateIdle)
+	} else {
 		p.session.SetState(StateIdle)
 	}
 

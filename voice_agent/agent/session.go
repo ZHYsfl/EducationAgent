@@ -72,6 +72,18 @@ func (s *Session) SetState(state SessionState) {
 	s.SendJSON(WSMessage{Type: "status", State: state.String()})
 }
 
+func (s *Session) CompareAndSetState(expected, next SessionState) bool {
+	s.stateMu.Lock()
+	if s.state != expected {
+		s.stateMu.Unlock()
+		return false
+	}
+	s.state = next
+	s.stateMu.Unlock()
+	s.SendJSON(WSMessage{Type: "status", State: next.String()})
+	return true
+}
+
 func (s *Session) cancelCurrentPipeline() {
 	s.pipelineMu.Lock()
 	if s.pipelineCancel != nil {

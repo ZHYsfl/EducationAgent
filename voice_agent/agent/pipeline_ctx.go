@@ -81,7 +81,14 @@ func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
 	}
 
 	if p.session.GetState() == StateIdle {
-		go p.processContextUpdate(context.Background(), msg)
+		p.sessionCtxMu.RLock()
+		sCtx := p.sessionCtx
+		p.sessionCtxMu.RUnlock()
+		if sCtx != nil && sCtx.Err() == nil {
+			if p.session.CompareAndSetState(StateIdle, StateProcessing) {
+				go p.processContextUpdate(sCtx, msg)
+			}
+		}
 	}
 }
 

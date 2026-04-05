@@ -98,47 +98,43 @@ API 文档已过时。`"ready"` 是当前约定的正确值，无需修改。
 
 ## 第四部分：竞态与时序问题
 
-### 4.1 需求字段在锁释放后被读取
+### 4.1 需求字段在锁释放后被读取 ✅ 已修复
 
 **[MEDIUM]** `agent/pipeline_post.go` — `handleRequirementsUpdate`
 
-代码在 `reqMu.Unlock()` 之后仍然直接读取 `req.Status`、`req.CollectedFields`、`req.GetMissingFields()`，而不是使用已加锁时拷贝的 `reqSnapshot`。并发更新时存在数据竞态。
-
-修复：将这三处改为读 `reqSnapshot` 的对应字段。
+已将 `req.Status`、`req.CollectedFields`、`req.GetMissingFields()` 三处改为读 `reqSnapshot` 的对应字段。
 
 ---
 
-### 4.2 `processContextUpdate` 使用 `context.Background()`
+### 4.2 `processContextUpdate` 使用 `context.Background()` ✅ 已修复
 
 **[MEDIUM]** `agent/pipeline_ctx.go`
 
-传入的是不可取消的 context。Session 关闭或新 pipeline 启动时，该 goroutine 仍会继续运行 LLM 调用，并向已关闭的 session 发送消息，造成 goroutine 泄漏。
-
-应传入 session 生命周期绑定的 context。
+Pipeline 新增 `sessionCtx` 字段，在 `StartInteractive` 入口存储 session 生命周期绑定的 context。`EnqueueContext` 改为传入该 context，session 关闭后 goroutine 自动退出。
 
 ---
 
-### 4.3 `EnqueueContext` 状态检查与 goroutine 启动不原子
+### 4.3 `EnqueueContext` 状态检查与 goroutine 启动不原子 ✅ 已修复
 
 **[MEDIUM]** `agent/pipeline_ctx.go`
 
-两条并发的 context 消息同时通过 idle 检查，会启动两个并发 LLM 调用，客户端收到双份响应。
+新增 `Session.CompareAndSetState(expected, next)`，用 CAS 原子地完成 idle 检查与状态切换，确保只有一个 goroutine 能启动。
 
 ---
 
-### 4.4 interrupt 后 session 状态不归 idle
+### 4.4 interrupt 后 session 状态不归 idle ✅ 已修复
 
 **[MEDIUM]** `agent/pipeline_process.go`
 
-`startProcessing` 在 context 被取消时，`if ctx.Err() == nil` 的守卫跳过了 `SetState(StateIdle)`。中断后 session 永久停留在 `StateProcessing` 或 `StateSpeaking`，后续 context 消息因 idle 检查失败被静默丢弃。
+`startProcessing` 在 `ctx.Err() != nil`（被中断）时也调用 `SetState(StateIdle)`，确保后续消息不被丢弃。
 
 ---
 
-### 4.5 `transcript` 在 LLM 已启动后才发送
+### 4.5 `transcript` 在 LLM 已启动后才发送 ✅ 已修复
 
 **[LOW]** `agent/pipeline_process.go`
 
-`SendJSON(transcript)` 在 `largeLLM.StreamChat` 调用之后执行。客户端可能先收到 `response` token，再收到触发它的 `transcript`，UI 顺序颠倒。
+`transcript` 已在 `StreamChat` 调用之前发送（原代码顺序已正确，补充注释确认）。
 
 ---
 
@@ -155,7 +151,7 @@ API 文档已过时。`"ready"` 是当前约定的正确值，无需修改。
 | 7 | HIGH | `requirements.go` | `audience` vs `target_audience` 字段名不一致，进度永远错乱 | ✅ 已修复 |
 | 8 | MEDIUM | `requirements.go` | `subject` 永远不出现在 `collected_fields` | ✅ 已修复 |
 | 9 | MEDIUM | `pipeline_post.go` | 锁释放后读取 `req` 字段，存在竞态 | ✅ 已修复 |
-| 10 | MEDIUM | `pipeline_ctx.go` | `processContextUpdate` 使用不可取消 context，goroutine 泄漏 | 待修复 |
-| 11 | MEDIUM | `pipeline_ctx.go` | idle 检查与 goroutine 启动不原子，可能双发响应 | 待修复 |
-| 12 | MEDIUM | `pipeline_process.go` | interrupt 后状态不归 idle，后续消息被丢弃 | 待修复 |
-| 13 | LOW | `pipeline_process.go` | `transcript` 在 LLM 启动后才发送，客户端顺序颠倒 | 待修复 |
+| 10 | MEDIUM | `pipeline_ctx.go` | `processContextUpdate` 使用不可取消 context，goroutine 泄漏 | ✅ 已修复 |
+| 11 | MEDIUM | `pipeline_ctx.go` | idle 检查与 goroutine 启动不原子，可能双发响应 | ✅ 已修复 |
+| 12 | MEDIUM | `pipeline_process.go` | interrupt 后状态不归 idle，后续消息被丢弃 | ✅ 已修复 |
+| 13 | LOW | `pipeline_process.go` | `transcript` 在 LLM 启动后才发送，客户端顺序颠倒 | ✅ 已修复 |

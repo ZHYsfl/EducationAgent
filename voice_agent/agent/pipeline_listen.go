@@ -14,6 +14,10 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.runMu.Lock()
 	defer p.runMu.Unlock()
 
+	p.sessionCtxMu.Lock()
+	p.sessionCtx = ctx
+	p.sessionCtxMu.Unlock()
+
 	// Initialize channels
 	p.ioMu.Lock()
 	audioCh := make(chan []byte, p.adaptive.Get("audio_ch"))
