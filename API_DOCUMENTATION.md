@@ -27,6 +27,10 @@
 
 ---
 
+> **上下文长度判断说明**: voice agent 的 `ConversationHistory` 以字符数估算 token 用量（中文约 1.5 char/token，英文约 4 char/token）。当历史消息累计字符数超过 **8000 字符**时触发压缩，将最老的 1/3 消息 push 给记忆模块后从本地删除。
+
+---
+
 # 第一部分：我们需要外部实现的接口
 
 Voice Agent 作为客户端，需要调用以下外部服务的接口。
@@ -50,14 +54,14 @@ Voice Agent 作为客户端，需要调用以下外部服务的接口。
   "total_pages": 0,              // 必填，期望页数，整数，>0
   "audience": "string",          // 必填，目标受众
   "global_style": "string",      // 必填，全局风格
-  "teaching_elements": {         // 可选，教学元素
-    "knowledge_points": ["string"],      // 可选，知识点列表
-    "teaching_goals": ["string"],        // 可选，教学目标列表
-    "teaching_logic": "string",          // 可选，讲授逻辑
-    "key_difficulties": ["string"],      // 可选，重点难点列表
-    "duration": "string",                // 可选，课时长度，如 "45分钟"
-    "interaction_design": "string",      // 可选，互动设计
-    "output_formats": ["string"]         // 可选，输出格式列表，如 ["pptx", "pdf"]
+  "teaching_elements": {         // 必填，教学元素
+    "knowledge_points": ["string"],      // 必填，知识点列表
+    "teaching_goals": ["string"],        // 必填，教学目标列表
+    "teaching_logic": "string",          // 必填，讲授逻辑
+    "key_difficulties": ["string"],      // 必填，重点难点列表
+    "duration": "string",                // 必填，课时长度，如 "45分钟"
+    "interaction_design": "string",      // 必填，互动设计
+    "output_formats": ["string"]         // 必填，输出格式列表，如 ["pptx", "pdf"]
   },
   "reference_files": [           // 可选，参考文件列表
     {
@@ -92,7 +96,7 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/init \
     "user_id": "user_001",
     "session_id": "sess_abc123",
     "topic": "高等数学-导数与微分",
-    "description": "【课程主题】高等数学-导数与微分\n【教学目标】理解导数概念；掌握求导法则\n【核心知识点】导数定义、求导公式、链式法则",
+    "description": "理解导数概念，掌握求导法则",
     "total_pages": 20,
     "audience": "大学一年级学生",
     "global_style": "简洁专业",
@@ -172,15 +176,15 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/feedback \
   "code": 200,
   "message": "success",
   "data": {
-    "task_id": "string",                  // 必填，任务ID
-    "page_order": ["string"],             // 必填，页面ID顺序列表
-    "current_viewing_page_id": "string",  // 必填，当前查看的页面ID
-    "pages_info": [                       // 必填，页面信息列表
+    "task_id": "string",
+    "page_order": ["string"],
+    "current_viewing_page_id": "string",
+    "pages_info": [
       {
-        "page_id": "string",              // 必填，页面ID
-        "status": "string",               // 必填，页面状态，可选值: "rendering", "completed", "failed", "suspended_for_human"
-        "last_update": 0,                 // 必填，最后更新时间戳（毫秒）
-        "render_url": "string"            // 必填，渲染后的图片URL（可为空字符串）
+        "page_id": "string",
+        "status": "string",               // "rendering", "completed", "failed", "suspended_for_human"
+        "last_update": 0,
+        "render_url": "string"
       }
     ]
   }
@@ -203,9 +207,9 @@ curl -X GET "http://ppt-agent-url/api/v1/canvas/status?task_id=task_001"
 
 ```json
 {
-  "task_id": "string",           // 必填，任务ID
-  "timestamp": 0,                // 必填，事件时间戳（毫秒）
-  "viewing_page_id": "string"    // 必填，当前查看的页面ID
+  "task_id": "string",
+  "timestamp": 0,
+  "viewing_page_id": "string"
 }
 ```
 
@@ -236,9 +240,17 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 
 ## 2. 知识库服务接口
 
-### 2.1 查询知识库
+> **架构说明**: kb-service 同时服务两类调用方，响应格式不同：
+> - **voice agent 直接调用** `POST /api/v1/kb/query` → 返回 `summary` 文本，用于专业知识问答
+> - **记忆模块 / PPT Agent 调用** `POST /api/v1/kb/query-chunks` → 返回 `[]chunk`，用于 RAG 检索
+>   - 传 `user_id`：同时检索用户个人知识库（OSS 归档的历史对话）
+>   - 不传 `user_id`：仅检索专业知识库
+
+### 2.1 专业知识查询（voice agent 直接调用）
 
 **接口路径**: `POST /api/v1/kb/query`
+
+**调用方**: voice agent，用于获取专业知识库的摘要回答。
 
 **请求参数**:
 
@@ -246,8 +258,8 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 {
   "user_id": "string",           // 必填，用户ID
   "query": "string",             // 必填，查询内容
-  "top_k": 0,                    // 必填，返回结果数量，整数，>0
-  "score_threshold": 0.0         // 可选，相似度阈值，浮点数，0.0-1.0
+  "top_k": 5,                    // 可选，参与摘要的最大 chunk 数，默认5
+  "score_threshold": 0.7         // 可选，相似度阈值，0.0-1.0
 }
 ```
 
@@ -258,7 +270,7 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
   "code": 200,
   "message": "success",
   "data": {
-    "summary": "string"          // 必填，知识库检索结果摘要
+    "summary": "string"          // 必填，基于检索结果生成的摘要文本
   }
 }
 ```
@@ -278,71 +290,20 @@ curl -X POST http://kb-service-url/api/v1/kb/query \
 
 ---
 
-### 2.2 从搜索结果导入知识库
+### 2.2 关键词 chunk 检索（供记忆模块 / PPT Agent 调用）
 
-**接口路径**: `POST /api/v1/kb/ingest-from-search`
+**接口路径**: `POST /api/v1/kb/query-chunks`
 
-**请求参数**:
-
-```json
-{
-  "user_id": "string",           // 必填，用户ID
-  "collection_id": "string",     // 可选，集合ID
-  "items": [                     // 必填，导入项列表
-    {
-      "title": "string",         // 必填，标题
-      "url": "string",           // 必填，来源URL
-      "content": "string",       // 必填，内容
-      "source": "string"         // 必填，来源标识
-    }
-  ]
-}
-```
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success"
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user_001",
-    "collection_id": "math_collection",
-    "items": [
-      {
-        "title": "导数的定义与性质",
-        "url": "https://example.com/calculus",
-        "content": "导数是函数在某一点的瞬时变化率...",
-        "source": "web_search"
-      }
-    ]
-  }'
-```
-
----
-
-## 3. 记忆服务接口
-
-### 3.1 召回记忆
-
-**接口路径**: `POST /api/v1/memory/recall`
+**调用方**: 个人记忆模块（memory-service）或 PPT Agent，不由 voice agent 直接调用。
 
 **请求参数**:
 
 ```json
 {
-  "user_id": "string",           // 必填，用户ID
-  "session_id": "string",        // 可选，会话ID
-  "query": "string",             // 必填，查询内容
-  "top_k": 0                     // 必填，返回结果数量，整数，>0
+  "user_id": "string",           // 可选，用户ID；传入则同时检索用户个人知识库，不传则仅检索专业知识库
+  "keywords": ["string"],        // 必填，关键词切片列表
+  "top_k": 5,                    // 可选，每个关键词返回的最大 chunk 数，默认5
+  "score_threshold": 0.7         // 可选，相似度阈值，0.0-1.0
 }
 ```
 
@@ -353,34 +314,108 @@ curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
   "code": 200,
   "message": "success",
   "data": {
-    "facts": [                   // 必填，事实记忆列表
+    "chunks": [
       {
-        "key": "string",         // 可选，记忆键
-        "content": "string",     // 可选，记忆内容
-        "value": "string",       // 可选，记忆值
-        "confidence": 0.0        // 可选，置信度，浮点数，0.0-1.0
+        "chunk_id": "string",
+        "content": "string",
+        "source": "string",      // 来源标识（如 OSS 路径、文件名）
+        "score": 0.0,
+        "metadata": {}
       }
     ],
-    "preferences": [             // 必填，偏好记忆列表
-      {
-        "key": "string",         // 可选，偏好键
-        "content": "string",     // 可选，偏好内容
-        "value": "string",       // 可选，偏好值
-        "confidence": 0.0        // 可选，置信度，浮点数，0.0-1.0
-      }
-    ],
-    "working_memory": {          // 可选，工作记忆
-      "session_id": "string",    // 可选，会话ID
-      "user_id": "string",       // 可选，用户ID
-      "conversation_summary": "string",     // 可选，对话摘要
-      "extracted_elements": {},             // 可选，提取的元素（任意JSON对象）
-      "recent_topics": ["string"],          // 可选，近期话题列表
-      "metadata": {                         // 可选，元数据
-        "key": "value"
-      }
-    },
-    "profile_summary": "string"  // 必填，用户画像摘要
+    "total": 0
   }
+}
+```
+
+**使用示例**（记忆模块调用，带 user_id）:
+
+```bash
+curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_001",
+    "keywords": ["导数", "几何意义", "切线斜率"],
+    "top_k": 5,
+    "score_threshold": 0.7
+  }'
+```
+
+**使用示例**（PPT Agent 调用，不带 user_id，仅查专业知识库）:
+
+```bash
+curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "keywords": ["量子力学", "波粒二象性"],
+    "top_k": 10
+  }'
+```
+
+---
+
+### ~~2.2 从搜索结果导入知识库~~（已废弃）
+
+> **废弃原因**: voice agent 调用 `POST /api/v1/search/query` 后，搜索服务回调将结果直接 push 给 kb-service 入库，voice agent 无需再主动调用此接口。记忆模块只处理用户自身的对话历史，与 web search 无关。
+
+---
+
+## 3. 记忆服务接口
+
+> **架构说明**: 个人记忆模块是**控制面**。voice agent 通过工具调用触发记忆召回，记忆模块立即返回 `success`，然后异步将 query 拆成关键词切片 push 给 kb-service 做检索，检索结果通过回调返回给 voice agent。上下文历史压缩也由记忆模块负责：接收 voice agent 推送的老消息后，按 user_id 隔离并上传 OSS，作为 kb-service 后续嵌入检索的原始数据。
+
+### 3.1 触发记忆召回（异步）
+
+**接口路径**: `POST /api/v1/memory/recall`
+
+**说明**: 本接口为**异步受理**。记忆模块收到请求后立即返回 `success`，随后在后台将 query 拆分为关键词切片并 push 给 kb-service 检索，检索完成后通过回调 `POST /api/v1/voice/ppt_message`（`msg_type: "kb_result"`）将结果返回给 voice agent。
+
+**请求参数**:
+
+```json
+{
+  "user_id": "string",           // 必填，用户ID
+  "session_id": "string",        // 必填，会话ID（用于关联回调）
+  "query": "string",             // 必填，原始查询内容（记忆模块负责拆分为关键词）
+  "top_k": 5                     // 可选，每个关键词返回的最大 chunk 数，默认5
+}
+```
+
+**响应格式**（受理成功，异步处理中）:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "accepted": true
+  }
+}
+```
+
+**回调格式**: 检索完成后，记忆模块回调 voice agent 的 `POST /api/v1/voice/ppt_message`：
+
+```json
+{
+  "task_id": "string",           // 对应 session_id
+  "msg_type": "kb_result",
+  "chunks": [
+    {
+      "chunk_id": "string",
+      "content": "string",
+      "source": "string",
+      "score": 0.0,
+      "metadata": {}
+    }
+  ],
+  "profile_summary": "string",
+  "facts": [
+    {
+      "key": "string",
+      "content": "string",
+      "confidence": 0.0
+    }
+  ]
 }
 ```
 
@@ -392,8 +427,8 @@ curl -X POST http://memory-service-url/api/v1/memory/recall \
   -d '{
     "user_id": "user_001",
     "session_id": "sess_abc123",
-    "query": "用户的教学风格",
-    "top_k": 10
+    "query": "用户的教学风格偏好",
+    "top_k": 5
   }'
 ```
 
@@ -402,6 +437,8 @@ curl -X POST http://memory-service-url/api/v1/memory/recall \
 ### 3.2 获取用户画像
 
 **接口路径**: `GET /api/v1/memory/profile/{user_id}`
+
+**说明**: voice agent 在会话开始时调用一次，用于构建 system prompt 中的用户背景信息。画像由记忆模块根据历史对话归纳维护，`history_summary` 字段来自历次 `context/push` 后的摘要提炼。
 
 **请求参数**:
 
@@ -414,20 +451,16 @@ curl -X POST http://memory-service-url/api/v1/memory/recall \
   "code": 200,
   "message": "success",
   "data": {
-    "user_id": "string",                  // 必填，用户ID
-    "display_name": "string",             // 可选，显示名称
-    "subject": "string",                  // 可选，学科
-    "school": "string",                   // 可选，学校
-    "teaching_style": "string",           // 可选，授课风格
-    "content_depth": "string",            // 可选，内容深度
-    "preferences": {                      // 可选，偏好设置（键值对）
-      "key": "value"
-    },
-    "visual_preferences": {               // 可选，视觉偏好（键值对）
-      "key": "value"
-    },
-    "history_summary": "string",          // 可选，历史摘要
-    "last_active_at": 0                   // 可选，最后活跃时间戳（毫秒）
+    "user_id": "string",
+    "display_name": "string",
+    "subject": "string",
+    "school": "string",
+    "teaching_style": "string",
+    "content_depth": "string",
+    "preferences": { "key": "value" },
+    "visual_preferences": { "key": "value" },
+    "history_summary": "string",   // 由历次 context/push 归纳而来
+    "last_active_at": 0
   }
 }
 ```
@@ -440,20 +473,26 @@ curl -X GET http://memory-service-url/api/v1/memory/profile/user_001
 
 ---
 
-### 3.3 提取记忆
+### 3.3 推送上下文历史（触发压缩）
 
-**接口路径**: `POST /api/v1/memory/extract`
+**接口路径**: `POST /api/v1/memory/context/push`
+
+**说明**: voice agent 在以下两种时机调用此接口：
+1. **超阈值压缩**：对话历史累计字符数 > 8000 时，将最老的 1/3 消息 push 后从本地 history 删除
+2. **会话结束**：WebSocket 断开时，将剩余全部历史消息 push（不删除，会话已结束）
+
+记忆模块收到后：按 user_id 隔离数据、上传 OSS、异步触发 kb-service 嵌入索引、更新用户画像的 `history_summary`。
 
 **请求参数**:
 
 ```json
 {
-  "user_id": "string",           // 必填，用户ID
+  "user_id": "string",           // 必填，用户ID（数据隔离依据）
   "session_id": "string",        // 必填，会话ID
-  "messages": [                  // 必填，对话轮次列表
+  "messages": [                  // 必填，待归档的历史消息（按时间顺序，最老的在前）
     {
-      "role": "string",          // 必填，角色，可选值: "user", "assistant"
-      "content": "string"        // 必填，内容
+      "role": "string",          // "user" 或 "assistant"
+      "content": "string"
     }
   ]
 }
@@ -466,9 +505,8 @@ curl -X GET http://memory-service-url/api/v1/memory/profile/user_001
   "code": 200,
   "message": "success",
   "data": {
-    "extracted_facts": ["string"],        // 可选，提取的事实列表
-    "extracted_preferences": ["string"],  // 可选，提取的偏好列表
-    "conversation_summary": "string"      // 可选，对话摘要
+    "accepted": true,
+    "message_count": 0           // 实际接收的消息条数
   }
 }
 ```
@@ -476,91 +514,35 @@ curl -X GET http://memory-service-url/api/v1/memory/profile/user_001
 **使用示例**:
 
 ```bash
-curl -X POST http://memory-service-url/api/v1/memory/extract \
+curl -X POST http://memory-service-url/api/v1/memory/context/push \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "user_001",
     "session_id": "sess_abc123",
     "messages": [
-      {"role": "user", "content": "我喜欢简洁的PPT风格"},
-      {"role": "assistant", "content": "好的，我会为您制作简洁风格的课件"}
+      {"role": "user", "content": "我想做一个关于导数的课件"},
+      {"role": "assistant", "content": "好的，请问目标受众是哪个年级？"}
     ]
   }'
 ```
 
 ---
 
-### 3.4 保存工作记忆
+### ~~3.4 提取记忆~~（已废弃）
 
-**接口路径**: `POST /api/v1/memory/working/save`
-
-**请求参数**:
-
-```json
-{
-  "session_id": "string",        // 必填，会话ID
-  "user_id": "string",           // 必填，用户ID
-  "conversation_summary": "string",     // 可选，对话摘要
-  "extracted_elements": {},             // 可选，提取的元素（任意JSON对象）
-  "recent_topics": ["string"]           // 可选，近期话题列表
-}
-```
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success"
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X POST http://memory-service-url/api/v1/memory/working/save \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "sess_abc123",
-    "user_id": "user_001",
-    "conversation_summary": "用户正在制作高等数学课件",
-    "extracted_elements": {"topic": "导数与微分"},
-    "recent_topics": ["导数", "微分"]
-  }'
-```
+> **废弃原因**: 上下文历史压缩统一通过 `POST /api/v1/memory/context/push` 完成，记忆提取由记忆模块内部处理，voice agent 不再主动调用此接口。
 
 ---
 
-### 3.5 获取工作记忆
+### ~~3.5 保存工作记忆~~（已废弃）
 
-**接口路径**: `GET /api/v1/memory/working/{session_id}`
+> **废弃原因**: 工作记忆的维护由记忆模块在处理 `context/push` 和 `recall` 时内部完成，voice agent 不再主动调用。
 
-**请求参数**:
+---
 
-- `session_id` (path parameter): 必填，会话ID
+### ~~3.6 获取工作记忆~~（已废弃）
 
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "session_id": "string",               // 可选，会话ID
-    "user_id": "string",                  // 可选，用户ID
-    "conversation_summary": "string",     // 可选，对话摘要
-    "extracted_elements": {},             // 可选，提取的元素（任意JSON对象）
-    "recent_topics": ["string"],          // 可选，近期话题列表
-    "metadata": {"key": "value"}          // 可选，元数据
-  }
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
-```
+> **废弃原因**: voice agent 通过 `recall` 回调获取所需上下文，不再单独拉取工作记忆。
 
 ---
 
@@ -570,37 +552,35 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
 
 **接口路径**: `POST /api/v1/search/query`
 
-**说明**: 本接口为**异步任务受理**：响应仅表示任务已创建，搜索在后台执行。搜索完成后，搜索服务主动回调 Voice Agent 的 `POST /api/v1/voice/ppt_message`，`msg_type` 为 `"search_result"`，结果通过 `tts_text` 字段携带。Voice Agent 收到回调后将结果推送给 WebSocket 客户端。
+**说明**: 异步任务受理。搜索完成后回调 `POST /api/v1/voice/ppt_message`，`msg_type` 为 `"search_result"`。
 
 **请求参数**:
 
 ```json
 {
-  "request_id": "string",        // 可选，请求ID；不提供则由服务生成。不得与已有任务重复
-  "user_id": "string",           // 必填，用户ID
-  "query": "string",             // 必填，搜索关键词
-  "max_results": 0,              // 可选，最大结果数，整数，默认10，上限10
-  "language": "string"           // 可选，语言，如 "zh-CN", "en-US"
+  "request_id": "string",        // 可选，不提供则由服务生成
+  "user_id": "string",           // 必填
+  "query": "string",             // 必填
+  "max_results": 10,             // 可选，默认10，上限10
+  "language": "string"           // 可选，如 "zh-CN"
 }
 ```
 
-**响应格式**（受理成功，任务处于排队/执行中）:
+**响应格式**:
 
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "request_id": "string",      // 必填，搜索请求ID
-    "status": "pending",         // 必填，受理成功时固定为 "pending"
-    "results": [],               // 受理阶段为空数组
-    "summary": "",               // 受理阶段为空字符串
-    "duration": 0                // 受理阶段为 0
+    "request_id": "string",
+    "status": "pending",
+    "results": [],
+    "summary": "",
+    "duration": 0
   }
 }
 ```
-
-**业务错误**: 若 `request_id` 与已有任务重复，返回非 200 的业务 `code`（如 40001）及相应 `message`。
 
 **使用示例**:
 
@@ -615,8 +595,6 @@ curl -X POST http://search-service-url/api/v1/search/query \
   }'
 ```
 
-受理成功后，搜索服务将异步处理并通过回调接口返回结果（见 §3 接收异步服务回调）。
-
 ---
 
 ## 5. 数据库服务接口
@@ -625,10 +603,7 @@ curl -X POST http://search-service-url/api/v1/search/query \
 
 **接口路径**: `POST /api/v1/files/upload`
 
-**请求参数**:
-
-- Content-Type: `multipart/form-data`
-- 表单字段：文件数据
+**请求参数**: `multipart/form-data`，表单字段为文件数据。
 
 **响应格式**:
 
@@ -637,12 +612,12 @@ curl -X POST http://search-service-url/api/v1/search/query \
   "code": 200,
   "message": "success",
   "data": {
-    "file_id": "string",         // 必填，文件ID
-    "filename": "string",        // 必填，文件名
-    "file_type": "string",       // 必填，文件类型
-    "file_size": 0,              // 必填，文件大小（字节）
-    "storage_url": "string",     // 必填，存储URL
-    "purpose": "string"          // 必填，用途
+    "file_id": "string",
+    "filename": "string",
+    "file_type": "string",
+    "file_size": 0,
+    "storage_url": "string",
+    "purpose": "string"
   }
 }
 ```
@@ -655,38 +630,41 @@ curl -X POST http://db-service-url/api/v1/files/upload \
   -F "file=@/path/to/document.pdf"
 ```
 
+---
+
 ## 6. 认证服务接口
 
-### 6.1 验证用户Token
+### 6.1 验证用户 Token
 
 **接口路径**: `POST /api/v1/auth/verify`
 
 **请求参数**:
+
 ```json
 {
-  "token": "string"              // 必填，用户token
+  "token": "string"
 }
 ```
 
 **响应格式**:
+
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "user_id": "string",         // 必填，用户ID
-    "valid": true                // 必填，token是否有效
+    "user_id": "string",
+    "valid": true
   }
 }
 ```
 
 **使用示例**:
+
 ```bash
 curl -X POST http://auth-service-url/api/v1/auth/verify \
   -H "Content-Type: application/json" \
-  -d '{
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
+  -d '{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}'
 ```
 
 ---
@@ -695,26 +673,27 @@ curl -X POST http://auth-service-url/api/v1/auth/verify \
 
 **接口路径**: `GET /api/v1/auth/profile`
 
-**请求参数**:
-- Header: `Authorization: Bearer {token}`
+**请求参数**: Header `Authorization: Bearer {token}`
 
 **响应格式**:
+
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "user_id": "string",         // 必填，用户ID
-    "username": "string",        // 必填，用户名
-    "email": "string",           // 可选，邮箱
-    "display_name": "string",    // 可选，显示名称
-    "avatar_url": "string",      // 可选，头像URL
-    "created_at": 0              // 必填，创建时间戳（毫秒）
+    "user_id": "string",
+    "username": "string",
+    "email": "string",
+    "display_name": "string",
+    "avatar_url": "string",
+    "created_at": 0
   }
 }
 ```
 
 **使用示例**:
+
 ```bash
 curl -X GET http://auth-service-url/api/v1/auth/profile \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -729,37 +708,37 @@ curl -X GET http://auth-service-url/api/v1/auth/profile \
 **接口路径**: `POST /api/v1/sessions`
 
 **请求参数**:
+
 ```json
 {
-  "user_id": "string",           // 必填，用户ID
-  "session_id": "string",        // 可选，会话ID（不提供则自动生成）
-  "title": "string"              // 可选，会话标题
+  "user_id": "string",
+  "session_id": "string",        // 可选，不提供则自动生成
+  "title": "string"              // 可选
 }
 ```
 
 **响应格式**:
+
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "session_id": "string",      // 必填，会话ID
-    "user_id": "string",         // 必填，用户ID
-    "title": "string",           // 必填，会话标题
-    "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
-    "created_at": 0              // 必填，创建时间戳（毫秒）
+    "session_id": "string",
+    "user_id": "string",
+    "title": "string",
+    "status": "string",          // "active", "archived", "completed"
+    "created_at": 0
   }
 }
 ```
 
 **使用示例**:
+
 ```bash
 curl -X POST http://session-service-url/api/v1/sessions \
   -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user_001",
-    "title": "高等数学课件制作"
-  }'
+  -d '{"user_id": "user_001", "title": "高等数学课件制作"}'
 ```
 
 ---
@@ -768,26 +747,25 @@ curl -X POST http://session-service-url/api/v1/sessions \
 
 **接口路径**: `GET /api/v1/sessions/{session_id}`
 
-**请求参数**:
-- `session_id` (path parameter): 必填，会话ID
-
 **响应格式**:
+
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "session_id": "string",      // 必填，会话ID
-    "user_id": "string",         // 必填，用户ID
-    "title": "string",           // 必填，会话标题
-    "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
-    "created_at": 0,             // 必填，创建时间戳（毫秒）
-    "updated_at": 0              // 必填，更新时间戳（毫秒）
+    "session_id": "string",
+    "user_id": "string",
+    "title": "string",
+    "status": "string",
+    "created_at": 0,
+    "updated_at": 0
   }
 }
 ```
 
 **使用示例**:
+
 ```bash
 curl -X GET http://session-service-url/api/v1/sessions/sess_abc123
 ```
@@ -798,12 +776,8 @@ curl -X GET http://session-service-url/api/v1/sessions/sess_abc123
 
 **接口路径**: `GET /api/v1/sessions?user_id={user_id}&page=1&page_size=20`
 
-**请求参数**:
-- `user_id` (query): 必填，用户ID
-- `page` (query): 可选，页码，默认1
-- `page_size` (query): 可选，每页数量，默认20
-
 **响应格式**:
+
 ```json
 {
   "code": 200,
@@ -811,21 +785,22 @@ curl -X GET http://session-service-url/api/v1/sessions/sess_abc123
   "data": {
     "sessions": [
       {
-        "session_id": "string",      // 必填，会话ID
-        "user_id": "string",         // 必填，用户ID
-        "title": "string",           // 必填，会话标题
-        "status": "string",          // 必填，状态，可选值: "active", "archived", "completed"
-        "created_at": 0,             // 必填，创建时间戳（毫秒）
-        "updated_at": 0              // 必填，更新时间戳（毫秒）
+        "session_id": "string",
+        "user_id": "string",
+        "title": "string",
+        "status": "string",
+        "created_at": 0,
+        "updated_at": 0
       }
     ],
-    "total": 0,                      // 必填，总数
-    "page": 1                        // 必填，当前页码
+    "total": 0,
+    "page": 1
   }
 }
 ```
 
 **使用示例**:
+
 ```bash
 curl -X GET "http://session-service-url/api/v1/sessions?user_id=user_001&page=1&page_size=20"
 ```
@@ -837,14 +812,16 @@ curl -X GET "http://session-service-url/api/v1/sessions?user_id=user_001&page=1&
 **接口路径**: `PUT /api/v1/sessions/{session_id}`
 
 **请求参数**:
+
 ```json
 {
-  "title": "string",             // 可选，会话标题
-  "status": "string"             // 可选，状态，可选值: "active", "archived", "completed"
+  "title": "string",             // 可选
+  "status": "string"             // 可选，"active", "archived", "completed"
 }
 ```
 
 **响应格式**:
+
 ```json
 {
   "code": 200,
@@ -853,36 +830,32 @@ curl -X GET "http://session-service-url/api/v1/sessions?user_id=user_001&page=1&
 ```
 
 **使用示例**:
+
 ```bash
 curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "高等数学课件制作（已完成）",
-    "status": "completed"
-  }'
+  -d '{"title": "高等数学课件（已完成）", "status": "completed"}'
 ```
 
 ---
 
 ## 8. 搜索结果轮询接口（备用，当前未使用）
 
-> **注意**: Voice Agent 当前采用回调模式获取搜索结果（见 §4.1），搜索服务主动回调 `POST /api/v1/voice/ppt_message`。本节接口由搜索服务实现，作为备用轮询方案保留。
+> Voice Agent 当前采用回调模式，本节接口作为备用轮询方案保留。
 
 ### 8.1 获取搜索结果
 
 **接口路径**: `GET /api/v1/search/results/{request_id}`
 
-**请求参数**:
-- `request_id` (path parameter): 必填，搜索请求ID（通常由 [§4.1 网络搜索](#41-网络搜索) `POST /api/v1/search/query` 返回的 `data.request_id` 提供）
-
 **响应格式**:
+
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
     "request_id": "string",
-    "status": "string",          // 必填，可选值: "pending", "completed", "failed"
+    "status": "string",          // "pending", "completed", "failed"
     "results": [
       {
         "title": "string",
@@ -898,11 +871,10 @@ curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
 ```
 
 **使用示例**:
+
 ```bash
 curl -X GET "http://search-service-url/api/v1/search/results/req_abc123"
 ```
-
-**说明**: 此接口用于轮询异步搜索任务的结果。当 `status` 为 `"pending"` 时，客户端应继续轮询；当 `status` 为 `"completed"` 或 `"failed"` 时，任务结束。
 
 ---
 
@@ -920,216 +892,116 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 **请求参数**:
 
-- `user_id` (query string): 必填，用户ID
-- `session_id` (query string): 可选，会话ID（如不提供则自动生成）
+- `user_id` (query): 必填
+- `session_id` (query): 可选，不提供则自动生成
 
-**连接说明**:
-
-- 协议：WebSocket
-- 支持二进制消息（音频数据）和文本消息（JSON格式）
+支持二进制消息（音频）和文本消息（JSON）。
 
 ---
 
 ### WebSocket 消息格式
 
-#### 客户端 → 服务端消息
+#### 客户端 → 服务端
 
-**1. VAD 开始**
+**VAD 开始**: `{"type": "vad_start"}`
 
+**VAD 结束**: `{"type": "vad_end"}`
+
+**文本输入**:
 ```json
-{
-  "type": "vad_start"
-}
+{"type": "text_input", "text": "string"}
 ```
 
-**2. VAD 结束**
-
+**页面导航**:
 ```json
-{
-  "type": "vad_end"
-}
+{"type": "page_navigate", "task_id": "string", "page_id": "string"}
 ```
 
-**3. 文本输入**
-
-```json
-{
-  "type": "text_input",
-  "text": "string"               // 必填，用户输入的文本
-}
-```
-
-**4. 页面导航**
-
-```json
-{
-  "type": "page_navigate",
-  "task_id": "string",           // 必填，任务ID
-  "page_id": "string"            // 必填，页面ID
-}
-```
-
-**5. 音频数据**
-
-- 消息类型：二进制（Binary）
-- 格式：PCM 16kHz 16bit 单声道
-- 每个消息包含音频数据块
+**音频数据**: 二进制，PCM 16kHz 16bit 单声道。
 
 ---
 
-#### 服务端 → 客户端消息
+#### 服务端 → 客户端
 
-**1. 状态更新**
-
+**状态更新**:
 ```json
-{
-  "type": "status",
-  "state": "string"              // 必填，状态，可选值: "idle", "listening", "processing", "speaking"
-}
+{"type": "status", "state": "string"}
+```
+`state` 可选值: `"idle"`, `"listening"`, `"processing"`, `"speaking"`
+
+**转录文本（实时）**:
+```json
+{"type": "transcript", "text": "string"}
 ```
 
-**2. 转录文本（实时）**
-
+**转录文本（最终）**:
 ```json
-{
-  "type": "transcript",
-  "text": "string"               // 必填，实时转录文本
-}
+{"type": "transcript_final", "text": "string"}
 ```
 
-**3. 转录文本（最终）**
-
+**响应文本（流式）**:
 ```json
-{
-  "type": "transcript_final",
-  "text": "string"               // 必填，最终转录文本
-}
+{"type": "response", "text": "string"}
 ```
 
-**4. 响应文本**
+**音频数据**: 二进制，MP3。
 
+**任务状态更新**:
 ```json
-{
-  "type": "response",
-  "text": "string"               // 必填，AI响应文本（流式输出）
-}
+{"type": "task_status", "task_id": "string", "status": "string", "progress": 0, "text": "string"}
 ```
 
-**5. 音频数据**
-
-- 消息类型：二进制（Binary）
-- 格式：MP3
-- TTS合成的音频数据
-
-**6. 任务状态更新**
-
+**页面渲染完成**:
 ```json
-{
-  "type": "task_status",
-  "task_id": "string",           // 必填，任务ID
-  "status": "string",            // 必填，状态
-  "progress": 0,                 // 可选，进度（0-100）
-  "text": "string"               // 可选，状态描述
-}
+{"type": "page_rendered", "task_id": "string", "page_id": "string", "render_url": "string", "page_index": 0}
 ```
 
-**7. 页面渲染完成**
-
-```json
-{
-  "type": "page_rendered",
-  "task_id": "string",           // 必填，任务ID
-  "page_id": "string",           // 必填，页面ID
-  "render_url": "string",        // 必填，渲染图片URL
-  "page_index": 0                // 可选，页面索引
-}
-```
-
-**8. PPT 预览**
-
+**PPT 预览**:
 ```json
 {
   "type": "ppt_preview",
-  "task_id": "string",           // 必填，任务ID
-  "page_order": ["string"],      // 必填，页面顺序
-  "pages_info": [                // 必填，页面信息列表
-    {
-      "page_id": "string",       // 必填，页面ID
-      "status": "string",        // 必填，状态
-      "last_update": 0,          // 必填，最后更新时间戳（毫秒）
-      "render_url": "string"     // 必填，渲染URL
-    }
+  "task_id": "string",
+  "page_order": ["string"],
+  "pages_info": [
+    {"page_id": "string", "status": "string", "last_update": 0, "render_url": "string"}
   ]
 }
 ```
 
-**9. 导出就绪**
-
+**导出就绪**:
 ```json
-{
-  "type": "export_ready",
-  "task_id": "string",           // 必填，任务ID
-  "download_url": "string",      // 必填，下载URL
-  "format": "string"             // 必填，格式，如 "pptx", "pdf"
-}
+{"type": "export_ready", "task_id": "string", "download_url": "string", "format": "string"}
 ```
 
-**10. 冲突询问**
-
+**冲突询问**:
 ```json
-{
-  "type": "conflict_ask",
-  "task_id": "string",           // 必填，任务ID
-  "page_id": "string",           // 必填，页面ID
-  "context_id": "string",        // 必填，上下文ID
-  "question": "string"           // 必填，问题内容
-}
+{"type": "conflict_ask", "task_id": "string", "page_id": "string", "context_id": "string", "question": "string"}
 ```
 
-**11. 需求收集进度**
-
+**需求收集进度**:
 ```json
 {
   "type": "requirements_progress",
-  "status": "string",            // 必填，状态，可选值: "collecting"（收集中）, "ready"（可确认）
-  "collected_fields": ["string"],// 必填，已收集字段列表
-  "missing_fields": ["string"],  // 必填，缺失字段列表
-  "requirements": {}             // 必填，需求对象（完整的TaskRequirements）
+  "status": "string",            // "collecting" 或 "ready"
+  "collected_fields": ["string"],
+  "missing_fields": ["string"],
+  "requirements": {}
 }
 ```
 
-**11a. 需求收集完成摘要**
-
-当所有必填字段收集完毕（`status: "ready"`）时，在 `requirements_progress` 之前额外发送一条此消息，供客户端渲染确认卡片。
-
+**需求收集完成摘要**:
 ```json
-{
-  "type": "requirements_summary",
-  "summary_text": "string",      // 必填，格式化的需求摘要文本
-  "requirements": {}             // 必填，需求对象（完整的TaskRequirements）
-}
+{"type": "requirements_summary", "summary_text": "string", "requirements": {}}
 ```
 
-**12. 任务列表更新**
-
+**任务列表更新**:
 ```json
-{
-  "type": "task_list_update",
-  "active_task_id": "string",    // 必填，当前活跃任务ID
-  "tasks": {                     // 必填，任务ID → 主题 映射
-    "task_id": "topic"
-  }
-}
+{"type": "task_list_update", "active_task_id": "string", "tasks": {"task_id": "topic"}}
 ```
 
-**13. 错误消息**
-
+**错误消息**:
 ```json
-{
-  "type": "error",
-  "code": 0,                     // 必填，错误码
-  "message": "string"            // 必填，错误消息
-}
+{"type": "error", "code": 0, "message": "string"}
 ```
 
 ---
@@ -1140,37 +1012,24 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 **接口路径**: `POST /api/v1/upload`
 
-**请求参数**:
-
-- Content-Type: `multipart/form-data`
-- 表单字段：文件数据
+透明代理到 db-service 的 `/api/v1/files/upload`。
 
 **响应格式**:
-
-    "msg_type": "error",
-    "error_code": 50001,
-    "tts_text": "生成失败，请稍后重试"
-  }'
-```
-
----
 
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "file_id": "string",         // 必填，文件ID
-    "filename": "string",        // 必填，文件名
-    "file_type": "string",       // 必填，文件类型
-    "file_size": 0,              // 必填，文件大小（字节）
-    "storage_url": "string",     // 必填，存储URL
-    "purpose": "string"          // 必填，用途
+    "file_id": "string",
+    "filename": "string",
+    "file_type": "string",
+    "file_size": 0,
+    "storage_url": "string",
+    "purpose": "string"
   }
 }
 ```
-
-**说明**: 此接口是透明代理，将请求转发到数据库服务的 `/api/v1/files/upload` 接口。
 
 **使用示例**:
 
@@ -1186,10 +1045,6 @@ curl -X POST http://voice-agent-url/api/v1/upload \
 
 **接口路径**: `GET /api/v1/tasks/{task_id}/preview`
 
-**请求参数**:
-
-- `task_id` (path parameter): 必填，任务ID
-
 **响应格式**:
 
 ```json
@@ -1197,34 +1052,21 @@ curl -X POST http://voice-agent-url/api/v1/upload \
   "code": 200,
   "message": "success",
   "data": {
-    "task_id": "string",                  // 必填，任务ID
-    "status": "string",                   // 必填，任务状态，可选值: "generating", "completed", "failed"
-    "page_order": ["string"],             // 必填，页面ID顺序列表
-    "current_viewing_page_id": "string",  // 必填，当前查看的页面ID
-    "pages": [                            // 必填，页面信息列表
+    "task_id": "string",
+    "status": "string",          // "generating", "completed", "failed"
+    "page_order": ["string"],
+    "current_viewing_page_id": "string",
+    "pages": [
       {
-        "page_id": "string",              // 必填，页面ID
-        "status": "string",               // 必填，页面状态，可选值: "rendering", "completed", "failed", "suspended_for_human"
-        "last_update": 0,                 // 必填，最后更新时间戳（毫秒）
-        "render_url": "string"            // 必填，渲染后的图片URL（可为空字符串）
+        "page_id": "string",
+        "status": "string",      // "rendering", "completed", "failed", "suspended_for_human"
+        "last_update": 0,
+        "render_url": "string"
       }
-    ],
-    "pages_info": []                      // 必填，与pages相同（兼容字段）
+    ]
   }
 }
 ```
-
-**状态说明**:
-
-- 任务级 `status`:
-  - `generating`: 任一页面状态为 `rendering` 或 `suspended_for_human`
-  - `failed`: 任一页面状态为 `failed`
-  - `completed`: 所有页面状态为 `completed`
-- 页面级 `status`:
-  - `rendering`: 渲染中
-  - `completed`: 已完成
-  - `failed`: 失败
-  - `suspended_for_human`: 等待人工确认
 
 **使用示例**:
 
@@ -1242,43 +1084,41 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ```json
 {
-  "task_id": "string",           // 必填，任务ID
-  "msg_type": "string",          // 可选，消息类型，默认 "tool_result"
-  "priority": "string",          // 可选，优先级，可选值: "normal", "high"，默认 "normal"
-  "tts_text": "string",          // 可选，TTS文本，默认 "PPT 状态已更新"
-  "status": "string",            // 可选，状态（用于 ppt_status 类型）
-  "progress": 0,                 // 可选，进度（0-100）
-  "page_id": "string",           // 可选，页面ID
-  "context_id": "string",        // 可选，上下文ID（用于冲突解决）
-  "render_url": "string",        // 可选，渲染URL（用于 page_rendered 类型）
-  "page_index": 0,               // 可选，页面索引
-  "page_order": ["string"],      // 可选，页面顺序（用于 ppt_preview 类型）
-  "pages_info": [                // 可选，页面信息列表（用于 ppt_preview 类型）
-    {
-      "page_id": "string",
-      "status": "string",
-      "last_update": 0,
-      "render_url": "string"
-    }
-  ],
-  "download_url": "string",      // 可选，下载URL（用于 export_ready 类型）
-  "format": "string",            // 可选，格式（用于 export_ready 类型）
-  "error_code": 0                // 可选，错误码（用于 error 类型）
+  "task_id": "string",           // 必填，任务ID（或 session_id）
+  "msg_type": "string",          // 可选，默认 "tool_result"
+  "priority": "string",          // 可选，"normal" 或 "high"，默认 "normal"
+  "tts_text": "string",          // 可选，TTS文本
+  "status": "string",            // 可选，用于 ppt_status 类型
+  "progress": 0,                 // 可选，进度 0-100
+  "page_id": "string",           // 可选
+  "context_id": "string",        // 可选，用于冲突解决
+  "render_url": "string",        // 可选，用于 page_rendered
+  "page_index": 0,               // 可选
+  "page_order": ["string"],      // 可选，用于 ppt_preview
+  "pages_info": [],              // 可选，用于 ppt_preview
+  "download_url": "string",      // 可选，用于 export_ready
+  "format": "string",            // 可选，用于 export_ready
+  "error_code": 0,               // 可选，用于 error
+  "chunks": [],                  // 可选，用于 kb_result（记忆模块回调携带的 chunk 列表）
+  "profile_summary": "string",   // 可选，用于 kb_result
+  "facts": []                    // 可选，用于 kb_result
 }
 ```
 
 **msg_type 可选值**:
 
-- `tool_result`: 工具执行结果（默认）
-- `ppt_status`: PPT状态更新
-- `page_rendered`: 页面渲染完成
-- `ppt_preview`: PPT预览
-- `export_ready`: 导出就绪
-- `conflict_question`: 冲突询问（自动设置为高优先级，触发向客户端推送 `conflict_ask` 消息）
-- `conflict_resolved`: 冲突已解决（Voice Agent 将用户答案通过 `SendFeedback` 转发给 PPT Agent）
-- `search_result`: 搜索服务回调结果
-- `kb_result`: 知识库查询回调结果
-- `error`: 错误消息
+| 值 | 说明 |
+|---|---|
+| `tool_result` | 工具执行结果（默认） |
+| `ppt_status` | PPT 状态更新 |
+| `page_rendered` | 页面渲染完成 |
+| `ppt_preview` | PPT 预览 |
+| `export_ready` | 导出就绪 |
+| `conflict_question` | 冲突询问（自动设为高优先级，推送 `conflict_ask` 给客户端） |
+| `conflict_resolved` | 冲突已解决（voice agent 将用户答案通过 `SendFeedback` 转发给 PPT Agent） |
+| `search_result` | 搜索服务回调结果 |
+| `kb_result` | 记忆模块触发 kb 检索后的回调结果 |
+| `error` | 错误消息 |
 
 **响应格式**:
 
@@ -1287,15 +1127,13 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   "code": 200,
   "message": "success",
   "data": {
-    "accepted": true,            // 必填，是否接受
-    "delivered": true            // 可选，是否已投递到会话（如果会话不存在则为false）
+    "accepted": true,
+    "delivered": true            // 会话不存在时为 false
   }
 }
 ```
 
-**使用示例**:
-
-1. PPT状态更新：
+**使用示例**（PPT 状态更新）:
 
 ```bash
 curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
@@ -1309,83 +1147,18 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   }'
 ```
 
-1. 页面渲染完成：
+**使用示例**（记忆模块 kb 检索回调）:
 
 ```bash
 curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
-    "task_id": "task_001",
-    "msg_type": "page_rendered",
-    "page_id": "page_003",
-    "render_url": "https://cdn.example.com/renders/page_003.png",
-    "page_index": 2,
-    "tts_text": "第3页已生成"
-  }'
-```
-
-1. 冲突询问：
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_001",
-    "msg_type": "conflict_question",
-    "page_id": "page_005",
-    "context_id": "ctx_abc123",
-    "tts_text": "第5页有两个标题，您想保留哪一个？"
-  }'
-```
-
-1. 导出就绪：
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_001",
-    "msg_type": "export_ready",
-    "download_url": "https://cdn.example.com/exports/task_001.pptx",
-    "format": "pptx",
-    "tts_text": "您的课件已导出完成"
-  }'
-```
-
-1. 错误消息：
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_001",
-    "msg_type": "error",
-    "error_code": 50001,
-    "tts_text": "生成失败，请重试"
-  }'
-```
-
-6. 搜索结果回调：
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_001",
-    "msg_type": "search_result",
-    "tts_text": "已找到相关资料：量子力学的基本原理包括波粒二象性、不确定性原理等"
-  }'
-```
-
-7. 知识库查询结果回调：
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_001",
+    "task_id": "sess_abc123",
     "msg_type": "kb_result",
-    "tts_text": "根据知识库，牛顿第二定律表述为：物体的加速度与作用力成正比，与质量成反比"
+    "chunks": [
+      {"chunk_id": "c1", "content": "导数是函数的瞬时变化率...", "source": "oss://user_001/history_001.txt", "score": 0.92}
+    ],
+    "profile_summary": "高中数学教师，偏好简洁风格"
   }'
 ```
 
