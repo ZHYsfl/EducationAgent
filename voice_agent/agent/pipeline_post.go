@@ -197,41 +197,64 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 	return len(contextIDs) > 0
 }
 
-func (p *Pipeline) asyncPushContext(userText, assistantText string) {
-	if p.clients == nil || (userText == "" && assistantText == "") {
+func (p *Pipeline) maybeCompressHistory() {
+	if p.clients == nil {
 		return
 	}
-
-	p.session.memoryMu.Lock()
+	if p.history.TotalChars() <= 8000 {
+		return
+	}
 	messages := p.history.Messages()
-	startIdx := p.session.lastMemoryExtractIndex
-	endIdx := len(messages)
-
-	if startIdx >= endIdx {
-		p.session.memoryMu.Unlock()
+	cutoff := len(messages) / 3
+	if cutoff == 0 {
 		return
 	}
-
-	newMessages := messages[startIdx:endIdx]
-	turns := make([]ConversationTurn, 0, len(newMessages))
-	for _, msg := range newMessages {
-		turns = append(turns, ConversationTurn{Role: msg.Role, Content: msg.Content})
+	turns := make([]ConversationTurn, cutoff)
+	for i, m := range messages[:cutoff] {
+		turns[i] = ConversationTurn{Role: m.Role, Content: m.Content}
 	}
-
-	p.session.lastMemoryExtractIndex = endIdx
-	p.session.memoryMu.Unlock()
-
-	sessionID := p.session.SessionID
 	userID := p.session.UserID
+	sessionID := p.session.SessionID
 	go func() {
 		if err := p.clients.PushContext(context.Background(), PushContextRequest{
 			UserID:    userID,
 			SessionID: sessionID,
 			Messages:  turns,
 		}); err != nil {
-			log.Printf("[pipeline] PushContext failed: %v", err)
+			log.Printf("[pipeline] PushContext compress failed: %v", err)
+			return
 		}
+		p.history.DeleteFront(cutoff)
+		p.session.memoryMu.Lock()
+		p.session.lastMemoryExtractIndex = 0
+		p.session.memoryMu.Unlock()
 	}()
+}
+
+func (p *Pipeline) pushRemainingContext() {
+	if p.clients == nil {
+		return
+	}
+	p.session.memoryMu.Lock()
+	messages := p.history.Messages()
+	startIdx := p.session.lastMemoryExtractIndex
+	endIdx := len(messages)
+	p.session.memoryMu.Unlock()
+
+	if startIdx >= endIdx {
+		return
+	}
+	turns := make([]ConversationTurn, 0, endIdx-startIdx)
+	for _, m := range messages[startIdx:endIdx] {
+		turns = append(turns, ConversationTurn{Role: m.Role, Content: m.Content})
+	}
+	if err := p.clients.PushContext(context.Background(), PushContextRequest{
+		UserID:    p.session.UserID,
+		SessionID: p.session.SessionID,
+		Messages:  turns,
+	}); err != nil {
+		log.Printf("[pipeline] PushContext session-end failed: %v", err)
+	}
 }
 
 func (p *Pipeline) buildTaskListContext() string {

@@ -7,44 +7,35 @@ import (
 )
 
 // ===========================================================================
-// asyncExtractMemory
+// maybeCompressHistory / pushRemainingContext
 // ===========================================================================
 
-func TestAsyncPushContext(t *testing.T) {
+func TestMaybeCompressHistory_BelowThreshold(t *testing.T) {
 	mock := &agent.MockServices{}
 	s := agent.NewTestSession(mock)
 	p := agent.NewTestPipeline(s, mock)
 
-	p.AsyncPushContext("用户说了什么", "助手回复了什么")
-	calls := agent.WaitForPushCtx(mock, 1)
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 PushContext call, got %d", len(calls))
-	}
-	if calls[0].UserID != "user_test" {
-		t.Errorf("userID = %q", calls[0].UserID)
-	}
-}
-
-func TestAsyncPushContext_EmptyInput(t *testing.T) {
-	mock := &agent.MockServices{}
-	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
-
-	p.AsyncPushContext("", "")
+	p.MaybeCompressHistory()
 	time.Sleep(30 * time.Millisecond)
 
 	mock.Mu.Lock()
 	calls := len(mock.PushCtxCalls)
 	mock.Mu.Unlock()
 	if calls != 0 {
-		t.Error("should not push context for empty input")
+		t.Error("should not push context below threshold")
 	}
 }
 
-func TestAsyncPushContext_NilClients(t *testing.T) {
+func TestMaybeCompressHistory_NilClients(t *testing.T) {
 	s := agent.NewTestSession(nil)
 	p := agent.NewTestPipeline(s, nil)
-	p.AsyncPushContext("test", "test") // should not panic
+	p.MaybeCompressHistory() // should not panic
+}
+
+func TestPushRemainingContext_NilClients(t *testing.T) {
+	s := agent.NewTestSession(nil)
+	p := agent.NewTestPipeline(s, nil)
+	p.PushRemainingContext() // should not panic
 }
 
 // ===========================================================================

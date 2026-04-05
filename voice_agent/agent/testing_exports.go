@@ -53,9 +53,14 @@ func (p *Pipeline) BuildFullSystemPrompt(ctx context.Context, includeContextQueu
 	return p.buildFullSystemPrompt(ctx, includeContextQueue)
 }
 
-// AsyncPushContext calls the unexported asyncPushContext method.
-func (p *Pipeline) AsyncPushContext(userText, assistantText string) {
-	p.asyncPushContext(userText, assistantText)
+// MaybeCompressHistory calls the unexported maybeCompressHistory method.
+func (p *Pipeline) MaybeCompressHistory() {
+	p.maybeCompressHistory()
+}
+
+// PushRemainingContext calls the unexported pushRemainingContext method.
+func (p *Pipeline) PushRemainingContext() {
+	p.pushRemainingContext()
 }
 
 // HighPriorityListener calls the unexported highPriorityListener method.
