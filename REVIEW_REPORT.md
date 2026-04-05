@@ -20,7 +20,6 @@
 
 ---
 
-
 ## 第二部分：我们提供的接口
 
 ### 2.1 `conflict_ask` 消息从未发送 ✅ 已修复
@@ -31,7 +30,7 @@
 
 ---
 
-### 2.3 `resolve_conflict` 动作未在 executor 中处理 ✅ 已修复
+### 2.2 `resolve_conflict` 动作未在 executor 中处理 ✅ 已修复
 
 **[CRITICAL]** `internal/executor/executor.go`
 
@@ -39,64 +38,61 @@
 
 ---
 
-### 2.4 `error` 消息字段名错误 ✅ 已修复
+### 2.3 `error` 消息字段名错误 ✅ 已修复
+
+**[HIGH]** `agent/session.go`
 
 已将 `Text` 改为 `Message`，并补充 `Code: 40001`。
 
 ---
 
-### 2.5 `task_list_update` 从未发送，发送了非规范的 `task_created` ✅ 已修复
+### 2.4 `task_list_update` 从未发送，发送了非规范的 `task_created` ✅ 已修复
+
+**[HIGH]** `agent/pipeline_ctx.go`
 
 已将 `task_created` 改为发送 `task_list_update`，携带 `active_task_id` 和完整 `tasks` map。
-```
-
-`task_created` 不在文档规范中，客户端无法处理。`task_list_update` 从未被发送，客户端任务列表 UI 永远不会更新。
 
 ---
 
-### 2.6 `GET /api/v1/tasks/{task_id}/preview` — `pages_info` 与 `pages` 内容相同
+### 2.5 `GET /api/v1/tasks/{task_id}/preview` — `pages_info` 与 `pages` 内容相同
 
 **[MEDIUM]** `agent/http.go`
 
-API 文档响应体同时有 `pages` 和 `pages_info` 两个字段（后者标注为"兼容字段"）。代码将同一个 slice 赋给两个字段，行为上没问题，但如果将来两者需要分离会有隐患。当前实现符合"兼容字段"的语义，**可接受**，记录备查。
+API 文档响应体同时有 `pages` 和 `pages_info` 两个字段（后者标注为"兼容字段"）。代码将同一个 slice 赋给两个字段，当前实现符合"兼容字段"的语义，**可接受**，记录备查。
 
 ---
 
 ## 第三部分：需求收集流程
 
-### 3.1 `requirements_progress.status` 值不符合规范
+### 3.1 `requirements_progress.status` 值不符合规范 ✅ 已关闭
 
 **[HIGH]** `agent/pipeline_post.go`
 
-API 文档规定 `status` 取值为：`collecting` → `confirming` → `confirmed`
-
-代码在所有字段收集完毕后设置 `req.Status = "ready"`，发送给客户端的消息中 `status` 为 `"ready"`，客户端无法识别。
+API 文档已过时。`"ready"` 是当前约定的正确值，无需修改。
 
 ---
 
-### 3.2 `requirements_summary` 是非规范消息类型
+### 3.2 `requirements_summary` 是非规范消息类型 ✅ 已修复
 
 **[HIGH]** `agent/pipeline_post.go`
 
-当需求收集完成时，代码发送了一个 `type: "requirements_summary"` 的消息，该消息类型不在 API 文档中。客户端收到后无法处理，需求确认卡片无法显示。
+`requirements_summary` 消息已保留并补入 API 文档（§11a）。所有字段收集完毕时先发 `requirements_summary`（携带 `summary_text`），再发 `requirements_progress`（`status: "ready"`）。
 
 ---
 
-### 3.3 `collected_fields` 与 `missing_fields` 字段名不一致
+### 3.3 `collected_fields` 与 `missing_fields` 字段名不一致 ✅ 已修复
 
 **[HIGH]** `agent/requirements.go`
 
-`GetMissingFields()` 报告缺失字段名为 `"audience"`，但 `RefreshCollectedFields()` 标记已收集字段名为 `"target_audience"`。
-
-同一个字段有两个名字，导致该字段可能同时出现在 `collected_fields` 和 `missing_fields` 中，客户端进度显示永远不准确。
+已将 `RefreshCollectedFields()` 中的 `"target_audience"` 统一改为 `"audience"`，与 `GetMissingFields()` 一致。同步修复了 `executor/ppt.go` 中 `checkRequiredFields()` 的同名问题。
 
 ---
 
-### 3.4 `subject` 字段永远不出现在 `collected_fields`
+### 3.4 `subject` 字段永远不出现在 `collected_fields` ✅ 已修复
 
 **[MEDIUM]** `agent/requirements.go`
 
-`GetMissingFields()` 会把 `subject` 列为缺失，但 `RefreshCollectedFields()` 从不把 `subject` 加入已收集列表。即使用户提供了 subject，它也永远显示为"未收集"。
+已在 `RefreshCollectedFields()` 中添加 `subject` 字段。
 
 ---
 
@@ -116,10 +112,6 @@ API 文档规定 `status` 取值为：`collecting` → `confirming` → `confirm
 
 **[MEDIUM]** `agent/pipeline_ctx.go`
 
-```go
-go p.processContextUpdate(context.Background(), msg)
-```
-
 传入的是不可取消的 context。Session 关闭或新 pipeline 启动时，该 goroutine 仍会继续运行 LLM 调用，并向已关闭的 session 发送消息，造成 goroutine 泄漏。
 
 应传入 session 生命周期绑定的 context。
@@ -129,12 +121,6 @@ go p.processContextUpdate(context.Background(), msg)
 ### 4.3 `EnqueueContext` 状态检查与 goroutine 启动不原子
 
 **[MEDIUM]** `agent/pipeline_ctx.go`
-
-```go
-if p.session.GetState() == StateIdle {
-    go p.processContextUpdate(...)
-}
-```
 
 两条并发的 context 消息同时通过 idle 检查，会启动两个并发 LLM 调用，客户端收到双份响应。
 
@@ -158,24 +144,18 @@ if p.session.GetState() == StateIdle {
 
 ## 汇总表
 
-| # | 等级 | 模块 | 问题 |
-|---|------|------|------|
-| 3 | CRITICAL | `http.go` | `conflict_ask` 消息从未发送给客户端 |
-| 4 | CRITICAL | `executor/executor.go` | `resolve_conflict` 动作未处理，冲突解决链路断裂 |
-| 6 | HIGH | `session.go` | `error` 消息用 `text` 字段，应为 `message`，且缺 `code` |
-| 7 | HIGH | `pipeline_ctx.go` | 发送非规范 `task_created`，从未发送 `task_list_update` |
-| 8 | HIGH | `pipeline_post.go` | `requirements_progress.status` 值为 `"ready"`，应为 `"confirming"` |
-| 9 | HIGH | `pipeline_post.go` | 发送非规范 `requirements_summary` 消息类型 |
-| 10 | HIGH | `requirements.go` | `audience` vs `target_audience` 字段名不一致，进度永远错乱 |
-| 11 | MEDIUM | `requirements.go` | `subject` 永远不出现在 `collected_fields` |
-| 12 | MEDIUM | `pipeline_post.go` | 锁释放后读取 `req` 字段，存在竞态 |
-| 13 | MEDIUM | `pipeline_ctx.go` | `processContextUpdate` 使用不可取消 context，goroutine 泄漏 |
-| 14 | MEDIUM | `pipeline_ctx.go` | idle 检查与 goroutine 启动不原子，可能双发响应 |
-| 15 | MEDIUM | `pipeline_process.go` | interrupt 后状态不归 idle，后续消息被丢弃 |
-| 16 | LOW | `pipeline_process.go` | `transcript` 在 LLM 启动后才发送，客户端顺序颠倒 |
-
-
-
-
-
-
+| # | 等级 | 模块 | 问题 | 状态 |
+|---|------|------|------|------|
+| 1 | CRITICAL | `http.go` | `conflict_ask` 消息从未发送给客户端 | ✅ 已修复 |
+| 2 | CRITICAL | `executor/executor.go` | `resolve_conflict` 动作未处理，冲突解决链路断裂 | ✅ 已修复 |
+| 3 | HIGH | `session.go` | `error` 消息用 `text` 字段，应为 `message`，且缺 `code` | ✅ 已修复 |
+| 4 | HIGH | `pipeline_ctx.go` | 发送非规范 `task_created`，从未发送 `task_list_update` | ✅ 已修复 |
+| 5 | HIGH | `pipeline_post.go` | `requirements_progress.status` 值为 `"ready"`，API 文档已过时 | ✅ 已关闭 |
+| 6 | HIGH | `pipeline_post.go` | 发送非规范 `requirements_summary` 消息类型 | ✅ 已修复 |
+| 7 | HIGH | `requirements.go` | `audience` vs `target_audience` 字段名不一致，进度永远错乱 | ✅ 已修复 |
+| 8 | MEDIUM | `requirements.go` | `subject` 永远不出现在 `collected_fields` | ✅ 已修复 |
+| 9 | MEDIUM | `pipeline_post.go` | 锁释放后读取 `req` 字段，存在竞态 | ✅ 已修复 |
+| 10 | MEDIUM | `pipeline_ctx.go` | `processContextUpdate` 使用不可取消 context，goroutine 泄漏 | 待修复 |
+| 11 | MEDIUM | `pipeline_ctx.go` | idle 检查与 goroutine 启动不原子，可能双发响应 | 待修复 |
+| 12 | MEDIUM | `pipeline_process.go` | interrupt 后状态不归 idle，后续消息被丢弃 | 待修复 |
+| 13 | LOW | `pipeline_process.go` | `transcript` 在 LLM 启动后才发送，客户端顺序颠倒 | 待修复 |

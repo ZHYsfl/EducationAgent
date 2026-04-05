@@ -152,7 +152,7 @@ func checkRequiredFields(ctx SessionContext) []string {
 		missing = append(missing, "subject")
 	}
 	if ctx.Audience == "" {
-		missing = append(missing, "target_audience")
+		missing = append(missing, "audience")
 	}
 	if len(ctx.KnowledgePoints) == 0 {
 		missing = append(missing, "knowledge_points")

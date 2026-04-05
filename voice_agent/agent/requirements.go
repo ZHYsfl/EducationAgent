@@ -133,10 +133,11 @@ func (r *TaskRequirements) RefreshCollectedFields() {
 		}
 	}
 	add("topic", strings.TrimSpace(r.Topic) != "")
+	add("subject", strings.TrimSpace(r.Subject) != "")
 	add("knowledge_points", len(r.KnowledgePoints) > 0)
 	add("teaching_goals", len(r.TeachingGoals) > 0)
 	add("teaching_logic", strings.TrimSpace(r.TeachingLogic) != "")
-	add("target_audience", strings.TrimSpace(r.TargetAudience) != "")
+	add("audience", strings.TrimSpace(r.TargetAudience) != "")
 	add("key_difficulties", len(r.KeyDifficulties) > 0)
 	add("duration", strings.TrimSpace(r.Duration) != "")
 	add("total_pages", r.TotalPages > 0)
