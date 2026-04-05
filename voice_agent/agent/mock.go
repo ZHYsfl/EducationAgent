@@ -173,22 +173,12 @@ func NewTestSession(clients ExternalServices) *Session {
 		SessionID:        "sess_test_001",
 		UserID:           "user_test",
 		state:            StateIdle,
-		writeCh:          make(chan writeItem, 256),
+		writeCh:          make(chan writeItem, 4096),
 		done:             make(chan struct{}),
 		clients:          clients,
 		OwnedTasks:       make(map[string]string),
 		PendingQuestions: make(map[string]PendingQuestion),
 	}
-	// Drain writeCh so SendJSON never blocks in unit tests.
-	go func() {
-		for {
-			select {
-			case <-s.writeCh:
-			case <-s.done:
-				return
-			}
-		}
-	}()
 	return s
 }
 
