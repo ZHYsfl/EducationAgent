@@ -19,6 +19,10 @@ func (s *Session) handleTextMessage(msg WSMessage) {
 		s.handlePageNavigate(msg)
 	case "add_reference_files":
 		s.handleAddReferenceFiles(msg)
+	case "task_init":
+		s.handleTaskInit(msg)
+	case "requirements_confirm":
+		s.handleRequirementsConfirm(msg)
 	}
 }
 

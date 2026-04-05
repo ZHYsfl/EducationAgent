@@ -76,7 +76,7 @@ func CloneTaskRequirements(in *TaskRequirements) *TaskRequirements {
 
 func (r *TaskRequirements) GetMissingFields() []string {
 	if r == nil {
-		return []string{"topic", "subject", "audience", "total_pages", "knowledge_points", "teaching_goals", "teaching_logic", "key_difficulties", "duration", "global_style", "interaction_design", "output_formats"}
+		return []string{"topic", "subject", "audience", "knowledge_points", "teaching_goals", "teaching_logic", "key_difficulties", "duration", "total_pages", "global_style", "interaction_design", "output_formats"}
 	}
 	var missing []string
 	if strings.TrimSpace(r.Topic) == "" {
@@ -87,9 +87,6 @@ func (r *TaskRequirements) GetMissingFields() []string {
 	}
 	if strings.TrimSpace(r.TargetAudience) == "" {
 		missing = append(missing, "audience")
-	}
-	if r.TotalPages <= 0 {
-		missing = append(missing, "total_pages")
 	}
 	if len(r.KnowledgePoints) == 0 {
 		missing = append(missing, "knowledge_points")
@@ -105,6 +102,9 @@ func (r *TaskRequirements) GetMissingFields() []string {
 	}
 	if strings.TrimSpace(r.Duration) == "" {
 		missing = append(missing, "duration")
+	}
+	if r.TotalPages <= 0 {
+		missing = append(missing, "total_pages")
 	}
 	if strings.TrimSpace(r.GlobalStyle) == "" {
 		missing = append(missing, "global_style")

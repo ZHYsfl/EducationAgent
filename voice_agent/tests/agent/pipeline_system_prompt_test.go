@@ -105,7 +105,7 @@ func TestBuildFullSystemPrompt_WithContextQueue(t *testing.T) {
 	// 添加上下文消息
 	ctx := context.Background()
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "kb_query",
+		ActionType:  "kb_query",
 		MsgType:    "search_result",
 		Content:    "高等数学是大学基础课程",
 		Priority:   "normal",
@@ -129,7 +129,7 @@ func TestBuildFullSystemPrompt_ContextQueueDrainedOnlyWhenRequested(t *testing.T
 	// 添加上下文消息
 	ctx := context.Background()
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "kb_query",
+		ActionType:  "kb_query",
 		MsgType:    "search_result",
 		Content:    "test content",
 		Priority:   "normal",
@@ -243,7 +243,7 @@ func TestBuildFullSystemPrompt_AllLayersCombined(t *testing.T) {
 
 	// 添加上下文
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "web_search",
+		ActionType:  "web_search",
 		MsgType:    "search_result",
 		Content:    "组合搜索结果",
 		Priority:   "normal",
@@ -303,7 +303,7 @@ func TestDrainContextQueue_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			p.EnqueueContextMessage(ctx, agent.ContextMessage{
-				ActionType: "test",
+				ActionType:  "test",
 				MsgType:    "test_msg",
 				Content:    "test content",
 				Priority:   "normal",
@@ -360,7 +360,7 @@ func TestDrainContextQueue_PendingContextsPriority(t *testing.T) {
 
 	// 先添加上下文到队列
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "normal",
+		ActionType:  "normal",
 		MsgType:    "normal_msg",
 		Content:    "normal content",
 		Priority:   "normal",
@@ -393,7 +393,7 @@ func TestHighPriorityListener_ConflictQuestionFlow(t *testing.T) {
 
 	// 发送冲突问题
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "conflict",
+		ActionType:  "conflict",
 		MsgType:    "conflict_question",
 		Content:    "请选择配色方案？",
 		Priority:   "high",
@@ -427,7 +427,7 @@ func TestHighPriorityListener_SystemNotify(t *testing.T) {
 
 	// 发送系统通知
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "notify",
+		ActionType:  "notify",
 		MsgType:    "system_notify",
 		Content:    "正在处理您的请求",
 		Priority:   "high",
@@ -453,7 +453,7 @@ func TestHighPriorityListener_RetryOnInterrupt(t *testing.T) {
 
 	// 发送冲突问题
 	p.EnqueueContextMessage(ctx, agent.ContextMessage{
-		ActionType: "conflict",
+		ActionType:  "conflict",
 		MsgType:    "conflict_question",
 		Content:    "测试问题",
 		Priority:   "high",
@@ -479,8 +479,8 @@ func TestHighPriorityListener_RetryOnInterrupt(t *testing.T) {
 
 func TestFormatContextForLLM(t *testing.T) {
 	msgs := []agent.ContextMessage{
-		{ActionType: "kb_query", MsgType: "result", Content: "内容1"},
-		{ActionType: "web_search", MsgType: "result", Content: "内容2"},
+		{ActionType:  "kb_query", MsgType: "result", Content: "内容1"},
+		{ActionType:  "web_search", MsgType: "result", Content: "内容2"},
 	}
 
 	result := agent.FormatContextForLLM(msgs)
