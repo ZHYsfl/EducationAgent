@@ -628,6 +628,64 @@ curl -X POST http://db-service-url/api/v1/files/upload \
 
 ---
 
+### 5.2 获取文件元信息
+
+**接口路径**: `GET /api/v1/files/:file_id`
+
+**请求参数**:
+
+- `file_id` (path parameter): 必填，文件ID
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "file_id": "string",
+    "filename": "string",
+    "file_type": "string",
+    "file_size": 0,
+    "storage_url": "string",
+    "purpose": "string"
+  }
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X GET http://db-service-url/api/v1/files/file_001
+```
+
+---
+
+### 5.3 删除文件
+
+**接口路径**: `DELETE /api/v1/files/:file_id`
+
+**请求参数**:
+
+- `file_id` (path parameter): 必填，文件ID
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success"
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X DELETE http://db-service-url/api/v1/files/file_001
+```
+
+---
+
 ## 6. 认证服务接口
 
 ### 6.1 验证用户 Token
