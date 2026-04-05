@@ -82,17 +82,14 @@ func (c *ServiceClients) SearchWeb(ctx context.Context, req types.SearchRequest)
 	return out, err
 }
 
-func (c *ServiceClients) GetSearchResults(ctx context.Context, requestID string) (types.SearchResponse, error) {
-	var out types.SearchResponse
-	endpoint := c.searchBaseURL + "/api/v1/search/results/" + url.QueryEscape(requestID)
-	err := c.getJSON(ctx, endpoint, &out)
-	return out, err
-}
-
 func (c *ServiceClients) InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error) {
 	var out types.PPTInitResponse
 	err := c.postJSON(ctx, c.pptBaseURL+"/api/v1/ppt/init", req, &out)
 	return out, err
+}
+
+func (c *ServiceClients) NotifyVADEvent(ctx context.Context, event types.VADEvent) error {
+	return c.postJSON(ctx, c.pptBaseURL+"/api/v1/canvas/vad-event", event, nil)
 }
 
 func (c *ServiceClients) SendFeedback(ctx context.Context, req types.PPTFeedbackRequest) error {
@@ -143,14 +140,6 @@ func (c *ServiceClients) UploadFile(r *http.Request) (json.RawMessage, error) {
 
 func (c *ServiceClients) PushContext(ctx context.Context, req types.PushContextRequest) error {
 	return c.postJSON(ctx, c.memoryBaseURL+"/api/v1/memory/context/push", req, nil)
-}
-
-func (c *ServiceClients) NotifyVADEvent(ctx context.Context, event types.VADEvent) error {
-	return c.postJSON(ctx, c.pptBaseURL+"/api/v1/canvas/vad-event", event, nil)
-}
-
-func (c *ServiceClients) IngestFromSearch(ctx context.Context, req types.IngestFromSearchRequest) error {
-	return c.postJSON(ctx, c.kbBaseURL+"/api/v1/kb/ingest-from-search", req, nil)
 }
 
 func (c *ServiceClients) postJSON(ctx context.Context, endpoint string, payload any, out any) error {
