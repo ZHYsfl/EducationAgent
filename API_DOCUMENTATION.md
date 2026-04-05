@@ -836,45 +836,6 @@ curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
 
 ---
 
-## 8. 搜索结果轮询接口（备用，当前未使用）
-
-> Voice Agent 当前采用回调模式，本节接口作为备用轮询方案保留。
-
-### 8.1 获取搜索结果
-
-**接口路径**: `GET /api/v1/search/results/{request_id}`
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "request_id": "string",
-    "status": "string",          // "pending", "completed", "failed"
-    "results": [
-      {
-        "title": "string",
-        "url": "string",
-        "snippet": "string",
-        "source": "string"
-      }
-    ],
-    "summary": "string",
-    "duration": 0
-  }
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X GET "http://search-service-url/api/v1/search/results/req_abc123"
-```
-
----
-
 # 第二部分：我们提供的接口
 
 Voice Agent 对外提供以下接口供其他系统调用。
