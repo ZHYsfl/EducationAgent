@@ -582,8 +582,7 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
   "user_id": "string",           // 必填，用户ID
   "query": "string",             // 必填，搜索关键词
   "max_results": 0,              // 可选，最大结果数，整数，默认10，上限10
-  "language": "string",          // 可选，语言，如 "zh-CN", "en-US"
-  "search_type": "string"        // 可选，搜索类型，如 "general", "academic", "teaching_resource"
+  "language": "string"           // 可选，语言，如 "zh-CN", "en-US"
 }
 ```
 
@@ -1099,7 +1098,19 @@ Voice Agent 对外提供以下接口供其他系统调用。
 }
 ```
 
-**12. 错误消息**
+**12. 任务列表更新**
+
+```json
+{
+  "type": "task_list_update",
+  "active_task_id": "string",    // 必填，当前活跃任务ID
+  "tasks": {                     // 必填，任务ID → 主题 映射
+    "task_id": "topic"
+  }
+}
+```
+
+**13. 错误消息**
 
 ```json
 {

@@ -96,7 +96,6 @@ type PageStatusInfo struct {
 }
 
 type KBQueryRequest struct {
-	CollectionID   string  `json:"collection_id,omitempty"`
 	UserID         string  `json:"user_id"`
 	Query          string  `json:"query"`
 	TopK           int     `json:"top_k"`

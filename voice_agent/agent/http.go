@@ -304,7 +304,8 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, http.StatusOK, map[string]any{
-		"accepted": true,
+		"accepted":  true,
+		"delivered": true,
 	})
 }
 
