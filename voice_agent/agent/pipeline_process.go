@@ -179,7 +179,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		}
 
 		p.postProcessResponse(ctx, userText, finalText, allActions)
-		p.asyncPushContext(userText, finalText)
+		p.maybeCompressHistory()
 
 		p.session.SetState(StateIdle)
 	} else {

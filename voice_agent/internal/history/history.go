@@ -44,6 +44,27 @@ func (h *ConversationHistory) AddInterruptedAssistant(content string) {
 	h.mu.Unlock()
 }
 
+// TotalChars returns the total character count of all message contents.
+func (h *ConversationHistory) TotalChars() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	n := 0
+	for _, m := range h.messages {
+		n += len(m.Content)
+	}
+	return n
+}
+
+// DeleteFront removes the first n messages from history.
+func (h *ConversationHistory) DeleteFront(n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if n <= 0 || n > len(h.messages) {
+		return
+	}
+	h.messages = h.messages[n:]
+}
+
 // Messages returns a snapshot of the conversation messages (excluding system prompt).
 func (h *ConversationHistory) Messages() []HistoryMessage {
 	h.mu.RLock()
