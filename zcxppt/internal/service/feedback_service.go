@@ -28,22 +28,74 @@ var (
 	ErrTargetPageNotFound          = errors.New("target page not found")
 )
 
+type Notifier interface {
+	SendPPTMessage(ctx context.Context, payload map[string]any) error
+}
+
+// agentCreator creates a tool-calling agent for page code generation.
+// Injectable for testing.
+type agentCreator func(cfg toolcalling.LLMConfig) agentInterface
+
+// wrappedAgent wraps *toolcalling.Agent so it satisfies agentInterface.
+type wrappedAgent struct {
+	real *toolcalling.Agent
+}
+
+func (w *wrappedAgent) AddTool(t toolcalling.Tool) {
+	w.real.AddTool(t)
+}
+func (w *wrappedAgent) Chat(ctx context.Context, msgs []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
+	return w.real.Chat(ctx, msgs)
+}
+func (w *wrappedAgent) ChatText(ctx context.Context, msgs []openai.ChatCompletionMessageParamUnion) (string, error) {
+	// tool_calling.Agent doesn't have ChatText; use Chat and extract text.
+	resp, err := w.real.Chat(ctx, msgs)
+	if err != nil {
+		return "", err
+	}
+	for i := len(resp) - 1; i >= 0; i-- {
+		if resp[i].OfAssistant != nil && resp[i].OfAssistant.Content.OfString.Valid() {
+			return resp[i].OfAssistant.Content.OfString.Value, nil
+		}
+	}
+	return "", errors.New("no assistant message in response")
+}
+
+func defaultAgentCreator(cfg toolcalling.LLMConfig) agentInterface {
+	return &wrappedAgent{real: toolcalling.NewAgent(cfg)}
+}
+
+// agentInterface is implemented by both *toolcalling.Agent (production) and *testMockAgent (tests).
+type agentInterface interface {
+	AddTool(t toolcalling.Tool)
+	Chat(ctx context.Context, msgs []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error)
+	ChatText(ctx context.Context, msgs []openai.ChatCompletionMessageParamUnion) (string, error)
+}
+
 type FeedbackService struct {
-	pptRepo      repository.PPTRepository
-	feedbackRepo repository.FeedbackRepository
-	llmRuntime   llm.ToolRuntime
-	notify       *NotifyService
-	renderer     *renderer.Renderer
-	refFusion    *RefFusionService
+	pptRepo       repository.PPTRepository
+	feedbackRepo  repository.FeedbackRepository
+	llmRuntime    llm.ToolRuntime
+	notify        Notifier
+	renderer      *renderer.Renderer
+	refFusion     *RefFusionService
+	timeoutTickMu sync.Mutex
+	newAgent      func(cfg toolcalling.LLMConfig) agentInterface
 }
 
 func NewFeedbackService(
 	pptRepo repository.PPTRepository,
 	feedbackRepo repository.FeedbackRepository,
 	llmRuntime llm.ToolRuntime,
-	notify *NotifyService,
+	notify Notifier,
 ) *FeedbackService {
-	return &FeedbackService{pptRepo: pptRepo, feedbackRepo: feedbackRepo, llmRuntime: llmRuntime, notify: notify}
+	return &FeedbackService{
+		pptRepo:      pptRepo,
+		feedbackRepo: feedbackRepo,
+		llmRuntime:   llmRuntime,
+		notify:       notify,
+		newAgent:     defaultAgentCreator,
+	}
 }
 
 func (s *FeedbackService) AttachRenderer(r *renderer.Renderer) {
@@ -214,7 +266,6 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			}
 
 		case "global_modify":
-			// 全局修改所有页面
 			canvas, err := s.pptRepo.GetCanvasStatus(req.TaskID)
 			if err != nil {
 				continue
@@ -226,21 +277,21 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				}
 				fbReq := model.FeedbackRequest{
 					TaskID:           req.TaskID,
-					ViewingPageID:     pageID,
-					BaseTimestamp:     req.BaseTimestamp,
-					RawText:           intent.Instruction,
-					ReplyToContextID:  "",
+					ViewingPageID:    pageID,
+					BaseTimestamp:    req.BaseTimestamp,
+					RawText:          intent.Instruction,
+					ReplyToContextID: "",
 					Intents:          []model.Intent{{ActionType: "modify", TargetPageID: pageID, Instruction: intent.Instruction}},
 				}
-			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
-			if err != nil {
-				continue
+				mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
+				if err != nil {
+					continue
+				}
+				_ = s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
+				acceptedCount++
 			}
-			_ = s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
-			acceptedCount++
-		}
-			// 页面重排：instruction 格式为 "page_A→1,page_B→2"
-			// 简化实现：支持 "移动 {page_id} 到 {position}"
+
+		case "reorder":
 			if err := s.handleReorder(ctx, req.TaskID, intent.Instruction); err == nil {
 				acceptedCount++
 			}
@@ -333,11 +384,7 @@ add_textbox(slide, "页面内容在这里", 0.5, 1.5, 9, 1, font_size=20, color=
 `
 	prompt := fmt.Sprintf("reference_page_code:\n%s\n\nuser_instruction:\n%s", refPage.PyCode, instruction)
 
-	agent := toolcalling.NewAgent(toolcalling.LLMConfig{
-		APIKey:  llmConfigFromEnv(),
-		BaseURL: "https://api.moonshot.cn/v1",
-		Model:   "kimi-k2.5",
-	})
+	agent := s.agentForPageGen()
 	msgs := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(system),
 		openai.UserMessage(prompt),
@@ -355,6 +402,16 @@ add_textbox(slide, "页面内容在这里", 0.5, 1.5, 9, 1, font_size=20, color=
 		return "", fmt.Errorf("invalid json from llm: %w", err)
 	}
 	return result.PyCode, nil
+}
+
+// agentForPageGen returns the agent used for new-page code generation.
+// Production returns real *toolcalling.Agent; tests can inject a mock.
+func (s *FeedbackService) agentForPageGen() agentInterface {
+	return s.newAgent(toolcalling.LLMConfig{
+		APIKey:  llmConfigFromEnv(),
+		BaseURL: "https://api.moonshot.cn/v1",
+		Model:   "kimi-k2.5",
+	})
 }
 
 func llmConfigFromEnv() string {
@@ -483,6 +540,9 @@ func hasResolveConflictIntent(intents []model.Intent) bool {
 }
 
 func (s *FeedbackService) ProcessTimeoutTick(ctx context.Context) error {
+	s.timeoutTickMu.Lock()
+	defer s.timeoutTickMu.Unlock()
+
 	expired, err := s.feedbackRepo.ListExpiredSuspends(time.Now())
 	if err != nil {
 		return err
