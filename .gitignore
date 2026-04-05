@@ -234,3 +234,5 @@ PLAN.md
 
 models/
 
+.claude/
+.vscode/
