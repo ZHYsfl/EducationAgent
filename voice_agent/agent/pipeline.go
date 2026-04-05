@@ -31,6 +31,10 @@ type Pipeline struct {
 	largeLLM  *toolcalling.Agent
 	ttsClient tts.TTSProvider
 
+	// ========== Session Context ==========
+	sessionCtx    context.Context
+	sessionCtxMu  sync.RWMutex
+
 	// ========== State Management ==========
 	history  *hist.ConversationHistory
 	adaptive *adaptivepkg.AdaptiveController
