@@ -63,6 +63,17 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 				p.ttsWorker(ctx, sentenceCh)
 				p.session.SetState(StateIdle)
 
+				if msg.MsgType == "conflict_question" {
+					pageID := msg.Metadata["page_id"]
+					baseTS := int64(0)
+					if tsStr := msg.Metadata["base_timestamp"]; tsStr != "" {
+						if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
+							baseTS = ts
+						}
+					}
+					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"], pageID, baseTS, msg.Content)
+				}
+
 				if ctx.Err() != nil {
 					// system_notify 被打断就放弃，不重试
 					if msg.MsgType == "system_notify" {
@@ -98,16 +109,6 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 						}
 					}
 					continue
-				}
-				if msg.MsgType == "conflict_question" {
-					pageID := msg.Metadata["page_id"]
-					baseTS := int64(0)
-					if tsStr := msg.Metadata["base_timestamp"]; tsStr != "" {
-						if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
-							baseTS = ts
-						}
-					}
-					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"], pageID, baseTS, msg.Content)
 				}
 			default:
 				p.pendingMu.Lock()
