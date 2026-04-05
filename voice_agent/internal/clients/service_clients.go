@@ -70,12 +70,6 @@ func (c *ServiceClients) RecallMemory(ctx context.Context, req types.MemoryRecal
 	return out, err
 }
 
-func (c *ServiceClients) GetUserProfile(ctx context.Context, userID string) (types.UserProfile, error) {
-	var out types.UserProfile
-	err := c.getJSON(ctx, c.memoryBaseURL+"/api/v1/memory/profile/"+url.PathEscape(userID), &out)
-	return out, err
-}
-
 func (c *ServiceClients) SearchWeb(ctx context.Context, req types.SearchRequest) (types.SearchResponse, error) {
 	var out types.SearchResponse
 	err := c.postJSON(ctx, c.searchBaseURL+"/api/v1/search/query", req, &out)
