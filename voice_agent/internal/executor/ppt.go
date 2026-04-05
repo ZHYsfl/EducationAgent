@@ -70,6 +70,14 @@ func (e *Executor) executePPTInit(ctx context.Context, params map[string]string,
 			Metadata:   map[string]string{"task_id": resp.TaskID},
 			Timestamp:  time.Now().Unix(),
 		})
+		callback(types.ContextMessage{
+			ID:         types.NewID("ctx_"),
+			Priority:   "high",
+			ActionType: "system",
+			MsgType:    "task_created",
+			Metadata:   map[string]string{"task_id": resp.TaskID, "topic": req.Topic},
+			Timestamp:  time.Now().Unix(),
+		})
 	}
 
 	return fmt.Sprintf("PPT任务已创建，TaskID: %s", resp.TaskID)
