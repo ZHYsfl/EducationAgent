@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -70,33 +69,25 @@ func (p *IntentParser) parseByLLM(ctx context.Context, rawText string, canvas mo
 	user := fmt.Sprintf("viewing_page_id=%s\nraw_text=%s\npage_table=%s",
 		viewingPageID, rawText, pageTable)
 
-	agent := toolcalling.NewAgent(toolcalling.LLMConfig{
-		APIKey:  p.llmCfg.APIKey,
-		BaseURL: p.llmCfg.BaseURL,
-		Model:   p.llmCfg.Model,
-	})
-
 	msgs := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(system),
 		openai.UserMessage(user),
 	}
 
-	resp, err := agent.ChatText(ctx, msgs)
-	if err != nil {
-		return p.parseByKeyword(rawText, canvas, viewingPageID), nil
+	llmCfg := toolcalling.LLMConfig{
+		APIKey:  p.llmCfg.APIKey,
+		BaseURL: p.llmCfg.BaseURL,
+		Model:   p.llmCfg.Model,
 	}
-
-	cleaned := strings.TrimSpace(resp)
-	cleaned = strings.TrimPrefix(cleaned, "```json")
-	cleaned = strings.TrimPrefix(cleaned, "```")
-	cleaned = strings.TrimSuffix(cleaned, "```")
-	cleaned = strings.TrimSpace(cleaned)
 
 	var intents []model.Intent
-	if err := json.Unmarshal([]byte(cleaned), &intents); err != nil {
+	err := toolcalling.ChatCompletionStructured(ctx, llmCfg, msgs, &intents, nil)
+	if err != nil {
+		// 如果结构化输出失败（重试耗尽），回退到关键词解析
 		return p.parseByKeyword(rawText, canvas, viewingPageID), nil
 	}
 
+	// 标准化字段
 	for i := range intents {
 		intents[i].ActionType = strings.TrimSpace(strings.ToLower(intents[i].ActionType))
 		intents[i].TargetPageID = strings.TrimSpace(intents[i].TargetPageID)
