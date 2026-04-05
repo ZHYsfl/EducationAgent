@@ -183,29 +183,15 @@ type SearchIngestItem struct {
 	Source  string `json:"source"`
 }
 
-type MemoryExtractRequest struct {
-	UserID    string             `json:"user_id"`
-	SessionID string             `json:"session_id"`
-	Messages  []ConversationTurn `json:"messages"`
-}
-
 type ConversationTurn struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type MemoryExtractResponse struct {
-	ExtractedFacts       []string `json:"extracted_facts,omitempty"`
-	ExtractedPreferences []string `json:"extracted_preferences,omitempty"`
-	ConversationSummary  string   `json:"conversation_summary,omitempty"`
-}
-
-type WorkingMemorySaveRequest struct {
-	SessionID           string         `json:"session_id"`
-	UserID              string         `json:"user_id"`
-	ConversationSummary string         `json:"conversation_summary,omitempty"`
-	ExtractedElements   map[string]any `json:"extracted_elements,omitempty"`
-	RecentTopics        []string       `json:"recent_topics,omitempty"`
+type PushContextRequest struct {
+	UserID    string             `json:"user_id"`
+	SessionID string             `json:"session_id"`
+	Messages  []ConversationTurn `json:"messages"`
 }
 
 type VADEvent struct {

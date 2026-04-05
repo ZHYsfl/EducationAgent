@@ -197,7 +197,7 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 	return len(contextIDs) > 0
 }
 
-func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
+func (p *Pipeline) asyncPushContext(userText, assistantText string) {
 	if p.clients == nil || (userText == "" && assistantText == "") {
 		return
 	}
@@ -212,7 +212,6 @@ func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
 		return
 	}
 
-	// 只提取新增的对话
 	newMessages := messages[startIdx:endIdx]
 	turns := make([]ConversationTurn, 0, len(newMessages))
 	for _, msg := range newMessages {
@@ -225,12 +224,12 @@ func (p *Pipeline) asyncExtractMemory(userText, assistantText string) {
 	sessionID := p.session.SessionID
 	userID := p.session.UserID
 	go func() {
-		if _, err := p.clients.ExtractMemory(context.Background(), MemoryExtractRequest{
+		if err := p.clients.PushContext(context.Background(), PushContextRequest{
 			UserID:    userID,
 			SessionID: sessionID,
 			Messages:  turns,
 		}); err != nil {
-			log.Printf("[pipeline] ExtractMemory failed: %v", err)
+			log.Printf("[pipeline] PushContext failed: %v", err)
 		}
 	}()
 }

@@ -59,13 +59,7 @@ func (p *Pipeline) buildFullSystemPrompt(ctx context.Context, includeContextQueu
 	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
 	p.session.reqMu.RUnlock()
 	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
-		var profile *UserProfile
-		if p.clients != nil {
-			if pInfo, err := p.clients.GetUserProfile(ctx, reqSnapshot.UserID); err == nil {
-				profile = &pInfo
-			}
-		}
-		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(profile)
+		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(nil)
 	}
 
 	// Layer 2: Task list context
