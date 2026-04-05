@@ -1093,9 +1093,21 @@ Voice Agent 对外提供以下接口供其他系统调用。
 ```json
 {
   "type": "requirements_progress",
-  "status": "string",            // 必填，状态，可选值: "collecting", "confirming", "confirmed"
+  "status": "string",            // 必填，状态，可选值: "collecting"（收集中）, "ready"（可确认）
   "collected_fields": ["string"],// 必填，已收集字段列表
   "missing_fields": ["string"],  // 必填，缺失字段列表
+  "requirements": {}             // 必填，需求对象（完整的TaskRequirements）
+}
+```
+
+**11a. 需求收集完成摘要**
+
+当所有必填字段收集完毕（`status: "ready"`）时，在 `requirements_progress` 之前额外发送一条此消息，供客户端渲染确认卡片。
+
+```json
+{
+  "type": "requirements_summary",
+  "summary_text": "string",      // 必填，格式化的需求摘要文本
   "requirements": {}             // 必填，需求对象（完整的TaskRequirements）
 }
 ```

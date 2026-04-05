@@ -85,9 +85,9 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 
 	p.session.SendJSON(WSMessage{
 		Type:            "requirements_progress",
-		Status:          req.Status,
-		CollectedFields: req.CollectedFields,
-		MissingFields:   req.GetMissingFields(),
+		Status:          reqSnapshot.Status,
+		CollectedFields: reqSnapshot.CollectedFields,
+		MissingFields:   reqSnapshot.GetMissingFields(),
 		Requirements:    reqSnapshot,
 	})
 
