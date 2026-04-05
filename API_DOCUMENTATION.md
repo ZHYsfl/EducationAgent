@@ -1264,7 +1264,8 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 - `page_rendered`: 页面渲染完成
 - `ppt_preview`: PPT预览
 - `export_ready`: 导出就绪
-- `conflict_question`: 冲突询问（自动设置为高优先级）
+- `conflict_question`: 冲突询问（自动设置为高优先级，触发向客户端推送 `conflict_ask` 消息）
+- `conflict_resolved`: 冲突已解决（Voice Agent 将用户答案通过 `SendFeedback` 转发给 PPT Agent）
 - `search_result`: 搜索服务回调结果
 - `kb_result`: 知识库查询回调结果
 - `error`: 错误消息
