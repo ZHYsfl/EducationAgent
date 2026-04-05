@@ -572,7 +572,7 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
 
 **接口路径**: `POST /api/v1/search/query`
 
-**说明**: 本接口为**异步任务受理**：响应仅表示任务已创建，搜索在后台执行。搜索完成后，搜索服务主动回调 Voice Agent 的 `POST /api/v1/voice/callback`，`msg_type` 为 `"search_result"`，结果通过 `tts_text` 字段携带。Voice Agent 收到回调后将结果推送给 WebSocket 客户端。
+**说明**: 本接口为**异步任务受理**：响应仅表示任务已创建，搜索在后台执行。搜索完成后，搜索服务主动回调 Voice Agent 的 `POST /api/v1/voice/ppt_message`，`msg_type` 为 `"search_result"`，结果通过 `tts_text` 字段携带。Voice Agent 收到回调后将结果推送给 WebSocket 客户端。
 
 **请求参数**:
 
@@ -868,7 +868,7 @@ curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
 
 ## 8. 搜索结果轮询接口（备用，当前未使用）
 
-> **注意**: Voice Agent 当前采用回调模式获取搜索结果（见 §4.1），搜索服务主动回调 `POST /api/v1/voice/callback`。本节接口由搜索服务实现，作为备用轮询方案保留。
+> **注意**: Voice Agent 当前采用回调模式获取搜索结果（见 §4.1），搜索服务主动回调 `POST /api/v1/voice/ppt_message`。本节接口由搜索服务实现，作为备用轮询方案保留。
 
 ### 8.1 获取搜索结果
 
@@ -1226,7 +1226,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ### 3. 接收异步服务回调
 
-**接口路径**: `POST /api/v1/voice/callback`
+**接口路径**: `POST /api/v1/voice/ppt_message`
 
 **请求参数**:
 
@@ -1287,7 +1287,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 1. PPT状态更新：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1301,7 +1301,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 1. 页面渲染完成：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1316,7 +1316,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 1. 冲突询问：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1330,7 +1330,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 1. 导出就绪：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1344,7 +1344,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 1. 错误消息：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1357,7 +1357,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 6. 搜索结果回调：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
@@ -1369,7 +1369,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
 7. 知识库查询结果回调：
 
 ```bash
-curl -X POST http://voice-agent-url/api/v1/voice/callback \
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
