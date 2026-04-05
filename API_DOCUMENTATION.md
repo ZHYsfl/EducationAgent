@@ -572,7 +572,7 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
 
 **接口路径**: `POST /api/v1/search/query`
 
-**说明**: 本接口为**异步任务受理**：响应仅表示任务已创建，搜索在后台执行。客户端须使用 [§8.1 获取搜索结果](#81-获取搜索结果)，凭返回的 `request_id` 轮询，直至 `status` 为 `"completed"` 或 `"failed"`（状态取值与 §8 一致：`pending` / `completed` / `failed`）。**完整结果列表、摘要与耗时仅在 §8.1 的响应中提供。**
+**说明**: 本接口为**异步任务受理**：响应仅表示任务已创建，搜索在后台执行。搜索完成后，搜索服务主动回调 Voice Agent 的 `POST /api/v1/voice/callback`，`msg_type` 为 `"search_result"`，结果通过 `tts_text` 字段携带。Voice Agent 收到回调后将结果推送给 WebSocket 客户端。
 
 **请求参数**:
 
@@ -593,11 +593,11 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
   "code": 200,
   "message": "success",
   "data": {
-    "request_id": "string",      // 必填，搜索请求ID，用于 §8.1 轮询
+    "request_id": "string",      // 必填，搜索请求ID
     "status": "pending",         // 必填，受理成功时固定为 "pending"
-    "results": [],               // 受理阶段为空数组；结果见 §8.1
-    "summary": "",               // 受理阶段为空字符串；摘要见 §8.1
-    "duration": 0                // 受理阶段为 0；耗时见 §8.1
+    "results": [],               // 受理阶段为空数组
+    "summary": "",               // 受理阶段为空字符串
+    "duration": 0                // 受理阶段为 0
   }
 }
 ```
@@ -617,7 +617,7 @@ curl -X POST http://search-service-url/api/v1/search/query \
   }'
 ```
 
-受理成功后，使用返回的 `request_id` 调用 `GET /api/v1/search/results/{request_id}` 轮询（见 §8.1）。
+受理成功后，搜索服务将异步处理并通过回调接口返回结果（见 §3 接收异步服务回调）。
 
 ---
 
@@ -866,7 +866,9 @@ curl -X PUT http://session-service-url/api/v1/sessions/sess_abc123 \
 
 ---
 
-## 8. 搜索结果轮询接口
+## 8. 搜索结果轮询接口（备用，当前未使用）
+
+> **注意**: Voice Agent 当前采用回调模式获取搜索结果（见 §4.1），搜索服务主动回调 `POST /api/v1/voice/callback`。本节接口由搜索服务实现，作为备用轮询方案保留。
 
 ### 8.1 获取搜索结果
 
