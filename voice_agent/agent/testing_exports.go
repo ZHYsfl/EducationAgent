@@ -53,9 +53,9 @@ func (p *Pipeline) BuildFullSystemPrompt(ctx context.Context, includeContextQueu
 	return p.buildFullSystemPrompt(ctx, includeContextQueue)
 }
 
-// AsyncExtractMemory calls the unexported asyncExtractMemory method.
-func (p *Pipeline) AsyncExtractMemory(userText, assistantText string) {
-	p.asyncExtractMemory(userText, assistantText)
+// AsyncPushContext calls the unexported asyncPushContext method.
+func (p *Pipeline) AsyncPushContext(userText, assistantText string) {
+	p.asyncPushContext(userText, assistantText)
 }
 
 // HighPriorityListener calls the unexported highPriorityListener method.

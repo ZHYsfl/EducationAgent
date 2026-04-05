@@ -31,12 +31,8 @@ type UserProfile = types.UserProfile
 type SearchRequest = types.SearchRequest
 type SearchResponse = types.SearchResponse
 type SearchResult = types.SearchResult
-type IngestFromSearchRequest = types.IngestFromSearchRequest
-type SearchIngestItem = types.SearchIngestItem
-type MemoryExtractRequest = types.MemoryExtractRequest
 type ConversationTurn = types.ConversationTurn
-type MemoryExtractResponse = types.MemoryExtractResponse
-type WorkingMemorySaveRequest = types.WorkingMemorySaveRequest
+type PushContextRequest = types.PushContextRequest
 type VADEvent = types.VADEvent
 type FileUploadData = types.FileUploadData
 

@@ -141,23 +141,8 @@ func (c *ServiceClients) UploadFile(r *http.Request) (json.RawMessage, error) {
 	return json.RawMessage(body), nil
 }
 
-func (c *ServiceClients) ExtractMemory(ctx context.Context, req types.MemoryExtractRequest) (types.MemoryExtractResponse, error) {
-	var out types.MemoryExtractResponse
-	err := c.postJSON(ctx, c.memoryBaseURL+"/api/v1/memory/extract", req, &out)
-	return out, err
-}
-
-func (c *ServiceClients) SaveWorkingMemory(ctx context.Context, req types.WorkingMemorySaveRequest) error {
-	return c.postJSON(ctx, c.memoryBaseURL+"/api/v1/memory/working/save", req, nil)
-}
-
-func (c *ServiceClients) GetWorkingMemory(ctx context.Context, sessionID string) (*types.WorkingMemory, error) {
-	var out types.WorkingMemory
-	err := c.getJSON(ctx, c.memoryBaseURL+"/api/v1/memory/working/"+url.PathEscape(sessionID), &out)
-	if err != nil {
-		return nil, err
-	}
-	return &out, nil
+func (c *ServiceClients) PushContext(ctx context.Context, req types.PushContextRequest) error {
+	return c.postJSON(ctx, c.memoryBaseURL+"/api/v1/memory/context/push", req, nil)
 }
 
 func (c *ServiceClients) NotifyVADEvent(ctx context.Context, event types.VADEvent) error {

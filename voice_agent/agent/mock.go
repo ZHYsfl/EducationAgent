@@ -29,26 +29,21 @@ var _ ExternalServices = (*MockServices)(nil)
 
 // MockServices is a configurable mock implementation of ExternalServices.
 type MockServices struct {
-	QueryKBFn          func(ctx context.Context, req KBQueryRequest) (KBQueryResponse, error)
-	RecallMemoryFn     func(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error)
-	GetUserProfileFn   func(ctx context.Context, userID string) (UserProfile, error)
-	SearchWebFn        func(ctx context.Context, req SearchRequest) (SearchResponse, error)
-	GetSearchResultsFn func(ctx context.Context, requestID string) (SearchResponse, error)
-	InitPPTFn          func(ctx context.Context, req PPTInitRequest) (PPTInitResponse, error)
-	SendFeedbackFn     func(ctx context.Context, req PPTFeedbackRequest) error
-	GetCanvasStatusFn  func(ctx context.Context, taskID string) (CanvasStatusResponse, error)
-	UploadFileFn       func(r *http.Request) (json.RawMessage, error)
-	IngestFromSearchFn func(ctx context.Context, req IngestFromSearchRequest) error
-	ExtractMemoryFn    func(ctx context.Context, req MemoryExtractRequest) (MemoryExtractResponse, error)
-	SaveWorkingMemFn   func(ctx context.Context, req WorkingMemorySaveRequest) error
-	GetWorkingMemFn    func(ctx context.Context, sessionID string) (*WorkingMemory, error)
-	NotifyVADEventFn   func(ctx context.Context, event VADEvent) error
+	QueryKBFn         func(ctx context.Context, req KBQueryRequest) (KBQueryResponse, error)
+	RecallMemoryFn    func(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error)
+	PushContextFn     func(ctx context.Context, req PushContextRequest) error
+	SearchWebFn       func(ctx context.Context, req SearchRequest) (SearchResponse, error)
+	InitPPTFn         func(ctx context.Context, req PPTInitRequest) (PPTInitResponse, error)
+	SendFeedbackFn    func(ctx context.Context, req PPTFeedbackRequest) error
+	GetCanvasStatusFn func(ctx context.Context, taskID string) (CanvasStatusResponse, error)
+	UploadFileFn      func(r *http.Request) (json.RawMessage, error)
+	NotifyVADEventFn  func(ctx context.Context, event VADEvent) error
 
-	Mu              sync.Mutex
-	FeedbackCalls   []PPTFeedbackRequest
-	VADEventCalls   []VADEvent
-	ExtractMemCalls []MemoryExtractRequest
-	InitPPTCalls    []PPTInitRequest
+	Mu             sync.Mutex
+	FeedbackCalls  []PPTFeedbackRequest
+	VADEventCalls  []VADEvent
+	PushCtxCalls   []PushContextRequest
+	InitPPTCalls   []PPTInitRequest
 }
 
 func (m *MockServices) QueryKB(ctx context.Context, req KBQueryRequest) (KBQueryResponse, error) {
@@ -63,21 +58,18 @@ func (m *MockServices) RecallMemory(ctx context.Context, req MemoryRecallRequest
 	}
 	return MemoryRecallResponse{}, nil
 }
-func (m *MockServices) GetUserProfile(ctx context.Context, userID string) (UserProfile, error) {
-	if m.GetUserProfileFn != nil {
-		return m.GetUserProfileFn(ctx, userID)
+func (m *MockServices) PushContext(ctx context.Context, req PushContextRequest) error {
+	m.Mu.Lock()
+	m.PushCtxCalls = append(m.PushCtxCalls, req)
+	m.Mu.Unlock()
+	if m.PushContextFn != nil {
+		return m.PushContextFn(ctx, req)
 	}
-	return UserProfile{}, nil
+	return nil
 }
 func (m *MockServices) SearchWeb(ctx context.Context, req SearchRequest) (SearchResponse, error) {
 	if m.SearchWebFn != nil {
 		return m.SearchWebFn(ctx, req)
-	}
-	return SearchResponse{}, nil
-}
-func (m *MockServices) GetSearchResults(ctx context.Context, requestID string) (SearchResponse, error) {
-	if m.GetSearchResultsFn != nil {
-		return m.GetSearchResultsFn(ctx, requestID)
 	}
 	return SearchResponse{}, nil
 }
@@ -110,33 +102,6 @@ func (m *MockServices) UploadFile(r *http.Request) (json.RawMessage, error) {
 		return m.UploadFileFn(r)
 	}
 	return json.RawMessage(`{"file_id":"f_mock"}`), nil
-}
-func (m *MockServices) IngestFromSearch(ctx context.Context, req IngestFromSearchRequest) error {
-	if m.IngestFromSearchFn != nil {
-		return m.IngestFromSearchFn(ctx, req)
-	}
-	return nil
-}
-func (m *MockServices) ExtractMemory(ctx context.Context, req MemoryExtractRequest) (MemoryExtractResponse, error) {
-	m.Mu.Lock()
-	m.ExtractMemCalls = append(m.ExtractMemCalls, req)
-	m.Mu.Unlock()
-	if m.ExtractMemoryFn != nil {
-		return m.ExtractMemoryFn(ctx, req)
-	}
-	return MemoryExtractResponse{}, nil
-}
-func (m *MockServices) SaveWorkingMemory(ctx context.Context, req WorkingMemorySaveRequest) error {
-	if m.SaveWorkingMemFn != nil {
-		return m.SaveWorkingMemFn(ctx, req)
-	}
-	return nil
-}
-func (m *MockServices) GetWorkingMemory(ctx context.Context, sessionID string) (*WorkingMemory, error) {
-	if m.GetWorkingMemFn != nil {
-		return m.GetWorkingMemFn(ctx, sessionID)
-	}
-	return nil, nil
 }
 func (m *MockServices) NotifyVADEvent(ctx context.Context, event VADEvent) error {
 	m.Mu.Lock()
@@ -278,11 +243,11 @@ func WaitForFeedback(m *MockServices, count int) []PPTFeedbackRequest {
 	return m.FeedbackCalls
 }
 
-// WaitForExtractMem waits for ExtractMemory calls.
-func WaitForExtractMem(m *MockServices, count int) []MemoryExtractRequest {
+// WaitForPushCtx waits for PushContext calls.
+func WaitForPushCtx(m *MockServices, count int) []PushContextRequest {
 	for i := 0; i < 200; i++ {
 		m.Mu.Lock()
-		n := len(m.ExtractMemCalls)
+		n := len(m.PushCtxCalls)
 		m.Mu.Unlock()
 		if n >= count {
 			break
@@ -291,5 +256,5 @@ func WaitForExtractMem(m *MockServices, count int) []MemoryExtractRequest {
 	}
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	return m.ExtractMemCalls
+	return m.PushCtxCalls
 }
