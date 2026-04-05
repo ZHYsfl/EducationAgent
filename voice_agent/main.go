@@ -52,8 +52,8 @@ func main() {
 	http.HandleFunc("OPTIONS /api/v1/upload", withCORS(preflightOnly))
 	http.HandleFunc("GET /api/v1/tasks/{task_id}/preview", withCORS(agent.HandlePreview))
 	http.HandleFunc("OPTIONS /api/v1/tasks/{task_id}/preview", withCORS(preflightOnly))
-	http.HandleFunc("POST /api/v1/voice/callback", withCORS(agent.HandleServiceCallback))
-	http.HandleFunc("OPTIONS /api/v1/voice/callback", withCORS(preflightOnly))
+	http.HandleFunc("POST /api/v1/voice/ppt_message", withCORS(agent.HandleServiceCallback))
+	http.HandleFunc("OPTIONS /api/v1/voice/ppt_message", withCORS(preflightOnly))
 	http.HandleFunc("OPTIONS /api/v1/voice/ppt_message_tool", withCORS(preflightOnly))
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

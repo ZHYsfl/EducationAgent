@@ -34,7 +34,7 @@ func TestHighPriorityQueue_ConcurrentEnqueueDequeue(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			p.EnqueueContextMessage(ctx, agent.ContextMessage{
-				ActionType: "test",
+				ActionType:  "test",
 				MsgType:    "system_notify",
 				Content:    "test",
 				Priority:   "high",
@@ -75,7 +75,7 @@ func TestContextQueue_ConcurrentDrainAndEnqueue(t *testing.T) {
 					return
 				default:
 					p.EnqueueContextMessage(ctx, agent.ContextMessage{
-						ActionType: "writer",
+						ActionType:  "writer",
 						MsgType:    "test",
 						Content:    "content",
 						Priority:   "normal",
@@ -224,7 +224,7 @@ func TestPipeline_ConcurrentDrainAndEnqueue(t *testing.T) {
 					return
 				default:
 					p.EnqueueContextMessage(ctx, agent.ContextMessage{
-						ActionType: "concurrent_test",
+						ActionType:  "concurrent_test",
 						MsgType:    "test",
 						Content:    "test content",
 						Priority:   "normal",
@@ -279,7 +279,7 @@ func TestPipeline_FullChaos(t *testing.T) {
 		func() { p.DrainContextQueue() },
 		func() {
 			p.EnqueueContextMessage(ctx, agent.ContextMessage{
-				ActionType: "test",
+				ActionType:  "test",
 				MsgType:    "test",
 				Content:    "test",
 				Priority:   "normal",
@@ -287,7 +287,7 @@ func TestPipeline_FullChaos(t *testing.T) {
 		},
 		func() {
 			p.EnqueueContextMessage(ctx, agent.ContextMessage{
-				ActionType: "test",
+				ActionType:  "test",
 				MsgType:    "system_notify",
 				Content:    "notify",
 				Priority:   "high",
@@ -340,7 +340,7 @@ func TestContextQueue_MemoryLeak(t *testing.T) {
 	// 大量消息写入
 	for i := 0; i < 10000; i++ {
 		p.EnqueueContextMessage(ctx, agent.ContextMessage{
-			ActionType: "memory_test",
+			ActionType:  "memory_test",
 			MsgType:    "test",
 			Content:    "test content " + string(rune('a'+i%26)),
 			Priority:   "normal",
@@ -354,7 +354,7 @@ func TestContextQueue_MemoryLeak(t *testing.T) {
 	// 再次写入并读取
 	for i := 0; i < 1000; i++ {
 		p.EnqueueContextMessage(ctx, agent.ContextMessage{
-			ActionType: "memory_test",
+			ActionType:  "memory_test",
 			MsgType:    "test",
 			Content:    "test content 2",
 			Priority:   "normal",

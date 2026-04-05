@@ -75,6 +75,14 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	reqSnapshot := CloneTaskRequirements(req)
 	p.session.reqMu.Unlock()
 
+	if reqSnapshot.Status == "ready" {
+		p.session.SendJSON(WSMessage{
+			Type:         "requirements_summary",
+			SummaryText:  buildSummaryText(reqSnapshot),
+			Requirements: reqSnapshot,
+		})
+	}
+
 	p.session.SendJSON(WSMessage{
 		Type:            "requirements_progress",
 		Status:          req.Status,
@@ -84,6 +92,52 @@ func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	})
 
 	log.Printf("[pipeline] requirements updated: %v", updates)
+}
+
+func buildSummaryText(r *TaskRequirements) string {
+	if r == nil {
+		return ""
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "【课程主题】%s\n", r.Topic)
+	if r.Subject != "" {
+		fmt.Fprintf(&sb, "【学科】%s\n", r.Subject)
+	}
+	fmt.Fprintf(&sb, "【目标受众】%s\n", r.TargetAudience)
+	if len(r.TeachingGoals) > 0 {
+		fmt.Fprintf(&sb, "【教学目标】%s\n", strings.Join(r.TeachingGoals, "；"))
+	}
+	if len(r.KnowledgePoints) > 0 {
+		fmt.Fprintf(&sb, "【核心知识点】%s\n", strings.Join(r.KnowledgePoints, "、"))
+	}
+	if r.TeachingLogic != "" {
+		fmt.Fprintf(&sb, "【讲授逻辑】%s\n", r.TeachingLogic)
+	}
+	if len(r.KeyDifficulties) > 0 {
+		fmt.Fprintf(&sb, "【重点难点】%s\n", strings.Join(r.KeyDifficulties, "、"))
+	}
+	if r.Duration != "" {
+		fmt.Fprintf(&sb, "【课程时长】%s\n", r.Duration)
+	}
+	if r.TotalPages > 0 {
+		fmt.Fprintf(&sb, "【页数】%d\n", r.TotalPages)
+	}
+	if r.GlobalStyle != "" {
+		fmt.Fprintf(&sb, "【整体风格】%s\n", r.GlobalStyle)
+	}
+	if r.InteractionDesign != "" {
+		fmt.Fprintf(&sb, "【互动设计】%s\n", r.InteractionDesign)
+	}
+	if len(r.OutputFormats) > 0 {
+		fmt.Fprintf(&sb, "【输出格式】%s\n", strings.Join(r.OutputFormats, "、"))
+	}
+	if r.AdditionalNotes != "" {
+		fmt.Fprintf(&sb, "【其他要求】%s\n", r.AdditionalNotes)
+	}
+	if len(r.ReferenceFiles) > 0 {
+		fmt.Fprintf(&sb, "【参考文件】%d 个\n", len(r.ReferenceFiles))
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, actions []protocol.Action) bool {
