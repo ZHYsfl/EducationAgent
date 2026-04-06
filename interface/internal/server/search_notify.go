@@ -41,20 +41,13 @@ type apiEnvelope struct {
 
 // notifySearchCompletion: API §4.1 搜索完成后回调 Voice Agent；若配置 KB_INGEST_URL 则按接口分配回注 kb。
 func (a *App) notifySearchCompletion(
-	requestID, userID, sessionID string,
+	taskID, userID string,
 	pipelineStatus string,
 	persistFailed bool,
 	results []SearchResultItem,
 	summary string,
 ) {
-	taskID := strings.TrimSpace(sessionID)
-	if taskID == "" {
-		taskID = requestID
-	}
-
-	if a.voiceAgentURL != "" && a.httpCallback != nil {
-		a.postVoiceSearchCallback(taskID, pipelineStatus, persistFailed, results, summary)
-	}
+	a.postVoiceSearchCallback(strings.TrimSpace(taskID), pipelineStatus, persistFailed, results, summary)
 
 	if persistFailed || pipelineStatus == "failed" || len(results) == 0 {
 		return
@@ -70,18 +63,14 @@ func (a *App) postVoiceSearchCallback(taskID, pipelineStatus string, persistFail
 	var payload voicePPTMessage
 	payload.TaskID = taskID
 	payload.Priority = "normal"
+	payload.MsgType = "search_result"
 
 	switch {
 	case persistFailed:
-		payload.MsgType = "error"
-		payload.ErrorCode = 50000
-		payload.TTSText = "搜索已完成，但保存结果失败，请稍后重试。"
+		payload.TTSText = "搜索已完成，但结果保存失败，请稍后重试。"
 	case pipelineStatus == "failed":
-		payload.MsgType = "error"
-		payload.ErrorCode = 50200
 		payload.TTSText = firstNonEmpty(summary, "网络搜索失败")
 	default:
-		payload.MsgType = "search_result"
 		payload.TTSText = formatSearchTTSText(summary, results)
 	}
 
