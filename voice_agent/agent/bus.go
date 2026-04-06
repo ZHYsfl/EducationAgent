@@ -12,7 +12,7 @@ func (p *Pipeline) drainContextQueue() []ContextMessage {
 	p.pendingMu.Lock()
 	defer p.pendingMu.Unlock()
 
-	var msgs []ContextMessage
+	msgs := []ContextMessage{}
 	if len(p.pendingContexts) > 0 {
 		msgs = append(msgs, p.pendingContexts...)
 		p.pendingContexts = nil

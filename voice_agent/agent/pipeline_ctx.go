@@ -10,6 +10,13 @@ import (
 )
 
 func (p *Pipeline) ttsWorker(ctx context.Context, sentenceCh <-chan string) {
+	if p.ttsClient == nil {
+		// Drain channel and return (for tests without TTS)
+		for range sentenceCh {
+		}
+		return
+	}
+
 	for {
 		select {
 		case sentence, ok := <-sentenceCh:
