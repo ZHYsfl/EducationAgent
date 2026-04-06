@@ -49,8 +49,6 @@ func main() {
 
 	http.Handle("/models/", http.StripPrefix("/models/", http.FileServer(http.Dir("../models"))))
 	http.Handle("/", noCacheHandler(http.FileServer(http.Dir("static"))))
-	http.HandleFunc("POST /api/v1/upload", withCORS(agent.HandleUpload))
-	http.HandleFunc("OPTIONS /api/v1/upload", withCORS(preflightOnly))
 	http.HandleFunc("GET /api/v1/tasks/{task_id}/preview", withCORS(agent.HandlePreview))
 	http.HandleFunc("OPTIONS /api/v1/tasks/{task_id}/preview", withCORS(preflightOnly))
 	http.HandleFunc("POST /api/v1/voice/ppt_message", withCORS(agent.HandleServiceCallback))

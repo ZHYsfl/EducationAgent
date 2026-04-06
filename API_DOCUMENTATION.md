@@ -1082,40 +1082,7 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 ## HTTP REST 接口
 
-### 1. 文件上传（代理）
-
-**接口路径**: `POST /api/v1/upload`
-
-透明代理到 db-service 的 `/api/v1/files/upload`。
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "file_id": "string",
-    "filename": "string",
-    "file_type": "string",
-    "file_size": 0,
-    "storage_url": "string",
-    "purpose": "string"
-  }
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/upload \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@/path/to/document.pdf"
-```
-
----
-
-### 2. 获取任务预览
+### 1. 获取任务预览
 
 **接口路径**: `GET /api/v1/tasks/{task_id}/preview`
 
@@ -1150,7 +1117,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ---
 
-### 3. 接收异步服务回调
+### 2. 接收异步服务回调
 
 **接口路径**: `POST /api/v1/voice/ppt_message`
 

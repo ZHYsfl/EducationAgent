@@ -100,29 +100,6 @@ func GetGlobalClients() ExternalServices {
 	return getGlobalClients()
 }
 
-// HandleUpload handles POST /api/v1/upload (exported for main.go).
-func HandleUpload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, 40001, "method not allowed")
-		return
-	}
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		writeError(w, http.StatusBadRequest, 40001, "content-type must be multipart/form-data")
-		return
-	}
-	clients := getGlobalClients()
-	if clients == nil {
-		writeError(w, http.StatusServiceUnavailable, 50200, "service clients not ready")
-		return
-	}
-	data, err := clients.UploadFile(r)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, 50200, fmt.Sprintf("upload gateway failed: %v", err))
-		return
-	}
-	writeRawData(w, http.StatusOK, 200, "success", data)
-}
-
 // HandlePreview handles GET /api/v1/tasks/{task_id}/preview (exported for main.go).
 func HandlePreview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
