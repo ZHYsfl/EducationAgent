@@ -16,12 +16,23 @@ type Result struct {
 	Preferences         []model.MemoryEntry
 	ConversationSummary string
 	teachingElements    model.TeachingElements
+<<<<<<< HEAD
+=======
+	taskStateSignals    model.TaskStateSignals
+>>>>>>> origin/wang
 }
 
 func (r Result) TeachingElements() model.TeachingElements {
 	return r.teachingElements
 }
 
+<<<<<<< HEAD
+=======
+func (r Result) TaskStateSignals() model.TaskStateSignals {
+	return r.taskStateSignals
+}
+
+>>>>>>> origin/wang
 type Extractor interface {
 	Extract(userID string, sessionID string, messages []model.ConversationTurn) (Result, error)
 }
@@ -124,6 +135,10 @@ type normalizedExtraction struct {
 	facts            []model.MemoryEntry
 	preferences      []model.MemoryEntry
 	teachingElements model.TeachingElements
+<<<<<<< HEAD
+=======
+	taskStateSignals model.TaskStateSignals
+>>>>>>> origin/wang
 	summary          string
 }
 
@@ -133,6 +148,10 @@ func (n normalizedExtraction) toResult() Result {
 		Preferences:         n.preferences,
 		ConversationSummary: n.summary,
 		teachingElements:    n.teachingElements,
+<<<<<<< HEAD
+=======
+		taskStateSignals:    n.taskStateSignals,
+>>>>>>> origin/wang
 	}
 }
 
@@ -152,6 +171,10 @@ func validateLLMResponse(userID string, resp LLMResponse) (Result, error) {
 		Preferences:         dedupeEntries(prefs),
 		ConversationSummary: summary,
 		teachingElements:    elems,
+<<<<<<< HEAD
+=======
+		taskStateSignals:    model.TaskStateSignals{},
+>>>>>>> origin/wang
 	}, nil
 }
 
@@ -164,12 +187,46 @@ func mergeResults(base Result, llm Result) Result {
 		out.Preferences = dedupeEntries(append(out.Preferences, llm.Preferences...))
 	}
 	out.teachingElements = mergeTeachingElements(out.teachingElements, llm.teachingElements)
+<<<<<<< HEAD
+=======
+	out.taskStateSignals = mergeTaskStateSignals(out.taskStateSignals, llm.taskStateSignals)
+>>>>>>> origin/wang
 	if strings.TrimSpace(llm.ConversationSummary) != "" {
 		out.ConversationSummary = llm.ConversationSummary
 	}
 	return out
 }
 
+<<<<<<< HEAD
+=======
+func mergeTaskStateSignals(existing, incoming model.TaskStateSignals) model.TaskStateSignals {
+	out := existing
+	out.LessonTopic = chooseNonEmpty(out.LessonTopic, incoming.LessonTopic)
+	out.KnowledgePoints = mergeStringLists(out.KnowledgePoints, incoming.KnowledgePoints)
+	out.TeachingGoals = mergeStringLists(out.TeachingGoals, incoming.TeachingGoals)
+	out.KeyDifficulties = mergeStringLists(out.KeyDifficulties, incoming.KeyDifficulties)
+	out.TargetAudience = chooseNonEmpty(out.TargetAudience, incoming.TargetAudience)
+	out.Duration = chooseNonEmpty(out.Duration, incoming.Duration)
+	out.OutputStyle = chooseNonEmpty(out.OutputStyle, incoming.OutputStyle)
+	out.TeachingLogic = chooseNonEmpty(out.TeachingLogic, incoming.TeachingLogic)
+	out.Constraints = mergeStringLists(out.Constraints, incoming.Constraints)
+	out.ReferenceMaterialUsage = mergeStringLists(out.ReferenceMaterialUsage, incoming.ReferenceMaterialUsage)
+	if len(existing.Provenance) == 0 && len(incoming.Provenance) == 0 {
+		return out
+	}
+	out.Provenance = map[string]string{}
+	for k, v := range existing.Provenance {
+		out.Provenance[k] = v
+	}
+	for k, v := range incoming.Provenance {
+		if strings.TrimSpace(v) != "" {
+			out.Provenance[k] = v
+		}
+	}
+	return out
+}
+
+>>>>>>> origin/wang
 func sanitizeEntries(userID, category string, in []model.MemoryEntry) []model.MemoryEntry {
 	out := make([]model.MemoryEntry, 0, len(in))
 	for _, entry := range in {

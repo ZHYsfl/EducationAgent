@@ -26,18 +26,18 @@ import (
 )
 
 type fakeWorkingStore struct {
-	items map[string]model.WorkingMemory
+	items map[string]model.WorkingMemoryRecord
 }
 
-func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemory) error {
+func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemoryRecord) error {
 	if f.items == nil {
-		f.items = map[string]model.WorkingMemory{}
+		f.items = map[string]model.WorkingMemoryRecord{}
 	}
 	f.items[wm.SessionID] = wm
 	return nil
 }
 
-func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemory, error) {
+func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemoryRecord, error) {
 	if f.items == nil {
 		return nil, repository.ErrNotFound
 	}
@@ -64,7 +64,7 @@ func setupMemoryRouter(t *testing.T) (*gorm.DB, http.Handler, func(), *jwtinfra.
 
 	authRepo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
-	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
+	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemoryRecord{}}
 	tm := jwtinfra.NewTokenManager("test-secret", 24)
 	memSvc := service.NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 
