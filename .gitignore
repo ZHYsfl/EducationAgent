@@ -236,3 +236,7 @@ models/
 
 .claude/
 .vscode/
+
+# Go local cache (used by commands like: GOCACHE=.gocache go test ./...)
+.gocache/
+**/.gocache/
