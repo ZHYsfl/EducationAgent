@@ -413,6 +413,9 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 ```json
 {
   "user_id": "string",           // 可选，有则写入用户个人知识库，无则写入公共专业知识库
+  "session_id": "string",        // 必填，会话ID（全链路追踪）
+  "task_id": "string",           // 必填，任务ID（定位会话内具体任务）
+  "request_id": "string",        // 可选，请求ID（关联 search 请求）
   "collection_id": "string",     // 可选，集合ID
   "items": [
     {
@@ -440,6 +443,9 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
   -H "Content-Type: application/json" \
   -d '{
+    "session_id": "sess_abc123",
+    "task_id": "task_001",
+    "request_id": "req_search_001",
     "collection_id": "math_collection",
     "items": [
       {
