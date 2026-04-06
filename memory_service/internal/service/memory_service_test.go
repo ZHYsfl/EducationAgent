@@ -19,18 +19,31 @@ import (
 )
 
 type fakeWorkingStore struct {
+<<<<<<< HEAD
 	items map[string]model.WorkingMemory
 }
 
 func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemory) error {
 	if f.items == nil {
 		f.items = map[string]model.WorkingMemory{}
+=======
+	items map[string]model.WorkingMemoryRecord
+}
+
+func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemoryRecord) error {
+	if f.items == nil {
+		f.items = map[string]model.WorkingMemoryRecord{}
+>>>>>>> origin/wang
 	}
 	f.items[wm.SessionID] = wm
 	return nil
 }
 
+<<<<<<< HEAD
 func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemory, error) {
+=======
+func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemoryRecord, error) {
+>>>>>>> origin/wang
 	if f.items == nil {
 		return nil, repository.ErrNotFound
 	}
@@ -53,10 +66,18 @@ func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
 	execSQL(t, db, `CREATE TABLE memory_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, context TEXT DEFAULT 'general', confidence REAL DEFAULT 1.0, source TEXT DEFAULT 'explicit', source_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`)
 	execSQL(t, db, `CREATE UNIQUE INDEX idx_memory_user_key_context ON memory_entries(user_id, key, context);`)
 	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_u1','u1','u1@example.com','hash','Teacher','Math','School','teacher',1710000000000,1710000000000);`)
+<<<<<<< HEAD
 
 	authRepo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
 	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
+=======
+	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_other','other','other@example.com','hash','Other','Physics','School','teacher',1710000000000,1710000000000);`)
+
+	authRepo := repository.NewAuthRepository(db)
+	memRepo := repository.NewMemoryRepository(db)
+	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemoryRecord{}}
+>>>>>>> origin/wang
 	svc := NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 	return svc, db
 }
@@ -92,6 +113,75 @@ func TestWorkingMemorySaveGetAndMissing(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+func TestWorkingMemoryStoresInternalTaskStateAndProjectsCompatibility(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID:           "sess_internal",
+		UserID:              "user_u1",
+		ConversationSummary: "use uploaded textbook only",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"limits"},
+			TeachingGoals:   []string{"explain rate of change"},
+			TargetAudience:  "grade 11 students",
+			Duration:        "45 minutes",
+		},
+		RecentTopics: []string{"derivatives"},
+	})
+	if err != nil {
+		t.Fatalf("save working: %v", err)
+	}
+	store := svc.workingRepo.(*fakeWorkingStore)
+	record := store.items["sess_internal"]
+	if len(record.TaskState.KnowledgePoints) != 1 || record.TaskState.KnowledgePoints[0] != "limits" {
+		t.Fatalf("expected internal task_state knowledge_points, got %#v", record.TaskState)
+	}
+	if record.TaskState.TargetAudience != "grade 11 students" || record.TaskState.Duration != "45 minutes" {
+		t.Fatalf("expected internal task_state projection fields, got %#v", record.TaskState)
+	}
+	if meta := record.SlotMetadata[model.TaskSlotKnowledgePoints]; meta.Status == "" || meta.Provenance == "" {
+		t.Fatalf("expected slot metadata for knowledge points, got %#v", record.SlotMetadata)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_internal")
+	if err != nil {
+		t.Fatalf("get working: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) != 1 || wm.ExtractedElements.KnowledgePoints[0] != "limits" {
+		t.Fatalf("expected outward extracted elements projection, got %#v", wm.ExtractedElements)
+	}
+	if len(wm.RecentTopics) == 0 || wm.RecentTopics[0] != "derivatives" {
+		t.Fatalf("expected recent topics projection, got %#v", wm.RecentTopics)
+	}
+}
+
+func TestWorkingMemoryRejectsSessionOwnershipMismatch(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	now := util.NowMilli()
+	execSQL(t, db, `INSERT INTO sessions (id,user_id,title,status,created_at,updated_at) VALUES ('sess_owned','user_other','owned','active',?,?);`, now, now)
+
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: "sess_owned",
+		UserID:    "user_u1",
+	})
+	if err == nil || err.(*ServiceError).Code != contract.CodeInvalidCredentials {
+		t.Fatalf("expected ownership mismatch on save, got %v", err)
+	}
+
+	_, err = svc.Recall(ctx, MemoryRecallRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_owned",
+		Query:     "continue this lesson",
+		TopK:      3,
+	})
+	if err == nil || err.(*ServiceError).Code != contract.CodeInvalidCredentials {
+		t.Fatalf("expected ownership mismatch on recall, got %v", err)
+	}
+}
+
+>>>>>>> origin/wang
 func TestExtractUpsertAndSummaryDurable(t *testing.T) {
 	svc, db := setupMemoryService(t)
 	ctx := context.Background()
@@ -338,6 +428,82 @@ func TestExtractKeepsUnsupportedPlanningFieldsInSummaryOnly(t *testing.T) {
 	if pollutedCount != 0 {
 		t.Fatalf("unsupported planning fields should not be persisted as long-term memory")
 	}
+<<<<<<< HEAD
+=======
+	record := svc.workingRepo.(*fakeWorkingStore).items["sess_summary"]
+	if record.TaskState.TeachingLogic == "" {
+		t.Fatalf("expected teaching logic in internal task_state")
+	}
+	if len(record.TaskState.ReferenceMaterialUsage) == 0 {
+		t.Fatalf("expected reference usage in internal task_state")
+	}
+}
+
+func TestExtractChineseDialoguePopulatesWorkingMemoryWithoutDurableTaskLocalStyle(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	resp, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "这节课讲牛顿第一定律，知识点包括惯性、受力分析。"},
+			{Role: "user", Content: "面向高一学生，时长45分钟。"},
+			{Role: "user", Content: "这次课件用深蓝简洁风格，只用教材里的图。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_cn")
+	if err != nil {
+		t.Fatalf("get working: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) == 0 {
+		t.Fatalf("expected chinese knowledge points in working memory")
+	}
+	if wm.ExtractedElements.Duration != "45分钟" {
+		t.Fatalf("expected chinese duration normalization, got %q", wm.ExtractedElements.Duration)
+	}
+	if wm.ExtractedElements.OutputStyle == "" {
+		t.Fatalf("expected task-local chinese output style in working memory")
+	}
+	if !strings.Contains(resp.ConversationSummary, "reference usage") {
+		t.Fatalf("expected chinese reference usage note in projected summary, got %q", resp.ConversationSummary)
+	}
+	var durableStyleCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "output_style").Count(&durableStyleCount).Error; err != nil {
+		t.Fatalf("query style preferences: %v", err)
+	}
+	if durableStyleCount != 0 {
+		t.Fatalf("task-local chinese style instruction should not persist durably")
+	}
+}
+
+func TestExtractChineseStandingPreferencePromotesDurableVisualPreference(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	resp, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn_pref",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "我平时喜欢简洁的蓝色课件风格。"},
+			{Role: "user", Content: "这节课讲导数。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(resp.ExtractedPreferences) == 0 {
+		t.Fatalf("expected durable chinese standing preference")
+	}
+	var durableStyleCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "output_style").Count(&durableStyleCount).Error; err != nil {
+		t.Fatalf("query style preferences: %v", err)
+	}
+	if durableStyleCount != 1 {
+		t.Fatalf("expected one durable chinese output_style preference, got %d", durableStyleCount)
+	}
+>>>>>>> origin/wang
 }
 
 func TestExtractPreventsLongTermPollutionFromOneOffLessonRequirements(t *testing.T) {
