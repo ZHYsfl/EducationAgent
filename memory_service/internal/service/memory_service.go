@@ -173,29 +173,7 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 		return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
 
-<<<<<<< HEAD
-	if sessionID != "" {
-		wm := model.WorkingMemory{
-			SessionID:           sessionID,
-			UserID:              req.UserID,
-			ConversationSummary: res.ConversationSummary,
-			ExtractedElements:   res.TeachingElements(),
-			UpdatedAt:           util.NowMilli(),
-		}
-		existing, err := s.workingRepo.Get(ctx, sessionID)
-		if err == nil {
-			wm.ExtractedElements = mergeTeachingElements(existing.ExtractedElements, wm.ExtractedElements)
-			wm.RecentTopics = existing.RecentTopics
-		}
-		if err := s.workingRepo.Save(ctx, wm); err != nil {
-			return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
-		}
-	}
-
-	return MemoryExtractResponse{ExtractedFacts: storedFacts, ExtractedPreferences: storedPrefs, ConversationSummary: res.ConversationSummary}, nil
-=======
 	return MemoryExtractResponse{ExtractedFacts: storedFacts, ExtractedPreferences: storedPrefs, ConversationSummary: summaryText}, nil
->>>>>>> origin/wang
 }
 
 func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error) {
@@ -217,12 +195,9 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 	}
 	var wm *model.WorkingMemory
 	if sessionID != "" {
-<<<<<<< HEAD
-=======
 		if err := s.ensureSessionOwnership(ctx, sessionID, req.UserID); err != nil {
 			return MemoryRecallResponse{}, err
 		}
->>>>>>> origin/wang
 		v, err := s.workingRepo.Get(ctx, sessionID)
 		if err == nil {
 			projected := projectWorkingMemoryRecord(*v)
@@ -389,19 +364,6 @@ func (s *MemoryService) GetWorkingMemory(ctx context.Context, sessionID string) 
 	return &projected, nil
 }
 
-<<<<<<< HEAD
-func mergeTeachingElements(existing, incoming model.TeachingElements) model.TeachingElements {
-	out := existing
-	out.KnowledgePoints = appendUniqueStrings(out.KnowledgePoints, incoming.KnowledgePoints...)
-	out.TeachingGoals = appendUniqueStrings(out.TeachingGoals, incoming.TeachingGoals...)
-	out.KeyDifficulties = appendUniqueStrings(out.KeyDifficulties, incoming.KeyDifficulties...)
-	if strings.TrimSpace(incoming.TargetAudience) != "" {
-		out.TargetAudience = strings.TrimSpace(incoming.TargetAudience)
-	}
-	if strings.TrimSpace(incoming.Duration) != "" {
-		out.Duration = strings.TrimSpace(incoming.Duration)
-	}
-=======
 func (s *MemoryService) ensureSessionOwnership(ctx context.Context, sessionID, userID string) *ServiceError {
 	sessionID = strings.TrimSpace(sessionID)
 	userID = strings.TrimSpace(userID)
@@ -442,7 +404,6 @@ func mergeTeachingElements(existing, incoming model.TeachingElements) model.Teac
 	if strings.TrimSpace(incoming.Duration) != "" {
 		out.Duration = strings.TrimSpace(incoming.Duration)
 	}
->>>>>>> origin/wang
 	if strings.TrimSpace(incoming.OutputStyle) != "" {
 		out.OutputStyle = strings.TrimSpace(incoming.OutputStyle)
 	}

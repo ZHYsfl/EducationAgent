@@ -16,23 +16,17 @@ type Result struct {
 	Preferences         []model.MemoryEntry
 	ConversationSummary string
 	teachingElements    model.TeachingElements
-<<<<<<< HEAD
-=======
 	taskStateSignals    model.TaskStateSignals
->>>>>>> origin/wang
 }
 
 func (r Result) TeachingElements() model.TeachingElements {
 	return r.teachingElements
 }
 
-<<<<<<< HEAD
-=======
 func (r Result) TaskStateSignals() model.TaskStateSignals {
 	return r.taskStateSignals
 }
 
->>>>>>> origin/wang
 type Extractor interface {
 	Extract(userID string, sessionID string, messages []model.ConversationTurn) (Result, error)
 }
@@ -135,10 +129,7 @@ type normalizedExtraction struct {
 	facts            []model.MemoryEntry
 	preferences      []model.MemoryEntry
 	teachingElements model.TeachingElements
-<<<<<<< HEAD
-=======
 	taskStateSignals model.TaskStateSignals
->>>>>>> origin/wang
 	summary          string
 }
 
@@ -148,10 +139,7 @@ func (n normalizedExtraction) toResult() Result {
 		Preferences:         n.preferences,
 		ConversationSummary: n.summary,
 		teachingElements:    n.teachingElements,
-<<<<<<< HEAD
-=======
 		taskStateSignals:    n.taskStateSignals,
->>>>>>> origin/wang
 	}
 }
 
@@ -171,10 +159,7 @@ func validateLLMResponse(userID string, resp LLMResponse) (Result, error) {
 		Preferences:         dedupeEntries(prefs),
 		ConversationSummary: summary,
 		teachingElements:    elems,
-<<<<<<< HEAD
-=======
 		taskStateSignals:    model.TaskStateSignals{},
->>>>>>> origin/wang
 	}, nil
 }
 
@@ -187,18 +172,13 @@ func mergeResults(base Result, llm Result) Result {
 		out.Preferences = dedupeEntries(append(out.Preferences, llm.Preferences...))
 	}
 	out.teachingElements = mergeTeachingElements(out.teachingElements, llm.teachingElements)
-<<<<<<< HEAD
-=======
 	out.taskStateSignals = mergeTaskStateSignals(out.taskStateSignals, llm.taskStateSignals)
->>>>>>> origin/wang
 	if strings.TrimSpace(llm.ConversationSummary) != "" {
 		out.ConversationSummary = llm.ConversationSummary
 	}
 	return out
 }
 
-<<<<<<< HEAD
-=======
 func mergeTaskStateSignals(existing, incoming model.TaskStateSignals) model.TaskStateSignals {
 	out := existing
 	out.LessonTopic = chooseNonEmpty(out.LessonTopic, incoming.LessonTopic)
@@ -226,7 +206,6 @@ func mergeTaskStateSignals(existing, incoming model.TaskStateSignals) model.Task
 	return out
 }
 
->>>>>>> origin/wang
 func sanitizeEntries(userID, category string, in []model.MemoryEntry) []model.MemoryEntry {
 	out := make([]model.MemoryEntry, 0, len(in))
 	for _, entry := range in {

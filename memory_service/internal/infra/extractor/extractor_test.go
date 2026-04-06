@@ -186,8 +186,6 @@ func TestHybridExtractorNormalizesMultiFieldTeacherUtteranceBetterThanRules(t *t
 		t.Fatalf("expected improved hybrid summary")
 	}
 }
-<<<<<<< HEAD
-=======
 
 func TestRuleBasedExtractorSupportsChineseLessonPrepSignals(t *testing.T) {
 	ex := RuleBasedExtractor{}
@@ -213,4 +211,3 @@ func TestRuleBasedExtractorSupportsChineseLessonPrepSignals(t *testing.T) {
 		t.Fatalf("expected chinese reference usage signal")
 	}
 }
->>>>>>> origin/wang
