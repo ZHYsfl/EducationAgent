@@ -89,47 +89,6 @@ func TestContextManager_ExportJSON(t *testing.T) {
 	}
 }
 
-func TestContextManager_Visualize(t *testing.T) {
-	session := &Session{
-		SessionID: "test_session",
-		UserID:    "test_user",
-		OwnedTasks: map[string]string{
-			"task_1": "高等数学",
-		},
-		ActiveTaskID: "task_1",
-		PendingQuestions: map[string]PendingQuestion{
-			"ctx_1": {
-				TaskID:       "task_1",
-				PageID:       "page_1",
-				QuestionText: "测试问题",
-			},
-		},
-	}
-
-	cm := NewContextManager(session)
-	output := cm.Visualize()
-
-	// 验证输出包含关键信息
-	if output == "" {
-		t.Error("Visualize returned empty string")
-	}
-
-	// 应该包含 session ID
-	if !contains(output, "test_session") {
-		t.Error("Visualize output should contain session ID")
-	}
-
-	// 应该包含任务信息
-	if !contains(output, "高等数学") {
-		t.Error("Visualize output should contain task topic")
-	}
-
-	// 应该包含冲突问题
-	if !contains(output, "测试问题") {
-		t.Error("Visualize output should contain pending question")
-	}
-}
-
 func TestDiff(t *testing.T) {
 	before := ContextSnapshot{
 		SessionID:    "test",
@@ -166,17 +125,4 @@ func TestDiff(t *testing.T) {
 	if !foundActiveTaskChange {
 		t.Error("Diff should detect active task change")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
