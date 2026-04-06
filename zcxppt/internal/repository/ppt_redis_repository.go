@@ -177,6 +177,36 @@ func (r *RedisPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL st
 	return page, nil
 }
 
+func (r *RedisPPTRepository) UpdatePageStatus(taskID, pageID, status, errorMsg string) error {
+	ctx := context.Background()
+	page, err := r.GetPageRender(taskID, pageID)
+	if err != nil {
+		return err
+	}
+	page.Status = status
+	page.ErrorMsg = errorMsg
+	page.UpdatedAt = time.Now().UnixMilli()
+	if err := r.setPage(ctx, page); err != nil {
+		return err
+	}
+
+	canvas, err := r.GetCanvasStatus(taskID)
+	if err != nil {
+		return err
+	}
+	for i := range canvas.PagesInfo {
+		if canvas.PagesInfo[i].PageID == pageID {
+			canvas.PagesInfo[i].Status = status
+			canvas.PagesInfo[i].LastUpdate = page.UpdatedAt
+		}
+	}
+	if err := r.setCanvas(ctx, canvas); err != nil {
+		return err
+	}
+	_ = r.saveSnapshot(ctx, taskID, canvas)
+	return nil
+}
+
 func (r *RedisPPTRepository) InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error {
 	ctx := context.Background()
 	canvas, err := r.GetCanvasStatus(taskID)
