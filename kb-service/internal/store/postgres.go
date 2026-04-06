@@ -325,7 +325,7 @@ func (s *PostgresStore) RecordContentHash(userID, contentHash, docID string, cre
 
 // ── DLQ ────────────────────────────────────────────────────────────────────────
 
-func (s *PostgresStore) DLQPush(job store.IndexJob) error {
+func (s *PostgresStore) DLQPush(job IndexJob) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.ExecContext(context.Background(), `
 		INSERT INTO kb_dlq
@@ -336,7 +336,7 @@ func (s *PostgresStore) DLQPush(job store.IndexJob) error {
 	return err
 }
 
-func (s *PostgresStore) DLQPop(count int) ([]store.IndexJob, error) {
+func (s *PostgresStore) DLQPop(count int) ([]IndexJob, error) {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -353,10 +353,10 @@ func (s *PostgresStore) DLQPop(count int) ([]store.IndexJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	var jobs []store.IndexJob
+	var jobs []IndexJob
 	var ids []int64
 	for rows.Next() {
-		var j store.IndexJob
+		var j IndexJob
 		var id int64
 		if err := rows.Scan(&id, &j.DocID, &j.CollectionID, &j.UserID,
 			&j.FileURL, &j.Content, &j.FileType, &j.Title, &j.Retry); err != nil {

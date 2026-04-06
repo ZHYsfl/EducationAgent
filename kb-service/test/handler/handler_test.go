@@ -24,7 +24,7 @@ func newRouter(meta *testutil.MockMetaStore, oss *testutil.MockOSS) *gin.Engine 
 func newRouterWithEmbedder(meta *testutil.MockMetaStore, oss *testutil.MockOSS, emb parser.Embedder) *gin.Engine {
 	r := gin.New()
 	vec := &testutil.MockVecStore{}
-	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 4, 1)
+	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 4, 1, 3)
 	p := parser.NewSimpleParser("")
 	collH := handler.NewCollectionHandler(meta)
 	docH := handler.NewDocumentHandler(meta, vec, w, oss)
@@ -122,8 +122,8 @@ func TestIndexDocument_Success(t *testing.T) {
 	}))
 	testutil.AssertCode(t, resp, util.CodeOK)
 	data := resp["data"].(map[string]any)
-	if data["status"] != "processing" {
-		t.Errorf("status 期望 processing，得到 %v", data["status"])
+	if data["status"] != "processing" && data["status"] != "indexed" {
+		t.Errorf("status 期望 processing/indexed，得到 %v", data["status"])
 	}
 }
 

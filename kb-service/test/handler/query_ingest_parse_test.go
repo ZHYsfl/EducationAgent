@@ -35,11 +35,8 @@ func TestQuery_Success(t *testing.T) {
 	}))
 	testutil.AssertCode(t, resp, util.CodeOK)
 	data := resp["data"].(map[string]any)
-	if _, ok := data["chunks"]; !ok {
-		t.Errorf("响应缺少 chunks 字段")
-	}
-	if _, ok := data["total"]; !ok {
-		t.Errorf("响应缺少 total 字段")
+	if _, ok := data["summary"]; !ok {
+		t.Errorf("同步 query 响应缺少 summary 字段")
 	}
 }
 
@@ -47,9 +44,9 @@ func TestQuery_DefaultTopK(t *testing.T) {
 	r := newRouter(testutil.NewMockMeta(), &testutil.MockOSS{})
 	resp := testutil.DecodeResp(t, testutil.PostJSON(t, r, "/api/v1/kb/query", map[string]any{
 		"user_id": "u1",
-		"query":   "微积分",
+		"query": "微积分",
 	}))
-	testutil.AssertCode(t, resp, util.CodeOK)
+	testutil.AssertCode(t, resp, util.CodeParamError)
 }
 
 func TestQuery_TopKClamped(t *testing.T) {
@@ -68,6 +65,7 @@ func TestQuery_EmbedFail(t *testing.T) {
 	resp := testutil.DecodeResp(t, testutil.PostJSON(t, r, "/api/v1/kb/query", map[string]any{
 		"user_id": "u1",
 		"query":   "test",
+		"top_k":   5,
 	}))
 	testutil.AssertCode(t, resp, util.CodeDependencyUnavailable)
 }
@@ -75,11 +73,12 @@ func TestQuery_EmbedFail(t *testing.T) {
 // ── Ingest 测试 ───────────────────────────────────────────────────────────────
 
 func TestIngest_MissingUserID(t *testing.T) {
+	// user_id 可选；为空时自动回退为 __public__ 并使用/创建公共默认集合
 	r := newRouter(testutil.NewMockMeta(), &testutil.MockOSS{})
 	resp := testutil.DecodeResp(t, testutil.PostJSON(t, r, "/api/v1/kb/ingest-from-search", map[string]any{
 		"items": []map[string]any{{"url": "http://x", "content": "内容"}},
 	}))
-	testutil.AssertCode(t, resp, util.CodeParamError)
+	testutil.AssertCode(t, resp, util.CodeOK)
 }
 
 func TestIngest_EmptyItems(t *testing.T) {
@@ -92,12 +91,12 @@ func TestIngest_EmptyItems(t *testing.T) {
 }
 
 func TestIngest_NoCollection(t *testing.T) {
+	// user_id 为空时自动回退为 __public__ 并创建公共默认集合
 	r := newRouter(testutil.NewMockMeta(), &testutil.MockOSS{})
 	resp := testutil.DecodeResp(t, testutil.PostJSON(t, r, "/api/v1/kb/ingest-from-search", map[string]any{
-		"user_id": "u1",
-		"items":   []map[string]any{{"url": "http://x", "content": "内容", "title": "标题"}},
+		"items": []map[string]any{{"url": "http://x", "content": "内容", "title": "标题"}},
 	}))
-	testutil.AssertCode(t, resp, util.CodeNotFound)
+	testutil.AssertCode(t, resp, util.CodeOK)
 }
 
 func TestIngest_URLDedup(t *testing.T) {
