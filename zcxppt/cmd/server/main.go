@@ -144,14 +144,12 @@ func main() {
 		exportService.AttachPPTRepository(pptRepo)
 	}
 
-	taskService := service.NewTaskService(taskRepo)
-	taskHandler := handlers.NewTaskHandler(taskService)
 	pptHandler := handlers.NewPPTHandler(pptService)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackService, intentParser)
 	exportHandler := handlers.NewExportHandler(exportService)
 	authMW := middleware.NewAuthMiddleware(cfg.JWTSecret, cfg.InternalKey)
 
-	r := http.NewRouter(taskHandler, pptHandler, feedbackHandler, exportHandler, authMW)
+	r := http.NewRouter(pptHandler, feedbackHandler, exportHandler, authMW)
 
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
 	log.Printf("zcxppt service listening on %s", addr)

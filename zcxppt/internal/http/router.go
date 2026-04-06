@@ -8,7 +8,6 @@ import (
 )
 
 func NewRouter(
-	taskHandler *handlers.TaskHandler,
 	pptHandler *handlers.PPTHandler,
 	feedbackHandler *handlers.FeedbackHandler,
 	exportHandler *handlers.ExportHandler,
@@ -16,15 +15,6 @@ func NewRouter(
 ) *gin.Engine {
 	r := gin.Default()
 	v1 := r.Group("/api/v1")
-
-	tasks := v1.Group("/tasks")
-	{
-		tasks.POST("", authMiddleware.RequireInternalKey(), taskHandler.Create)
-		tasks.GET("/:task_id", authMiddleware.RequireInternalKey(), taskHandler.Get)
-		tasks.PUT("/:task_id/status", authMiddleware.RequireInternalKey(), taskHandler.UpdateStatus)
-		tasks.GET("", authMiddleware.RequireInternalKey(), taskHandler.List)
-		tasks.GET("/:task_id/preview", authMiddleware.RequireInternalKey(), pptHandler.CanvasStatus)
-	}
 
 	ppt := v1.Group("/ppt")
 	{
