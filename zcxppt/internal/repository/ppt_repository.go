@@ -18,6 +18,7 @@ type PPTRepository interface {
 	SetCurrentViewingPageID(taskID, pageID string) error
 	GetPageRender(taskID, pageID string) (model.PageRenderResponse, error)
 	UpdatePageCode(taskID, pageID, pyCode, renderURL string) (model.PageRenderResponse, error)
+	UpdatePageStatus(taskID, pageID, status, errorMsg string) error
 	InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error
 	InsertPageBefore(taskID, beforePageID string, newPage model.PageRenderResponse) error
 	DeletePage(taskID, pageID string) error
@@ -163,6 +164,33 @@ func (r *InMemoryPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL
 	}
 	r.canvases[taskID] = canvas
 	return page, nil
+}
+
+func (r *InMemoryPPTRepository) UpdatePageStatus(taskID, pageID, status, errorMsg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pages, ok := r.pages[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	page, ok := pages[pageID]
+	if !ok {
+		return ErrPageNotFound
+	}
+	page.Status = status
+	page.ErrorMsg = errorMsg
+	page.UpdatedAt = time.Now().UnixMilli()
+	pages[pageID] = page
+
+	canvas := r.canvases[taskID]
+	for i := range canvas.PagesInfo {
+		if canvas.PagesInfo[i].PageID == pageID {
+			canvas.PagesInfo[i].Status = status
+			canvas.PagesInfo[i].LastUpdate = page.UpdatedAt
+		}
+	}
+	r.canvases[taskID] = canvas
+	return nil
 }
 
 func (r *InMemoryPPTRepository) InsertPageAfter(taskID, afterPageID string, newPage model.PageRenderResponse) error {

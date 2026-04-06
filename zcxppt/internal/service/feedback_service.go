@@ -564,6 +564,17 @@ func (s *FeedbackService) ProcessTimeoutTick(ctx context.Context) error {
 		}
 
 		_ = s.feedbackRepo.ResolveSuspend(item.TaskID, item.PageID)
+		// 通知 Voice Agent：该页面冲突问答超时，已自动跳过
+		_ = s.notify.SendPPTMessage(ctx, map[string]any{
+			"task_id":  item.TaskID,
+			"page_id":  item.PageID,
+			"priority": "high",
+			"context_id": item.ContextID,
+			"tts_text": fmt.Sprintf("页面 %s 的冲突问题超时未回复，已自动跳过", item.PageID),
+			"msg_type": "conflict_timeout",
+		})
+		// 标记页面状态为 failed
+		_ = s.pptRepo.UpdatePageStatus(item.TaskID, item.PageID, "failed", "冲突问题超时未回复，已自动跳过")
 		pending, ok, _ := s.feedbackRepo.DequeuePending(item.TaskID, item.PageID)
 		if ok {
 			_, _ = s.Handle(ctx, model.FeedbackRequest{

@@ -53,6 +53,7 @@ type PageRenderResponse struct {
 	PyCode    string `json:"py_code"`
 	Version   int    `json:"version"`
 	UpdatedAt int64  `json:"updated_at"`
+	ErrorMsg  string `json:"error_msg,omitempty"`
 }
 
 type VADEventRequest struct {
