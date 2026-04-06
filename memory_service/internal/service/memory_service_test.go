@@ -19,31 +19,18 @@ import (
 )
 
 type fakeWorkingStore struct {
-<<<<<<< HEAD
-	items map[string]model.WorkingMemory
-}
-
-func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemory) error {
-	if f.items == nil {
-		f.items = map[string]model.WorkingMemory{}
-=======
 	items map[string]model.WorkingMemoryRecord
 }
 
 func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemoryRecord) error {
 	if f.items == nil {
 		f.items = map[string]model.WorkingMemoryRecord{}
->>>>>>> origin/wang
 	}
 	f.items[wm.SessionID] = wm
 	return nil
 }
 
-<<<<<<< HEAD
-func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemory, error) {
-=======
 func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemoryRecord, error) {
->>>>>>> origin/wang
 	if f.items == nil {
 		return nil, repository.ErrNotFound
 	}
@@ -66,18 +53,11 @@ func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
 	execSQL(t, db, `CREATE TABLE memory_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, context TEXT DEFAULT 'general', confidence REAL DEFAULT 1.0, source TEXT DEFAULT 'explicit', source_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`)
 	execSQL(t, db, `CREATE UNIQUE INDEX idx_memory_user_key_context ON memory_entries(user_id, key, context);`)
 	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_u1','u1','u1@example.com','hash','Teacher','Math','School','teacher',1710000000000,1710000000000);`)
-<<<<<<< HEAD
-
-	authRepo := repository.NewAuthRepository(db)
-	memRepo := repository.NewMemoryRepository(db)
-	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
-=======
 	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_other','other','other@example.com','hash','Other','Physics','School','teacher',1710000000000,1710000000000);`)
 
 	authRepo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
 	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemoryRecord{}}
->>>>>>> origin/wang
 	svc := NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 	return svc, db
 }
@@ -113,8 +93,6 @@ func TestWorkingMemorySaveGetAndMissing(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
 func TestWorkingMemoryStoresInternalTaskStateAndProjectsCompatibility(t *testing.T) {
 	svc, _ := setupMemoryService(t)
 	ctx := context.Background()
@@ -181,7 +159,6 @@ func TestWorkingMemoryRejectsSessionOwnershipMismatch(t *testing.T) {
 	}
 }
 
->>>>>>> origin/wang
 func TestExtractUpsertAndSummaryDurable(t *testing.T) {
 	svc, db := setupMemoryService(t)
 	ctx := context.Background()
@@ -428,8 +405,6 @@ func TestExtractKeepsUnsupportedPlanningFieldsInSummaryOnly(t *testing.T) {
 	if pollutedCount != 0 {
 		t.Fatalf("unsupported planning fields should not be persisted as long-term memory")
 	}
-<<<<<<< HEAD
-=======
 	record := svc.workingRepo.(*fakeWorkingStore).items["sess_summary"]
 	if record.TaskState.TeachingLogic == "" {
 		t.Fatalf("expected teaching logic in internal task_state")
@@ -503,7 +478,6 @@ func TestExtractChineseStandingPreferencePromotesDurableVisualPreference(t *test
 	if durableStyleCount != 1 {
 		t.Fatalf("expected one durable chinese output_style preference, got %d", durableStyleCount)
 	}
->>>>>>> origin/wang
 }
 
 func TestExtractPreventsLongTermPollutionFromOneOffLessonRequirements(t *testing.T) {

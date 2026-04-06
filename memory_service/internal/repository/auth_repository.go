@@ -26,8 +26,6 @@ func (r *AuthRepository) GetUserByID(id string) (model.User, error) {
 	}
 	return user, err
 }
-<<<<<<< HEAD
-=======
 
 func (r *AuthRepository) GetSessionByID(id string) (model.Session, error) {
 	var session model.Session
@@ -37,4 +35,3 @@ func (r *AuthRepository) GetSessionByID(id string) (model.Session, error) {
 	}
 	return session, err
 }
->>>>>>> origin/wang

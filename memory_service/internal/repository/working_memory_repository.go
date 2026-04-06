@@ -24,11 +24,7 @@ func (r *WorkingMemoryRepository) key(sessionID string) string {
 	return fmt.Sprintf("working_mem:%s", sessionID)
 }
 
-<<<<<<< HEAD
-func (r *WorkingMemoryRepository) Save(ctx context.Context, wm model.WorkingMemory) error {
-=======
 func (r *WorkingMemoryRepository) Save(ctx context.Context, wm model.WorkingMemoryRecord) error {
->>>>>>> origin/wang
 	payload, err := json.Marshal(wm)
 	if err != nil {
 		return err
@@ -36,11 +32,7 @@ func (r *WorkingMemoryRepository) Save(ctx context.Context, wm model.WorkingMemo
 	return r.client.Set(ctx, r.key(wm.SessionID), payload, r.ttl).Err()
 }
 
-<<<<<<< HEAD
-func (r *WorkingMemoryRepository) Get(ctx context.Context, sessionID string) (*model.WorkingMemory, error) {
-=======
 func (r *WorkingMemoryRepository) Get(ctx context.Context, sessionID string) (*model.WorkingMemoryRecord, error) {
->>>>>>> origin/wang
 	raw, err := r.client.Get(ctx, r.key(sessionID)).Result()
 	if err == redis.Nil {
 		return nil, ErrNotFound
@@ -48,13 +40,6 @@ func (r *WorkingMemoryRepository) Get(ctx context.Context, sessionID string) (*m
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-	var wm model.WorkingMemory
-	if err := json.Unmarshal([]byte(raw), &wm); err != nil {
-		return nil, err
-	}
-	return &wm, nil
-=======
 	var record model.WorkingMemoryRecord
 	if err := json.Unmarshal([]byte(raw), &record); err == nil && record.SessionID != "" {
 		return &record, nil
@@ -81,5 +66,4 @@ func (r *WorkingMemoryRepository) Get(ctx context.Context, sessionID string) (*m
 		Continuity: model.ContinuityActive,
 	}
 	return &record, nil
->>>>>>> origin/wang
 }
