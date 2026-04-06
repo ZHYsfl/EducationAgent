@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
 	"multimodal-teaching-agent/oss"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -29,7 +32,10 @@ type App struct {
 	metasoAPIURL     string
 	kbDedupEnabled   bool
 	kbQueryURL       string
+	kbIngestURL      string
 	kbScoreThreshold float64
+	voiceAgentURL    string
+	httpCallback     *http.Client
 	workerMaxRetry   int
 }
 
@@ -82,6 +88,10 @@ func InitApp() (*App, error) {
 		getenv("METASO_API_URL", "https://metaso.cn/api/open/search"),
 	)
 
+	voiceURL := strings.TrimSuffix(strings.TrimSpace(getenv("VOICE_AGENT_BASE_URL", "")), "/")
+	// 设置 KB_INGEST_URL（例如 http://kb:9200/api/v1/kb/ingest-from-search）后，搜索成功且有条目时会回注知识库。
+	ingestURL := strings.TrimSpace(getenv("KB_INGEST_URL", ""))
+
 	return &App{
 		baseCtx:          context.Background(),
 		db:               db,
@@ -99,8 +109,13 @@ func InitApp() (*App, error) {
 		metasoAPIURL:     getenv("METASO_API_URL", "https://metaso.cn/api/open/search"),
 		kbDedupEnabled:   strings.EqualFold(getenv("KB_DEDUP_ENABLED", "false"), "true"),
 		kbQueryURL:       getenv("KB_QUERY_URL", "http://localhost:9200/api/v1/kb/query"),
+		kbIngestURL:      ingestURL,
 		kbScoreThreshold: threshold,
-		workerMaxRetry:   maxRetry,
+		voiceAgentURL:    voiceURL,
+		httpCallback: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+		workerMaxRetry: maxRetry,
 	}, nil
 }
 
