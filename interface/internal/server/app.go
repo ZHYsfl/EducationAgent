@@ -88,7 +88,7 @@ func InitApp() (*App, error) {
 		getenv("METASO_API_URL", "https://metaso.cn/api/open/search"),
 	)
 
-	voiceURL := strings.TrimSuffix(strings.TrimSpace(getenv("VOICE_AGENT_BASE_URL", "")), "/")
+	voiceURL := strings.TrimSuffix(strings.TrimSpace(getenv("VOICE_AGENT_BASE_URL", "http://localhost:9000")), "/")
 	// 设置 KB_INGEST_URL（例如 http://kb:9200/api/v1/kb/ingest-from-search）后，搜索成功且有条目时会回注知识库。
 	ingestURL := strings.TrimSpace(getenv("KB_INGEST_URL", ""))
 

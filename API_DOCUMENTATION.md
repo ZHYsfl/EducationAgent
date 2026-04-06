@@ -613,14 +613,11 @@ curl -X POST http://memory-service-url/api/v1/memory/context/push \
   "task_id": "string",           // 必填，任务ID（用于回调路由）
   "session_id": "string",        // 必填，会话ID（用于并发隔离/审计）
   "user_id": "string",           // 必填
-  "session_id": "string",        // 可选；建议 Voice Agent 传入当前 WebSocket 会话 ID，便于异步完成后回调 `ppt_message` 时定位会话（task_id 使用 session_id）
   "query": "string",             // 必填
   "max_results": 10,             // 可选，默认10，上限10
   "language": "string"           // 可选，如 "zh-CN"
 }
 ```
-
-**部署说明（search-service）**: 配置环境变量 `VOICE_AGENT_BASE_URL`（无尾部斜杠，例如 `http://voice-agent:8080`）后，搜索任务结束会向 `POST /api/v1/voice/ppt_message` 发送 `msg_type: "search_result"` 或失败时的 `error`。配置 `KB_INGEST_URL`（例如 `http://kb-service:9200/api/v1/kb/ingest-from-search`）后，在检索到网页条目时会调用知识库「从搜索结果导入」接口回注入库。
 
 **响应格式**:
 
