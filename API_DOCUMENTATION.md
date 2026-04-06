@@ -1227,10 +1227,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
     "task_id": "task_001",
     "session_id": "sess_abc123",
     "msg_type": "kb_result",
-    "chunks": [
-      {"chunk_id": "c1", "content": "导数是函数的瞬时变化率...", "source": "oss://user_001/history_001.txt", "score": 0.92}
-    ],
-    "profile_summary": "高中数学教师，偏好简洁风格"
+    "summary": "导数是函数在某一点的瞬时变化率。可通过切线斜率、极限定义和典型例题来讲解。"
   }'
 ```
 

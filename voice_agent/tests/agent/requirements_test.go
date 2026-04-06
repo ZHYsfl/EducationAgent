@@ -137,40 +137,19 @@ func TestRefreshCollectedFields_OptionalFields(t *testing.T) {
 	}
 }
 
-func TestBuildRequirementsSystemPrompt_NoProfile(t *testing.T) {
+func TestBuildRequirementsSystemPrompt(t *testing.T) {
 	req := agent.NewTaskRequirements("s", "u")
 	req.Topic = "Calculus"
 
-	prompt := req.BuildRequirementsSystemPrompt(nil)
+	prompt := req.BuildRequirementsSystemPrompt()
 	if !strings.Contains(prompt, "topic") {
 		t.Fatal("prompt should include requirements field info")
-	}
-	if !strings.Contains(prompt, "画像") {
-		t.Fatal("prompt should mention missing profile summary")
-	}
-}
-
-func TestBuildRequirementsSystemPrompt_WithProfile(t *testing.T) {
-	req := agent.NewTaskRequirements("s", "u")
-	req.Topic = "Calculus"
-	profile := &agent.UserProfile{
-		DisplayName:   "Teacher Wang",
-		Subject:       "Math",
-		TeachingStyle: "interactive",
-	}
-
-	prompt := req.BuildRequirementsSystemPrompt(profile)
-	if !strings.Contains(prompt, "Teacher Wang") {
-		t.Fatal("prompt should include profile display name")
-	}
-	if !strings.Contains(prompt, "Math") {
-		t.Fatal("prompt should include profile subject")
 	}
 }
 
 func TestBuildRequirementsSystemPrompt_AllCollected(t *testing.T) {
 	req := makeFullRequirements()
-	prompt := req.BuildRequirementsSystemPrompt(nil)
+	prompt := req.BuildRequirementsSystemPrompt()
 
 	if !strings.Contains(prompt, "P0") {
 		t.Fatalf("prompt should include ready marker for P0 fields, got: %q", prompt)
@@ -179,37 +158,9 @@ func TestBuildRequirementsSystemPrompt_AllCollected(t *testing.T) {
 
 func TestBuildRequirementsSystemPrompt_Nil(t *testing.T) {
 	var req *agent.TaskRequirements
-	prompt := req.BuildRequirementsSystemPrompt(nil)
+	prompt := req.BuildRequirementsSystemPrompt()
 	if prompt != "" {
 		t.Fatalf("nil requirements should return empty prompt, got %q", prompt)
-	}
-}
-
-func TestFormatProfileSummary_Nil(t *testing.T) {
-	result := agent.FormatProfileSummary(nil)
-	if !strings.Contains(result, "画像") {
-		t.Fatalf("nil profile should report empty profile summary, got %q", result)
-	}
-}
-
-func TestFormatProfileSummary_Empty(t *testing.T) {
-	result := agent.FormatProfileSummary(&agent.UserProfile{})
-	if !strings.Contains(result, "画像") {
-		t.Fatalf("empty profile should report empty profile summary, got %q", result)
-	}
-}
-
-func TestFormatProfileSummary_Populated(t *testing.T) {
-	profile := &agent.UserProfile{
-		DisplayName:       "Teacher Zhang",
-		Subject:           "Physics",
-		TeachingStyle:     "lecture",
-		HistorySummary:    "3 years teaching",
-		VisualPreferences: map[string]string{"color_scheme": "blue"},
-	}
-	result := agent.FormatProfileSummary(profile)
-	if !strings.Contains(result, "Teacher Zhang") || !strings.Contains(result, "Physics") {
-		t.Fatalf("summary missing expected profile info, got %q", result)
 	}
 }
 

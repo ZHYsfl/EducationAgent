@@ -76,6 +76,7 @@ type PPTMessageRequest struct {
 	ContextID string `json:"context_id"`
 	TTSText   string `json:"tts_text"`
 	MsgType   string `json:"msg_type"`
+	Summary   string `json:"summary,omitempty"`
 
 	RenderURL   string          `json:"render_url,omitempty"`
 	PageIndex   int             `json:"page_index,omitempty"`

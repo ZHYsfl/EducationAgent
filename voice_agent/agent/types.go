@@ -27,7 +27,6 @@ type MemoryRecallRequest = types.MemoryRecallRequest
 type MemoryRecallResponse = types.MemoryRecallResponse
 type MemoryEntry = types.MemoryEntry
 type WorkingMemory = types.WorkingMemory
-type UserProfile = types.UserProfile
 type SearchRequest = types.SearchRequest
 type SearchResponse = types.SearchResponse
 type SearchResult = types.SearchResult

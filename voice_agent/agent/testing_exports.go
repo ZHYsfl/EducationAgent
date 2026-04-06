@@ -199,11 +199,6 @@ func Truncate(s string, maxLen int) string {
 	return truncate(s, maxLen)
 }
 
-// FormatProfileSummary calls the unexported formatProfileSummary function.
-func FormatProfileSummary(profile *UserProfile) string {
-	return formatProfileSummary(profile)
-}
-
 // DecodeAPIData calls the unexported decodeAPIData function.
 func DecodeAPIData(raw []byte, out any) error {
 	return decodeAPIData(raw, out)
