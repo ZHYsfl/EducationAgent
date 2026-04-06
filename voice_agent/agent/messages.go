@@ -69,11 +69,14 @@ type PageInfoBrief struct {
 // PPTMessageRequest represents a message to be sent to the PPT agent.
 type PPTMessageRequest struct {
 	TaskID    string `json:"task_id"`
+	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitempty"`
 	PageID    string `json:"page_id"`
 	Priority  string `json:"priority"`
 	ContextID string `json:"context_id"`
 	TTSText   string `json:"tts_text"`
 	MsgType   string `json:"msg_type"`
+	Summary   string `json:"summary,omitempty"`
 
 	RenderURL   string          `json:"render_url,omitempty"`
 	PageIndex   int             `json:"page_index,omitempty"`

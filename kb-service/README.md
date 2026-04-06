@@ -15,10 +15,23 @@
 | GET  | `/api/v1/kb/documents/{doc_id}` | 查询索引进度 |
 | DELETE | `/api/v1/kb/documents/{doc_id}` | 删除文档及向量 |
 | GET  | `/api/v1/kb/collections/{collection_id}/documents` | 集合内文档列表 |
-| POST | `/api/v1/kb/query` | 语义检索（核心 RAG） |
+| POST | `/api/v1/kb/query` | 语义检索（核心 RAG，支持同步/异步回调） |
+| POST | `/api/v1/kb/query-chunks` | 关键词 chunk 检索（同步阻塞，供记忆模块 / PPT Agent） |
 | POST | `/api/v1/kb/ingest-from-search` | 搜索结果沉淀入库 |
 | POST | `/api/v1/kb/parse` | 纯文档解析（不入向量库） |
 | GET  | `/health` | 健康检查 |
+
+## 接口交互模式总览
+
+`kb-service` 作为系统的知识库核心服务，完整覆盖了 3 种经典的服务交互模式：
+
+| 接口路径 | 对应模式 | 核心特点 |
+|---------|---------|---------|
+| `POST /api/v1/kb/query-chunks` | **同步阻塞返回** | 调用方（voice_agent / ppt_agent）发请求后阻塞等待，kb-service 直接返回 `[]chunk` 结果，是最基础的请求-响应模式 |
+| `POST /api/v1/kb/query` | **异步 + 主动回调（Webhook）** | 调用方发请求后，kb-service 立即返回 `accepted`，后台异步检索；完成后主动回调 `POST /api/v1/voice/ppt_message`，把结果推送给调用方 |
+| `POST /api/v1/kb/ingest-from-search` | **Fire-and-Forget（即发即忘）写入** | web_search 发请求后直接结束，kb-service 后台异步处理写入，无需结果返回，无需回调 |
+
+> 轮询模式（Poll）在本系统中未实现，原因：系统通过 WebSocket 长连接实现 Push，优于轮询的实时性和资源效率。
 
 ## 环境变量
 
@@ -35,6 +48,7 @@
 | `LLM_API_KEY` | 空 | LLM 密钥；空时禁用 query 意图精化，直接使用原始查询文本 |
 | `LLM_MODEL` | `gpt-4o-mini` | LLM 模型名（兼容 OpenAI 接口）|
 | `LLM_BASE_URL` | 空 | 自定义 LLM API 地址（如本地部署或第三方兼容接口）|
+| `VOICE_CALLBACK_URL` | 空 | Voice Agent 回调地址；异步 query 完成后向此地址发送 kb_result |
 
 ## 快速启动（开发模式）
 
@@ -102,37 +116,99 @@ kb-service/
 
 ## 与其他模块联调
 
-### Voice Agent（周浩洋）→ KB Service
+### 一、核心调用方与接口清单
 
-1. **RAG 语义检索**：VAD 触发后异步调用 `POST /api/v1/kb/query`，将检索到的 chunks 注入 LLM 上下文。
-   - 需传 `user_id`（必填）、`query`（当前 ASR 部分文本）
-   - `collection_id` 可选，为空则搜索该用户全部集合
+#### 1. 来自 Voice Agent（周浩洋）的调用
 
-2. **CRAG 知识沉淀**：当 KB 检索分数低（`score < score_threshold`）且 Web Search 模块返回有价值结果时，**Voice Agent 自行判断**并异步调用 `POST /api/v1/kb/ingest-from-search`。
-   - **注意**：KB Service 本身不主动触发 Web Search，也不感知检索评分是否达标；"是否触发沉淀"的判断逻辑完全在 Voice Agent 侧。
-   - KB Service 只负责接收 items、URL 去重、异步入库。
+| 接口路径 | 调用方式 | 交互说明 |
+|---------|---------|---------|
+| `POST /api/v1/kb/query`（异步） | 异步请求 | VAD 触发后异步调用，检索 chunks 注入 LLM 上下文，完成后回调 `POST /api/v1/voice/ppt_message` |
+| `POST /api/v1/kb/query-chunks`（同步） | 同步请求 | 同步知识库分块查询，直接返回 `[]chunk` |
 
-3. **文档索引触发**：用户通过前端上传文件后，可直接调用 `POST /api/v1/kb/upload`（multipart 文件直传），或由 Voice Agent 拿到外部 `file_url` 后调用 `POST /api/v1/kb/documents` 触发索引。
+#### 2. 来自 PPT Agent（钟天贻）的调用
 
-### PPT Agent（钟天贻）→ KB Service
+| 接口路径 | 调用方式 | 交互说明 |
+|---------|---------|---------|
+| `POST /api/v1/kb/query-chunks`（同步） | 同步请求 | 获取知识库内容用于 PPT 生成 |
+| `POST /api/v1/kb/parse` | 同步请求 | 纯解析 PDF/PPT 获取结构化文本块，不入向量库 |
 
-- 调用 `POST /api/v1/kb/parse` 解析用户上传的参考资料（PDF/PPT 等），获取结构化文本块供课件生成使用。
-- **不入向量库**，纯解析返回，不影响 RAG 索引。
-- 若 `PYTHON_PARSER_URL` 未配置，非 text 类型文件返回占位结果，需联调时确保 Python 解析服务已启动。
+#### 3. 来自 Web Search 的调用
 
-### Database Service（曾晨曦）→ KB Service
+| 接口路径 | 调用方式 | 交互说明 |
+|---------|---------|---------|
+| `POST /api/v1/kb/ingest-from-search` | Fire-and-Forget | 将搜索结果写入知识库，完成知识库的增量更新，无需结果返回 |
 
-- KB Service **不直接调用** Database Service 接口。
-- 依赖关系是单向的：Database Service 存文件 → 上层（Voice Agent）拿到 URL → 调用 KB Service 索引。
-- KB Service 存储的 `file_id` 字段仅做关联记录，不做反向查询。
+### 二、交互链路梳理
+
+#### 1. 「查询类」交互链路
+
+- **Voice Agent → kb-service**：
+  语音代理作为核心入口，同时支持**异步全量查询**（`/kb/query`）和**同步分块查询**（`/kb/query-chunks`）两种模式，适配不同业务场景的响应需求。
+- **PPT Agent → kb-service**：
+  PPT代理仅通过**同步分块查询**（`/kb/query-chunks`）获取知识库内容，用于 PPT 生成相关的内容检索。
+
+#### 2. 「数据写入类」交互链路
+
+- **Web Search → kb-service**：
+  网络搜索服务通过 `/kb/ingest-from-search` 接口，将外部搜索到的有效数据同步到知识库，实现知识库的动态更新与扩充，为后续查询提供更丰富的数据源。
+
+### 三、关键特性总结
+
+1. **双模式查询支持**：kb-service 同时提供异步/同步两种查询接口，适配 Voice Agent、PPT Agent 等不同模块的性能与响应需求。
+2. **闭环数据流转**：通过 Web Search 的写入接口，实现「外部数据→知识库→业务查询」的完整闭环，保障知识库的时效性与丰富度。
+3. **多模块协同**：作为核心数据服务，kb-service 承接了 Voice Agent、PPT Agent、Web Search 三个核心模块的交互，是整个系统的知识库中枢。
+
+### 四、接口行为说明
+
+#### POST /api/v1/kb/query（异步 + 主动回调）
+
+支持两种模式（严格符合 `API_DOCUMENTATION.md` §2.1）：
+
+- **异步模式**（传 `session_id`）：立即返回 `{"accepted": true}`，后台执行检索，完成后回调 `POST /api/v1/voice/ppt_message`，`msg_type: "kb_result"`，`summary` 字段携带摘要。
+- **同步模式**（不传 `session_id`）：立即返回 `{"summary": "..."}`。
+
+> `top_k` 必填且 > 0，传 0 或不传返回 `40001` 参数错误。`score_threshold` 传 `0.0` 表示不设阈值（允许），传 `>1.0` 返回 `40001` 参数错误。
+
+#### POST /api/v1/kb/query-chunks（同步阻塞返回）
+
+关键词检索接口，供记忆模块 / PPT Agent 调用，同步返回 chunk 列表。
+传 `user_id` → 检索用户个人知识库；不传 → 仅检索专业知识库。
+
+#### POST /api/v1/kb/upload
+
+响应严格符合 `API_DOCUMENTATION.md` §5.1：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "file_id": "doc_xxx",
+    "filename": "lecture.pdf",
+    "file_type": "pdf",
+    "file_size": 1234567,
+    "storage_url": "http://localhost:9200/storage/...",
+    "purpose": "reference"
+  }
+}
+```
+
+文件大小上限 500 MB，超过返回 `40001`。同一用户下相同文件名不允许重复上传（`409` 冲突）。
+
+#### POST /api/v1/kb/ingest-from-search
+
+响应包含 `ingested`、`skipped`、`failed`、`doc_ids` 四个字段。
+全部文档入库失败时（`ingested==0 && failed>0`）返回 `50000` 内部错误。
+URL 去重检查遇到数据库错误时立即返回 `50000`，不再静默继续。
 
 ## 错误码
 
 | code | 含义 |
 |------|------|
 | 200 | 成功 |
-| 40001 | 参数缺失或非法（必填字段为空）|
+| 40001 | 参数缺失或非法（必填字段为空、top_k<=0、score_threshold>1.0、文件超过 500 MB） |
 | 40002 | items 为空 |
 | 40400 | 资源不存在 |
+| 40900 | 资源冲突（文件已存在、内容已索引、URL 已入库） |
 | 50000 | 服务内部错误 |
 | 50200 | 向量数据库 / Embedding 服务不可用 |

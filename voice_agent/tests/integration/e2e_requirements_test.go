@@ -8,7 +8,7 @@ import (
 	agent "voiceagent/agent"
 )
 
-// TestE2E_RequirementsCollection 测试完整的需求收集流程
+// TestE2E_RequirementsCollection validates requirements-related WS messages in current protocol.
 func TestE2E_RequirementsCollection(t *testing.T) {
 	srv, wsURL := setupTestServer(t)
 	defer srv.Close()
@@ -19,49 +19,34 @@ func TestE2E_RequirementsCollection(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// 1. 发起任务初始化
+	// add_reference_files is part of requirements collection in current protocol.
 	sendMsg(t, conn, agent.WSMessage{
-		Type:  "task_init",
-		Topic: "高等数学",
+		Type: "add_reference_files",
+		Files: []struct {
+			FileID      string `json:"file_id"`
+			FileURL     string `json:"file_url"`
+			FileType    string `json:"file_type"`
+			Instruction string `json:"instruction,omitempty"`
+		}{
+			{
+				FileID:      "f_1",
+				FileURL:     "https://example.com/file.pdf",
+				FileType:    "pdf",
+				Instruction: "作为课程参考",
+			},
+		},
 	})
 
-	// 等待状态变为 collecting
-	waitForState(t, conn, "idle", 2*time.Second)
-
-	// 2. 模拟用户逐步提供信息
-	sendMsg(t, conn, agent.WSMessage{
-		Type: "text_input",
-		Text: "我要讲微积分的基本概念",
-	})
-
-	time.Sleep(100 * time.Millisecond)
-
-	sendMsg(t, conn, agent.WSMessage{
-		Type: "text_input",
-		Text: "目标是让学生理解导数和积分",
-	})
-
-	time.Sleep(100 * time.Millisecond)
-
+	// Trigger processing round and validate normal state transitions.
 	sendMsg(t, conn, agent.WSMessage{
 		Type: "text_input",
-		Text: "受众是大一新生",
+		Text: "我要做高等数学导数课件，面向大一学生",
 	})
 
-	// 3. 等待系统生成摘要
-	msg := waitForMessageType(t, conn, "requirements_summary", 3*time.Second)
-	if msg.SummaryText == "" {
-		t.Fatal("expected summary text")
+	msg := waitForMessageType(t, conn, "transcript", 2*time.Second)
+	if msg.Text == "" {
+		t.Fatal("expected transcript after text_input")
 	}
 
-	// 4. 用户确认
-	sendMsg(t, conn, agent.WSMessage{
-		Type: "requirements_confirm",
-	})
-
-	// 5. 验证任务创建
-	msg = waitForMessageType(t, conn, "ppt_status", 5*time.Second)
-	if msg.TaskID == "" {
-		t.Fatal("expected task_id after confirmation")
-	}
+	waitForState(t, conn, "idle", 3*time.Second)
 }

@@ -136,7 +136,10 @@ func (w *IndexWorker) processOnce(job IndexJob) error {
 		DocID:    job.DocID,
 	})
 	if err != nil {
-		_ = w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0)
+		// BUG 6.2 修复：UpdateDocumentStatus 失败时记录错误（不再静默忽略）
+		if statusErr := w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0); statusErr != nil {
+			log.Printf("[IndexWorker] UpdateDocumentStatus failed: %v (original: %v)", statusErr, err)
+		}
 		return fmt.Errorf("parse failed: %w", err)
 	}
 
@@ -147,12 +150,16 @@ func (w *IndexWorker) processOnce(job IndexJob) error {
 	}
 	vectors, err := w.embedder.Embed(ctx, texts)
 	if err != nil {
-		_ = w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0)
+		if statusErr := w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0); statusErr != nil {
+			log.Printf("[IndexWorker] UpdateDocumentStatus failed: %v (original: %v)", statusErr, err)
+		}
 		return fmt.Errorf("embed failed: %w", err)
 	}
 	if len(vectors) != len(parsed.TextChunks) {
 		msg := fmt.Sprintf("embed returned %d vectors for %d chunks", len(vectors), len(parsed.TextChunks))
-		_ = w.meta.UpdateDocumentStatus(job.DocID, "failed", msg, 0)
+		if statusErr := w.meta.UpdateDocumentStatus(job.DocID, "failed", msg, 0); statusErr != nil {
+			log.Printf("[IndexWorker] UpdateDocumentStatus failed: %v (original: %v)", statusErr, msg)
+		}
 		return fmt.Errorf("%s", msg)
 	}
 
@@ -183,18 +190,26 @@ func (w *IndexWorker) processOnce(job IndexJob) error {
 		})
 	}
 	if err := w.vec.UpsertChunks(ctx, cvs); err != nil {
-		_ = w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0)
+		if statusErr := w.meta.UpdateDocumentStatus(job.DocID, "failed", err.Error(), 0); statusErr != nil {
+			log.Printf("[IndexWorker] UpdateDocumentStatus failed: %v (original: %v)", statusErr, err)
+		}
 		return fmt.Errorf("upsert failed: %w", err)
 	}
 
 	// 4. 更新状态 indexed
-	_ = w.meta.UpdateDocumentStatus(job.DocID, "indexed", "", len(parsed.TextChunks))
+	if err := w.meta.UpdateDocumentStatus(job.DocID, "indexed", "", len(parsed.TextChunks)); err != nil {
+		log.Printf("[IndexWorker] UpdateDocumentStatus(indexed) failed: %v", err)
+	}
 	// 5. 集合文档计数 +1
-	_ = w.meta.IncrDocCount(job.CollectionID, time.Now().UnixMilli())
+	if err := w.meta.IncrDocCount(job.CollectionID, time.Now().UnixMilli()); err != nil {
+		log.Printf("[IndexWorker] IncrDocCount failed: %v", err)
+	}
 	// 6. 内容去重指纹：索引成功后写入 SHA-256(content) 指纹
 	//    Content 字段在 handler 层已预计算为 hex 字符串；web_snippet 等无预计算的跳过
 	if len(job.Content) == 64 { // SHA-256 hex = 64 chars
-		_ = w.meta.RecordContentHash(job.UserID, job.Content, job.DocID, time.Now().UnixMilli())
+		if err := w.meta.RecordContentHash(job.UserID, job.Content, job.DocID, time.Now().UnixMilli()); err != nil {
+			log.Printf("[IndexWorker] RecordContentHash failed: %v", err)
+		}
 	}
 	log.Printf("[IndexWorker] indexed doc=%s chunks=%d", job.DocID, len(parsed.TextChunks))
 	return nil
@@ -212,20 +227,17 @@ func (w *IndexWorker) DrainDLQ() {
 			return
 		}
 		log.Printf("[IndexWorker] draining %d DLQ jobs", len(jobs))
-		for _, job := range jobs {
+		for i, job := range jobs {
 			select {
 			case w.queue <- job:
 				log.Printf("[IndexWorker] DLQ replayed doc_id=%s", job.DocID)
 			default:
-				// 队列又满了，把剩余任务重新写回 DLQ
-				remaining := append([]IndexJob{}, job)
-				for _, j := range jobs[1:] {
-					remaining = append(remaining, j)
+				// BUG 2.6 修复：队列满时，仅将当前失败的任务（index i）写回 DLQ
+				// 不再把已成功入队的 job（index 0）也重新写回，导致重复处理
+				for idx := i; idx < len(jobs); idx++ {
+					_ = w.meta.DLQPush(jobs[idx]) // 忽略错误
 				}
-				for _, j := range remaining {
-					_ = w.meta.DLQPush(j) // 忽略错误
-				}
-				log.Printf("[IndexWorker] DLQ drain queue full, put %d jobs back", len(remaining))
+				log.Printf("[IndexWorker] DLQ drain queue full, put %d jobs back", len(jobs)-i)
 				return
 			}
 		}

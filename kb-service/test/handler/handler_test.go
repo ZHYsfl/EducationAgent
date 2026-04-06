@@ -24,11 +24,11 @@ func newRouter(meta *testutil.MockMetaStore, oss *testutil.MockOSS) *gin.Engine 
 func newRouterWithEmbedder(meta *testutil.MockMetaStore, oss *testutil.MockOSS, emb parser.Embedder) *gin.Engine {
 	r := gin.New()
 	vec := &testutil.MockVecStore{}
-	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 4, 1)
+	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 4, 1, 3)
 	p := parser.NewSimpleParser("")
 	collH := handler.NewCollectionHandler(meta)
 	docH := handler.NewDocumentHandler(meta, vec, w, oss)
-	queryH := handler.NewQueryHandler(vec, emb, nil, nil)
+	queryH := handler.NewQueryHandler(vec, emb, nil, nil, "")
 	ingestH := handler.NewIngestHandler(meta, emb, p, w)
 	parseH := handler.NewParseHandler(p)
 	r.POST("/api/v1/kb/collections", collH.CreateCollection)
@@ -122,8 +122,8 @@ func TestIndexDocument_Success(t *testing.T) {
 	}))
 	testutil.AssertCode(t, resp, util.CodeOK)
 	data := resp["data"].(map[string]any)
-	if data["status"] != "processing" {
-		t.Errorf("status 期望 processing，得到 %v", data["status"])
+	if data["status"] != "processing" && data["status"] != "indexed" {
+		t.Errorf("status 期望 processing/indexed，得到 %v", data["status"])
 	}
 }
 
@@ -198,14 +198,27 @@ func TestUploadDocument_Success(t *testing.T) {
 	resp := testutil.DecodeResp(t, testutil.UploadReq(t, r, body, ct))
 	testutil.AssertCode(t, resp, util.CodeOK)
 	data := resp["data"].(map[string]any)
-	if _, ok := data["doc_id"]; !ok {
-		t.Errorf("响应缺少 doc_id")
+	// 响应字段符合 API 文档 §5.1
+	if _, ok := data["file_id"]; !ok {
+		t.Errorf("响应缺少 file_id")
 	}
-	if _, ok := data["file_url"]; !ok {
-		t.Errorf("响应缺少 file_url")
+	if _, ok := data["filename"]; !ok {
+		t.Errorf("响应缺少 filename")
 	}
-	if data["status"] != "processing" {
-		t.Errorf("status 期望 processing，得到 %v", data["status"])
+	if _, ok := data["file_type"]; !ok {
+		t.Errorf("响应缺少 file_type")
+	}
+	if _, ok := data["file_size"]; !ok {
+		t.Errorf("响应缺少 file_size")
+	}
+	if _, ok := data["storage_url"]; !ok {
+		t.Errorf("响应缺少 storage_url")
+	}
+	if _, ok := data["purpose"]; !ok {
+		t.Errorf("响应缺少 purpose")
+	}
+	if data["purpose"] != "reference" {
+		t.Errorf("purpose 期望 reference，得到 %v", data["purpose"])
 	}
 	if len(oss.PutKeys) != 1 {
 		t.Errorf("OSS Put 应被调用 1 次，实际 %d 次", len(oss.PutKeys))

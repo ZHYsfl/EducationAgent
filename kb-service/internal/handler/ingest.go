@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -38,43 +39,54 @@ func (h *IngestHandler) IngestFromSearch(c *gin.Context) {
 		util.Fail(c, util.CodeParamError, "请求体解析失败: "+err.Error())
 		return
 	}
-	if req.UserID == "" {
-		util.Fail(c, util.CodeParamError, "user_id 不能为空")
-		return
-	}
 	if len(req.Items) == 0 {
 		util.Fail(c, util.CodeParamError2, "items 不能为空")
 		return
 	}
 
-	// 自动归入用户默认集合
-	collID := req.CollectionID
-	if collID == "" {
-		coll, err := h.pg.GetDefaultCollection(req.UserID)
-		if err != nil || coll == nil {
-			util.Fail(c, util.CodeNotFound, "用户没有可用集合，请先创建集合")
-			return
-		}
-		collID = coll.CollectionID
+	// user_id 可选：有则入个人库，无则入公共库
+	userID := req.UserID
+	if userID == "" {
+		userID = "__public__" // 公共知识库标识
 	}
 
-	var ingested, skipped int
+	// collection_id 可选：有则直接使用，无则取用户默认集合
+	collID := req.CollectionID
+	if collID == "" {
+		coll, err := h.pg.GetDefaultCollection(userID)
+		if err != nil || coll == nil {
+			// 公共库默认集合不存在则创建
+			collID, err = h.ensurePublicCollection()
+			if err != nil {
+				util.Fail(c, util.CodeInternalError, "无可用集合且创建失败: "+err.Error())
+				return
+			}
+		} else {
+			collID = coll.CollectionID
+		}
+	}
+
+	var ingested, skipped, failed int
 	var docIDs []string
 
 	for _, item := range req.Items {
-		// 跳过无效条目
+		// 跳过无效条目（title/url/content 为空均跳过）
 		if item.URL == "" || item.Content == "" {
 			skipped++
 			continue
 		}
-		// URL 去重
-		exists, err := h.pg.URLExistsForUser(req.UserID, item.URL)
-		if err != nil {
-			log.Printf("[IngestFromSearch] check url exists err: %v", err)
-		}
-		if exists {
-			skipped++
-			continue
+		// URL 去重（仅对个人用户生效，公共库跳过）
+		if userID != "__public__" {
+			exists, err := h.pg.URLExistsForUser(userID, item.URL)
+			// BUG 2.3 修复：DB 错误时返回失败，而非静默忽略导致重复导入
+			if err != nil {
+				util.Fail(c, util.CodeInternalError, "URL 去重检查失败: "+err.Error())
+				return
+			}
+			if exists {
+				skipped++
+				continue
+			}
 		}
 
 		// 创建文档记录
@@ -91,19 +103,24 @@ func (h *IngestHandler) IngestFromSearch(c *gin.Context) {
 			Title:        title,
 			DocType:      "web_snippet",
 			ChunkCount:   0,
-			Status:       "processing", // 与 IndexDocument 保持一致
+			Status:       "processing",
 			CreatedAt:    now,
 		}
-		if err := h.pg.CreateDocumentFull(doc, req.UserID, item.URL); err != nil {
+		srcURL := item.URL
+		if userID == "__public__" {
+			srcURL = "" // 公共库不写 URL 去重记录
+		}
+		if err := h.pg.CreateDocumentFull(doc, userID, srcURL); err != nil {
 			log.Printf("[IngestFromSearch] create doc err: %v", err)
+			failed++
 			continue
 		}
 
-		// 提交异步索引：Content 放入专用字段，FileURL 留空
+		// 提交异步索引
 		h.w.Submit(worker.IndexJob{
 			DocID:        docID,
 			CollectionID: collID,
-			UserID:       req.UserID,
+			UserID:       userID,
 			FileURL:      "",
 			Content:      item.Content,
 			FileType:     "web_snippet",
@@ -114,14 +131,45 @@ func (h *IngestHandler) IngestFromSearch(c *gin.Context) {
 		ingested++
 	}
 
+	// BUG 2.4 修复：全部失败时返回错误，而非全部成功
+	if ingested == 0 && failed > 0 {
+		util.Fail(c, util.CodeInternalError, fmt.Sprintf("所有 %d 个文档入库失败", failed))
+		return
+	}
+
 	if docIDs == nil {
 		docIDs = []string{}
 	}
 	util.OK(c, gin.H{
 		"ingested": ingested,
 		"skipped":  skipped,
+		"failed":   failed,
 		"doc_ids":  docIDs,
 	})
+}
+
+// ensurePublicCollection 确保公共知识库默认集合存在
+func (h *IngestHandler) ensurePublicCollection() (string, error) {
+	collID := "kb_public_default"
+	_, err := h.pg.GetCollection(collID)
+	if err == nil {
+		return collID, nil
+	}
+	now := time.Now().UnixMilli()
+	c := &model.KBCollection{
+		CollectionID: collID,
+		UserID:       "__public__",
+		Name:         "公共知识库",
+		Subject:      "公共",
+		Description:  "公共知识库，所有用户共享",
+		DocCount:     0,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := h.pg.CreateCollection(c); err != nil {
+		return "", err
+	}
+	return collID, nil
 }
 
 // ParseHandler 处理纯解析接口

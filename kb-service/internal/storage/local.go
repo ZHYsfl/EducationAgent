@@ -46,10 +46,15 @@ func (ls *LocalStorage) Put(ctx context.Context, key string, data io.Reader) (st
 	if err != nil {
 		return "", fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
 
 	if _, err := io.Copy(f, data); err != nil {
+		f.Close()
+		// BUG 3.7 修复：io.Copy 失败后删除残缺文件，避免后续 Exists 误判为已存在
+		os.Remove(fullPath)
 		return "", fmt.Errorf("write file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close file: %w", err)
 	}
 
 	// 返回可访问的 URL

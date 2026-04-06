@@ -33,14 +33,20 @@ func (p *Pipeline) TryResolveConflict(ctx context.Context, userText string, acti
 	return p.tryResolveConflict(ctx, userText, actions)
 }
 
-// BuildTaskListContext calls the unexported buildTaskListContext method.
+// BuildTaskListContext calls the ContextManager's buildLayer2TaskList method.
 func (p *Pipeline) BuildTaskListContext() string {
-	return p.buildTaskListContext()
+	if p.contextMgr == nil {
+		p.contextMgr = NewContextManager(p.session)
+	}
+	return p.contextMgr.buildLayer2TaskList()
 }
 
-// BuildPendingQuestionsContext calls the unexported buildPendingQuestionsContext method.
+// BuildPendingQuestionsContext calls the ContextManager's buildLayer3PendingQuestions method.
 func (p *Pipeline) BuildPendingQuestionsContext() string {
-	return p.buildPendingQuestionsContext()
+	if p.contextMgr == nil {
+		p.contextMgr = NewContextManager(p.session)
+	}
+	return p.contextMgr.buildLayer3PendingQuestions()
 }
 
 // DrainContextQueue calls the unexported drainContextQueue method.
@@ -191,11 +197,6 @@ func IsSentenceEnd(s string) bool {
 // Truncate calls the unexported truncate function.
 func Truncate(s string, maxLen int) string {
 	return truncate(s, maxLen)
-}
-
-// FormatProfileSummary calls the unexported formatProfileSummary function.
-func FormatProfileSummary(profile *UserProfile) string {
-	return formatProfileSummary(profile)
 }
 
 // DecodeAPIData calls the unexported decodeAPIData function.

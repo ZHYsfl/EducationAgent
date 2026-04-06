@@ -80,40 +80,45 @@ func (h *DocumentHandler) IndexDocument(c *gin.Context) {
 		defer rc.Close()
 		hashed := sha256.New()
 		if data, rerr := io.ReadAll(rc); rerr == nil {
-			hashed.Write(data)
-			contentHash := hex.EncodeToString(hashed.Sum(nil))
-			// 内容指纹存在 → 内容重复
-			if exists, _ := h.pg.ContentHashExists(userID, contentHash); exists {
-				util.Fail(c, util.CodeConflict, "相同内容已索引，请勿重复上传")
-				return
-			}
-			// 先创建文档记录（此时状态为 processing）
-			doc := &model.KBDocument{
-				DocID:        util.NewID("doc_"),
-				CollectionID: req.CollectionID,
-				FileID:       req.FileID,
-				Title:        req.Title,
-				DocType:      req.FileType,
-				ChunkCount:   0,
-				Status:       "processing",
-				CreatedAt:    time.Now().UnixMilli(),
-			}
-			if err := h.pg.CreateDocument(doc); err != nil {
-				util.Fail(c, util.CodeInternalError, "创建文档记录失败: "+err.Error())
-				return
-			}
-			// 索引成功后再写入内容指纹
-			// 注意：指纹在 worker 索引成功后由 worker 写入（避免 worker 失败时留下孤立指纹）
-			// 这里先提交 worker 任务即可
-			h.w.Submit(worker.IndexJob{
-				DocID:        doc.DocID,
-				CollectionID: req.CollectionID,
-				UserID:       userID,
-				FileURL:      req.FileURL,
-				FileType:     req.FileType,
-				Title:        doc.Title,
-				Content:       hex.EncodeToString(hashed.Sum(nil)), // 传递 content hash
-			})
+		hashed.Write(data)
+		contentHash := hex.EncodeToString(hashed.Sum(nil))
+		// 内容指纹存在 → 内容重复
+		if exists, _ := h.pg.ContentHashExists(userID, contentHash); exists {
+			util.Fail(c, util.CodeConflict, "相同内容已索引，请勿重复上传")
+			return
+		}
+		// BUG 4.2 修复：内容哈希命中路径也需设置 title 兜底
+		docTitle := req.Title
+		if docTitle == "" {
+			docTitle = req.FileID
+		}
+		// 先创建文档记录（此时状态为 processing）
+		doc := &model.KBDocument{
+			DocID:        util.NewID("doc_"),
+			CollectionID: req.CollectionID,
+			FileID:       req.FileID,
+			Title:        docTitle,
+			DocType:      req.FileType,
+			ChunkCount:   0,
+			Status:       "processing",
+			CreatedAt:    time.Now().UnixMilli(),
+		}
+		if err := h.pg.CreateDocument(doc); err != nil {
+			util.Fail(c, util.CodeInternalError, "创建文档记录失败: "+err.Error())
+			return
+		}
+		// 索引成功后再写入内容指纹
+		// 注意：指纹在 worker 索引成功后由 worker 写入（避免 worker 失败时留下孤立指纹）
+		// BUG 4.3 修复：直接复用已计算的 contentHash，不再重复调用 Sum(nil)
+		h.w.Submit(worker.IndexJob{
+			DocID:        doc.DocID,
+			CollectionID: req.CollectionID,
+			UserID:       userID,
+			FileURL:      req.FileURL,
+			FileType:     req.FileType,
+			Title:        doc.Title,
+			Content:       contentHash, // 传递预计算的 content hash
+		})
 			util.OK(c, gin.H{"doc_id": doc.DocID, "status": doc.Status})
 			return
 		}
@@ -200,3 +205,4 @@ func (h *DocumentHandler) DeleteDocument(c *gin.Context) {
 	}
 	c.JSON(200, gin.H{"code": 200, "message": "deleted"})
 }
+

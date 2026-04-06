@@ -77,19 +77,23 @@ type IndexDocumentRequest struct {
 }
 
 // KBQueryRequest POST /api/v1/kb/query
+// 支持两种模式：
+//   - 异步模式（传 session_id）：立即返回 accepted:true，完成后回调 voice-agent
+//   - 同步模式（不传 session_id）：立即返回 summary
 type KBQueryRequest struct {
-	CollectionID   string            `json:"collection_id"`
-	UserID         string            `json:"user_id"`
-	Query          string            `json:"query"`
-	TopK           int               `json:"top_k"`
-	ScoreThreshold float64           `json:"score_threshold"`
-	Filters        map[string]string `json:"filters,omitempty"`
+	SessionID     string            `json:"session_id,omitempty"`    // 异步回调关联 ID（不传则走同步摘要模式）
+	UserID         string            `json:"user_id"`                // 必填
+	Query          string            `json:"query"`                  // 必填
+	TopK           int               `json:"top_k"`                  // 可选，默认 5
+	ScoreThreshold float64           `json:"score_threshold"`         // 可选，默认 0.5
+	CollectionID   string            `json:"collection_id,omitempty"` // 可选，空=搜索用户所有集合
+	Filters        map[string]any    `json:"filters,omitempty"`       // 可选，检索过滤器
 
 	// 高级检索选项
-	Hybrid       bool    `json:"hybrid,omitempty"`        // 启用混合检索（向量+BM25）
-	DenseWeight  float32 `json:"dense_weight,omitempty"`  // Hybrid 时 dense 向量权重，默认 0.5
-	Rerank       bool    `json:"rerank,omitempty"`        // 启用 Rerank 重排序
-	RerankTopK   int     `json:"rerank_top_k,omitempty"`  // Rerank 后保留结果数，默认 20
+	Hybrid     bool    `json:"hybrid,omitempty"`        // 启用混合检索（向量+BM25关键词）
+	DenseWeight float32 `json:"dense_weight,omitempty"`  // Hybrid 时 dense 向量权重，默认 0.5
+	Rerank     bool    `json:"rerank,omitempty"`        // 启用 Jina rerank 重排序
+	RerankTopK int     `json:"rerank_top_k,omitempty"`   // Rerank 后保留结果数，默认 20
 }
 
 // KBQueryResponse POST /api/v1/kb/query 响应
@@ -98,11 +102,28 @@ type KBQueryResponse struct {
 	Total  int              `json:"total"`
 }
 
+// QueryChunksRequest POST /api/v1/kb/query-chunks
+// 关键词检索：记忆模块 / PPT Agent 调用，同步返回 chunk 列表
+// 传 user_id → 同时检索用户个人知识库；不传 → 仅检索专业知识库
+type QueryChunksRequest struct {
+	UserID         string   `json:"user_id,omitempty"`    // 可选，不传则仅查专业知识库
+	Keywords       []string `json:"keywords"`             // 必填，关键词列表
+	TopK           int      `json:"top_k"`              // 可选，默认 5
+	ScoreThreshold float64  `json:"score_threshold"`       // 可选，默认 0.5
+	CollectionID   string   `json:"collection_id,omitempty"` // 可选
+}
+
+// QueryChunksResponse POST /api/v1/kb/query-chunks 响应
+type QueryChunksResponse struct {
+	Chunks []RetrievedChunk `json:"chunks"`
+	Total  int              `json:"total"`
+}
+
 // IngestFromSearchRequest POST /api/v1/kb/ingest-from-search
 type IngestFromSearchRequest struct {
-	UserID       string              `json:"user_id"`
-	CollectionID string              `json:"collection_id,omitempty"`
-	Items        []SearchIngestItem  `json:"items"`
+	UserID       string              `json:"user_id,omitempty"`     // 可选，有则入用户个人库，无则入公共库
+	CollectionID string              `json:"collection_id,omitempty"` // 可选
+	Items        []SearchIngestItem  `json:"items"`                  // 必填
 }
 
 // SearchIngestItem 搜索结果条目
