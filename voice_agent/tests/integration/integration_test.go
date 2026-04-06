@@ -11,7 +11,6 @@ import (
 
 type mockExternalServices struct{}
 
-
 func (m *mockExternalServices) InitPPT(ctx context.Context, req types.PPTInitRequest) (types.PPTInitResponse, error) {
 	return types.PPTInitResponse{TaskID: "test_task"}, nil
 }
@@ -48,9 +47,8 @@ func (m *mockExternalServices) NotifyVADEvent(ctx context.Context, event types.V
 	return nil
 }
 
-
 func TestProtocolIntegration(t *testing.T) {
-	parser := protocol.Parser{}
+	parser := protocol.NewParser()
 
 	input := "好的，我来帮您创建PPT。@{ppt_init|topic:AI|desc:测试}"
 	result := parser.Feed(input)
@@ -85,5 +83,3 @@ func TestContextEnqueue(t *testing.T) {
 		t.Error("timeout waiting for message")
 	}
 }
-
-
