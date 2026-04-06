@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
 	"multimodal-teaching-agent/oss"
 )
 
@@ -18,6 +19,7 @@ func NewAppForTest(db *gorm.DB, storage oss.Storage) *App {
 		searchProvider: "serpapi",
 		searchStrategy: "merge",
 		searchTimeout:  15 * time.Second,
+		httpCallback:   &http.Client{Timeout: 10 * time.Second},
 	}
 	a.searchProviders, _ = buildSearchProviders("", a.searchProvider, "", "", "https://metaso.cn/api/open/search")
 	return a

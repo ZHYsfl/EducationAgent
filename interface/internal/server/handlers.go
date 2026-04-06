@@ -176,7 +176,7 @@ func (a *App) deleteFile(c *gin.Context) {
 		fail(c, 50000, "删除事务提交失败")
 		return
 	}
-	ok(c, gin.H{"deleted": true, "file_id": fileID})
+	okWithoutData(c)
 }
 
 func (a *App) createSession(c *gin.Context) {
@@ -250,9 +250,6 @@ func (a *App) getSession(c *gin.Context) {
 
 func (a *App) listSessions(c *gin.Context) {
 	userID := c.Query("user_id")
-	if userID == "" {
-		userID = userIDFromContext(c)
-	}
 	if userID == "" || !strings.HasPrefix(userID, "user_") {
 		fail(c, 40001, "参数 user_id 非法")
 		return
@@ -335,7 +332,9 @@ func (a *App) updateSession(c *gin.Context) {
 func (a *App) searchQuery(c *gin.Context) {
 	var req struct {
 		RequestID  string `json:"request_id"`
+		TaskID     string `json:"task_id"`
 		UserID     string `json:"user_id"`
+		SessionID  string `json:"session_id"`
 		Query      string `json:"query"`
 		MaxResults int    `json:"max_results"`
 		Language   string `json:"language"`
@@ -344,12 +343,24 @@ func (a *App) searchQuery(c *gin.Context) {
 		fail(c, 40001, "请求体格式错误")
 		return
 	}
+	if strings.TrimSpace(req.TaskID) == "" {
+		fail(c, 40001, "参数 task_id 必填")
+		return
+	}
 	if req.UserID == "" {
 		fail(c, 40001, "参数 user_id 必填")
 		return
 	}
+	if strings.TrimSpace(req.SessionID) == "" {
+		fail(c, 40001, "参数 session_id 必填")
+		return
+	}
 	if req.Query == "" {
 		fail(c, 40001, "参数 query 必填")
+		return
+	}
+	if !strings.HasPrefix(strings.TrimSpace(req.TaskID), "task_") {
+		fail(c, 40001, "参数 task_id 非法")
 		return
 	}
 	if !strings.HasPrefix(req.UserID, "user_") {
@@ -366,8 +377,14 @@ func (a *App) searchQuery(c *gin.Context) {
 		req.RequestID = newID("search_")
 	}
 	if req.Language == "" {
-		req.Language = "zh"
+		req.Language = "zh-CN"
 	}
+	sid := strings.TrimSpace(req.SessionID)
+	if !strings.HasPrefix(sid, "sess_") {
+		fail(c, 40001, "参数 session_id 非法")
+		return
+	}
+	tid := strings.TrimSpace(req.TaskID)
 
 	var dup SearchRequestModel
 	if err := a.db.Where("request_id = ?", req.RequestID).First(&dup).Error; err == nil {
@@ -381,6 +398,8 @@ func (a *App) searchQuery(c *gin.Context) {
 	n := nowMs()
 	rec := SearchRequestModel{
 		RequestID: req.RequestID,
+		TaskID:    tid,
+		SessionID: sid,
 		UserID:    req.UserID,
 		Query:     req.Query,
 		Status:    "pending",
@@ -395,7 +414,7 @@ func (a *App) searchQuery(c *gin.Context) {
 		return
 	}
 
-	go a.runSearchJob(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language)
+	go a.runSearchJob(req.RequestID, tid, req.UserID, req.Query, req.MaxResults, req.Language)
 
 	ok(c, gin.H{
 		"request_id": req.RequestID,
@@ -431,6 +450,8 @@ func (a *App) searchResult(c *gin.Context) {
 	}
 	ok(c, gin.H{
 		"request_id": rec.RequestID,
+		"task_id":    rec.TaskID,
+		"session_id": rec.SessionID,
 		"status":     NormalizeStoredStatusForSection8(rec.Status),
 		"results":    results,
 		"summary":    rec.Summary,

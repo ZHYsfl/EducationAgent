@@ -45,6 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_file_delete_jobs_status ON file_delete_jobs(statu
 
 CREATE TABLE IF NOT EXISTS search_requests (
     request_id VARCHAR(64) PRIMARY KEY,
+    task_id VARCHAR(64) NOT NULL DEFAULT '',
+    session_id VARCHAR(64) NOT NULL DEFAULT '',
     user_id VARCHAR(64) NOT NULL,
     query TEXT NOT NULL,
     status VARCHAR(16) NOT NULL,
@@ -57,10 +59,14 @@ CREATE TABLE IF NOT EXISTS search_requests (
 
 CREATE INDEX IF NOT EXISTS idx_search_user ON search_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_search_status ON search_requests(status);
+CREATE INDEX IF NOT EXISTS idx_search_task ON search_requests(task_id);
+CREATE INDEX IF NOT EXISTS idx_search_session ON search_requests(session_id);
 
 ALTER TABLE files ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT '';
 ALTER TABLE files ADD COLUMN IF NOT EXISTS checksum VARCHAR(128) NOT NULL DEFAULT '';
 ALTER TABLE file_delete_jobs ADD COLUMN IF NOT EXISTS object_key VARCHAR(1024) NOT NULL DEFAULT '';
+ALTER TABLE search_requests ADD COLUMN IF NOT EXISTS task_id VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE search_requests ADD COLUMN IF NOT EXISTS session_id VARCHAR(64) NOT NULL DEFAULT '';
 
 DROP TRIGGER IF EXISTS after_files_delete_enqueue_job ON files;
 DROP FUNCTION IF EXISTS trg_enqueue_file_delete_job();
