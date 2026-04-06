@@ -69,6 +69,9 @@ type Pipeline struct {
 	// ========== Protocol Handling ==========
 	executor *executor.Executor
 	parser   *protocol.Parser
+
+	// ========== Context Management ==========
+	contextMgr *ContextManager
 }
 
 func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.ExternalServices) *Pipeline {
@@ -107,6 +110,7 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 	}
 
 	p.executor = executor.New(clients)
+	p.contextMgr = NewContextManager(session)
 
 	return p
 }
