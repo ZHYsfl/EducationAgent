@@ -109,8 +109,6 @@ type ContextSnapshot struct {
     // 对话历史
     ConversationHistory []ConversationTurn `json:"conversation_history"`
     
-    // 用户画像（如果有）
-    UserProfile *UserProfile `json:"user_profile,omitempty"`
 }
 
 // TaskInfo 任务信息摘要
@@ -152,7 +150,7 @@ func (cm *ContextManager) BuildPrompt(includeContextQueue bool) string {
     if cm.snapshot.Requirements != nil && 
        (cm.snapshot.Requirements.Status == "collecting" || 
         cm.snapshot.Requirements.Status == "ready") {
-        sb.WriteString(cm.snapshot.Requirements.BuildRequirementsSystemPrompt(nil))
+        sb.WriteString(cm.snapshot.Requirements.BuildRequirementsSystemPrompt())
     } else {
         sb.WriteString(cm.baseSystemPrompt)
     }

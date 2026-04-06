@@ -102,7 +102,7 @@ func (cm *ContextManager) buildLayer1BasePrompt(baseSystemPrompt string) string 
 	cm.session.reqMu.RUnlock()
 
 	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
-		return reqSnapshot.BuildRequirementsSystemPrompt(nil)
+		return reqSnapshot.BuildRequirementsSystemPrompt()
 	}
 
 	return baseSystemPrompt

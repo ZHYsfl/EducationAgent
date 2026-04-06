@@ -60,6 +60,15 @@ func findSessionByTaskID(taskID string) *Session {
 	return nil
 }
 
+func findSessionByTaskOrSessionID(taskID string) *Session {
+	if s := findSessionByTaskID(taskID); s != nil {
+		return s
+	}
+	sessionRegistryMu.RLock()
+	defer sessionRegistryMu.RUnlock()
+	return sessionRegistry[taskID]
+}
+
 // RegisterTask registers a task_id → session_id mapping in the global index.
 // Exported for use in tests from tests/agent (package agent_test).
 func RegisterTask(taskID, sessionID string) {
@@ -192,7 +201,7 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, 40001, "session_id is required")
 		return
 	}
-	s := findSessionByTaskID(req.TaskID)
+	s := findSessionByTaskOrSessionID(req.TaskID)
 	if s == nil || s.pipeline == nil {
 		writeSuccess(w, http.StatusOK, map[string]any{
 			"accepted":  true,
@@ -220,6 +229,12 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		priority = "high"
 	}
 	content := strings.TrimSpace(req.TTSText)
+	if content == "" {
+		switch msgType {
+		case "kb_result", "search_result":
+			content = strings.TrimSpace(req.Summary)
+		}
+	}
 	if content == "" {
 		content = "PPT 状态已更新"
 	}

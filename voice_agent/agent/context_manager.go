@@ -29,9 +29,6 @@ type ContextSnapshot struct {
 
 	// 对话历史
 	ConversationHistory []SnapshotConversationTurn `json:"conversation_history"`
-
-	// 用户画像（如果有）
-	UserProfile *UserProfile `json:"user_profile,omitempty"`
 }
 
 // TaskInfo 任务信息摘要
@@ -156,11 +153,6 @@ func (cm *ContextManager) Export() ContextSnapshot {
 			})
 		}
 	}
-
-	// 6. UserProfile (Session 中没有 profile 字段，暂时留空)
-	// if cm.session.profile != nil {
-	// 	snapshot.UserProfile = cm.session.profile
-	// }
 
 	return snapshot
 }
