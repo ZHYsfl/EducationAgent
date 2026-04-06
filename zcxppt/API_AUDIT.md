@@ -5,7 +5,7 @@
 
 ## 1. 接口使用情况总览
 
-### 1.1 正在使用的接口 ✅
+### 1.1 外部 API（4个，由 Voice Agent 调用）
 
 | 接口路径 | 方法 | 调用方 | 用途 |
 |---------|------|--------|------|
@@ -14,45 +14,19 @@
 | `/api/v1/canvas/status` | GET | Voice Agent | 获取画布状态 |
 | `/api/v1/canvas/vad-event` | POST | Voice Agent | 通知 VAD 事件 |
 
-**调用位置**: `voice_agent/internal/clients/service_clients.go`
+### 1.2 内部 API（PPT Agent 内部使用，外部不暴露）
 
-### 1.2 未使用的接口
-
-#### A. 应该使用但未使用 ⚠️
-
-| 接口路径 | 方法 | Handler | 功能 | 问题分析 | 建议 |
-|---------|------|---------|------|---------|------|
-| `/api/v1/ppt/generate_pages` | POST | `FeedbackHandler.GeneratePages` | 批量并发生成多个页面 | `/ppt/init` 可能是串行生成页面，效率低 | `/ppt/init` 内部应该调用 `GeneratePages` 实现并发生成 |
-| `/api/v1/internal/feedback/timeout_tick` | POST | `FeedbackHandler.TickTimeout` | 处理超时的冲突解决 | 当用户未回答冲突问题时，需要定时清理 | 添加 cron job 定期调用（建议每分钟） |
-
-#### B. 功能缺失，应该补充 ✅
-
-| 接口路径 | 方法 | Handler | 功能 | 问题分析 | 建议 |
-|---------|------|---------|------|---------|------|
-| `/api/v1/ppt/export` | POST | `ExportHandler.Create` | 创建导出任务（pptx/pdf） | 用户生成完 PPT 后需要下载 | 添加到 Voice Agent 的工具列表 |
-| `/api/v1/ppt/export/:export_id` | GET | `ExportHandler.Get` | 查询导出任务状态 | 配合 export 使用，轮询导出进度 | 添加到 Voice Agent 的工具列表 |
-
-#### C. 可能冗余，需要进一步确认 🤔
-
-| 接口路径 | 方法 | Handler | 功能 | 问题分析 | 建议 |
-|---------|------|---------|------|---------|------|
-| `/api/v1/ppt/page/:page_id/render` | GET | `PPTHandler.PageRender` | 获取单个页面的渲染结果 | `/canvas/status` 已经返回所有页面的 `render_url` | 如果 `render_url` 是完整 URL，此接口冗余；否则保留 |
-
-#### D. 确认为死代码，应该删除 ❌
-
-| 接口路径 | 方法 | Handler | 功能 | 问题分析 | 建议 |
-|---------|------|---------|------|---------|------|
-| `/api/v1/tasks` | POST | `TaskHandler.Create` | 创建任务 | `/ppt/init` 已经创建任务 | **删除** |
-| `/api/v1/tasks/:task_id` | GET | `TaskHandler.Get` | 获取任务详情 | `/canvas/status` 已经获取任务状态 | **删除** |
-| `/api/v1/tasks/:task_id/status` | PUT | `TaskHandler.UpdateStatus` | 更新任务状态 | 任务状态由内部逻辑管理，不应暴露 | **删除** |
-| `/api/v1/tasks` | GET | `TaskHandler.List` | 列出任务列表 | 无调用方，功能重复 | **删除** |
-| `/api/v1/tasks/:task_id/preview` | GET | `PPTHandler.CanvasStatus` | 预览任务（PPT Agent 版本） | Voice Agent 已实现自己的 preview 接口 | **删除** |
-
-**注意**: Voice Agent 有自己的 `GET /api/v1/tasks/{task_id}/preview` 接口（在 `voice_agent/main.go` 中实现），它内部调用 PPT Agent 的 `/canvas/status`，然后做数据转换。PPT Agent 的 `/tasks/:task_id/preview` 路由从未被调用。
+| 接口路径 | 方法 | 功能 | 调用方 |
+|---------|------|------|--------|
+| `/internal/feedback/generate_pages` | POST | 批量并发生成多个页面 | PPT Agent 内部 Init 时调用 |
+| `/internal/feedback/timeout_tick` | POST | 处理超时的冲突问答（已废弃） | **已废弃**，改用内部 goroutine |
+| `/internal/ppt/export` | POST | 创建导出任务 | Voice Agent 调用工具时 |
+| `/internal/ppt/export/:export_id` | GET | 查询导出任务状态 | Voice Agent 轮询时 |
+| `/internal/ppt/page/:page_id/render` | GET | 获取单个页面渲染结果 | 内部/调试用 |
 
 ## 2. 详细分析
 
-### 2.1 `/api/v1/ppt/generate_pages` 未被使用的原因
+### 2.1 `/internal/feedback/generate_pages` 内部并发生成
 
 **代码位置**: `zcxppt/internal/http/handlers/feedback_handler.go:82-119`
 
@@ -65,69 +39,35 @@ func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
 }
 ```
 
-**问题**:
-- `/ppt/init` 初始化时需要生成 `total_pages` 个页面
-- 如果串行生成，20 页可能需要几分钟
-- `GeneratePages` 提供了并发生成能力，但未被 `Init` 调用
+**使用场景**: `POST /api/v1/ppt/init` 初始化时，在 PPT Agent 内部调用 `GeneratePages` 并发生成所有页面。
 
-**建议**:
+### 2.2 冲突问答超时处理：内部 Goroutine
+
+**代码位置**: `zcxppt/cmd/server/main.go`
+
+**方案**: PPT Agent 启动时在后台启动一个 goroutine，每 45 秒检查一次超时的冲突问答。
+
 ```go
-// pptService.Init() 内部应该：
-func (s *PPTService) Init(req model.PPTInitRequest) (string, string, error) {
-    // 1. 创建任务
-    taskID := createTask(req)
-    
-    // 2. 调用 GeneratePages 并发生成所有页面
-    batchReq := model.BatchGeneratePagesRequest{
-        TaskID:        taskID,
-        BaseTimestamp: time.Now().UnixMilli(),
-        RawText:       req.Description,
-        Intents:       buildInitialIntents(req.TotalPages),
-    }
-    s.feedbackService.GeneratePages(ctx, batchReq)
-    
-    return taskID, "processing", nil
-}
-```
-
-### 2.2 `/api/v1/internal/feedback/timeout_tick` 未被使用的原因
-
-**代码位置**: `zcxppt/internal/http/handlers/feedback_handler.go:73-79`
-
-**功能**:
-```go
-func (h *FeedbackHandler) TickTimeout(c *gin.Context) {
-    // 处理超时的冲突解决
-    // 扫描所有 suspended_for_human 状态且超时的页面
-    // 自动降级处理或标记为失败
-}
-```
-
-**问题**:
-- 当 LLM 生成的页面有冲突时，会进入 `suspended_for_human` 状态
-- 如果用户长时间不回答，这些页面会一直挂起
-- 需要定时任务清理超时的挂起状态
-
-**建议**:
-1. 使用系统 cron 或 Kubernetes CronJob 定期调用
-2. 或者在 PPT Agent 内部启动 goroutine 定时调用
-3. 建议频率：每 1 分钟检查一次
-
-**实现示例**（内部定时器）:
-```go
-// cmd/server/main.go
 func startTimeoutTicker(feedbackService *service.FeedbackService) {
-    ticker := time.NewTicker(1 * time.Minute)
     go func() {
+        ticker := time.NewTicker(45 * time.Second)
+        defer ticker.Stop()
         for range ticker.C {
             ctx := context.Background()
             if err := feedbackService.ProcessTimeoutTick(ctx); err != nil {
-                log.Printf("timeout tick failed: %v", err)
+                log.Printf("[timeout_ticker] tick failed: %v", err)
             }
         }
     }()
 }
 ```
+
+**ProcessTimeoutTick 逻辑**:
+1. 查询所有已到期的挂起项（`ListExpiredSuspends`）
+2. 重试次数 < 3：增加重试次数，重新设置 45 秒后过期，发送 `conflict_question` 消息（**高优先级**）
+3. 重试次数已达 3 次：标记解决，取队列中下一个 pending 项继续处理
+
+**不需要外部 cron 调用** `/internal/feedback/timeout_tick`，该路由保留仅用于调试/手动触发。
 
 ### 2.3 导出功能缺失
 
@@ -178,70 +118,69 @@ func startTimeoutTicker(feedbackService *service.FeedbackService) {
 
 ## 3. 行动计划
 
-### 3.1 立即执行（本次清理）
+### 3.1 已完成
 
-- [x] 删除 `POST /api/v1/tasks`
-- [x] 删除 `GET /api/v1/tasks/:task_id`
-- [x] 删除 `PUT /api/v1/tasks/:task_id/status`
-- [x] 删除 `GET /api/v1/tasks`
-- [x] 删除 `GET /api/v1/tasks/:task_id/preview`
+- [x] 删除 `POST /api/v1/tasks` 等死代码接口
 - [x] 删除 `TaskHandler` 及相关代码
+- [x] 将内部接口统一迁移到 `/internal/` 前缀
+- [x] 实现 `startTimeoutTicker` goroutine，替代外部 cron
 
 ### 3.2 后续优化（待实现）
 
 #### 优先级 P0（核心功能缺失）
 - [ ] 添加导出功能到 Voice Agent 工具列表
-- [ ] 实现 timeout_tick 定时任务
-
-#### 优先级 P1（性能优化）
 - [ ] `/ppt/init` 内部调用 `GeneratePages` 实现并发生成
-- [ ] 性能测试：对比串行 vs 并发生成时间
 
-#### 优先级 P2（代码清理）
+#### 优先级 P1（代码清理）
 - [ ] 确认 `PageRender` 是否冗余，如果是则删除
 - [ ] 更新 API 文档，移除已删除的接口
 
 ## 4. 风险评估
 
-### 4.1 删除 `/tasks/*` 的风险
-
-**风险等级**: 🟢 低
-
-**理由**:
-1. 代码搜索确认无任何调用方
-2. Voice Agent 不依赖这些接口
-3. 前端（如果有）也不直接调用 PPT Agent
-
-**回滚方案**:
-- Git 历史中保留完整代码
-- 如果发现遗漏的调用方，可以快速恢复
-
-### 4.2 添加导出功能的风险
+### 4.1 路由变更的风险
 
 **风险等级**: 🟡 中
 
 **理由**:
-1. 需要实现文件生成逻辑（python-pptx）
-2. 需要处理大文件上传到 OSS
-3. 需要异步任务队列
+1. 外部 4 个 API 路径不变，Voice Agent 无需修改
+2. `/internal/` 下的接口路径有变化（如 `/internal/feedback/generate_pages`），需要确保 PPT Agent 内部调用方同步更新
 
-**建议**:
-- 先实现 pptx 导出（python-pptx 库成熟）
-- pdf 导出可以后续添加（需要 LibreOffice 或其他转换工具）
+**回滚方案**:
+- Git 历史中保留完整代码
+
+### 4.2 内部 Goroutine 风险
+
+**风险等级**: 🟢 低
+
+**理由**:
+1. goroutine 独立运行，不影响 HTTP 请求处理
+2. `ProcessTimeoutTick` 内部有 `timeoutTickMu` 互斥锁保证并发安全
 
 ## 5. 附录
 
-### 5.1 相关文件清单
+### 5.1 路由结构
+
+```
+外部 API（Voice Agent 调用）:
+  POST /api/v1/ppt/init
+  POST /api/v1/ppt/feedback
+  GET  /api/v1/canvas/status
+  POST /api/v1/canvas/vad-event
+
+内部 API（PPT Agent 内部使用）:
+  POST /internal/feedback/generate_pages   # Init 时内部调用
+  POST /internal/feedback/timeout_tick      # 手动触发/调试（正常由 goroutine 调用）
+  POST /internal/ppt/export
+  GET  /internal/ppt/export/:export_id
+  GET  /internal/ppt/page/:page_id/render
+```
+
+### 5.2 相关文件清单
 
 **需要修改的文件**:
-- `zcxppt/internal/http/router.go` - 删除路由定义
-- `zcxppt/internal/http/handlers/task_handler.go` - 删除整个文件
-- `zcxppt/internal/service/task_service.go` - 检查是否还需要
-- `zcxppt/cmd/server/main.go` - 删除 TaskHandler 初始化
-
-**需要保留的文件**:
-- `zcxppt/internal/repository/task_repository.go` - 任务存储逻辑仍需要
-- `zcxppt/internal/model/*` - 数据模型仍需要
+- `zcxppt/internal/http/router.go` - 重组路由分组
+- `zcxppt/cmd/server/main.go` - 添加 `startTimeoutTicker` 启动函数
+- `zcxppt/API_AUDIT.md` - 更新文档
 
 ### 5.2 测试清单
 
@@ -254,6 +193,6 @@ func startTimeoutTicker(feedbackService *service.FeedbackService) {
 
 ---
 
-**审计人**: Claude  
-**审核状态**: 待执行  
+**审计人**: Claude
+**审核状态**: 已执行
 **最后更新**: 2026-04-06
