@@ -44,6 +44,10 @@ func (h *IngestHandler) IngestFromSearch(c *gin.Context) {
 		return
 	}
 
+	// 链路追踪日志：便于从调用方 task_id/session_id 串联入库行为
+	log.Printf("[IngestFromSearch] task_id=%s session_id=%s user_id=%s items=%d",
+		req.TaskID, req.SessionID, req.UserID, len(req.Items))
+
 	// user_id 可选：有则入个人库，无则入公共库
 	userID := req.UserID
 	if userID == "" {
@@ -137,14 +141,23 @@ func (h *IngestHandler) IngestFromSearch(c *gin.Context) {
 		return
 	}
 
+	// task_id 幂等标记：用于防止同一次搜索被重复导入
+	// （当前仅记录，后续可在数据库层扩展唯一索引实现精确幂等）
+	if req.TaskID != "" {
+		log.Printf("[IngestFromSearch] task_id=%s ingested=%d skipped=%d failed=%d",
+			req.TaskID, ingested, skipped, failed)
+	}
+
 	if docIDs == nil {
 		docIDs = []string{}
 	}
 	util.OK(c, gin.H{
-		"ingested": ingested,
-		"skipped":  skipped,
-		"failed":   failed,
-		"doc_ids":  docIDs,
+		"task_id":    req.TaskID,    // 调用方传入的任务ID，用于链路追踪
+		"session_id": req.SessionID, // 调用方传入的会话ID，用于链路追踪
+		"ingested":   ingested,
+		"skipped":    skipped,
+		"failed":     failed,
+		"doc_ids":    docIDs,
 	})
 }
 
