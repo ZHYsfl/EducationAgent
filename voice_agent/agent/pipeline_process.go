@@ -209,8 +209,8 @@ func (p *Pipeline) thinkLoop(ctx context.Context) {
 				continue
 			}
 
-			// 递增间隔 (7, 14, 21, 28...)
-			threshold := ((lastThinkLen / 7) + 1) * 7
+			// 以“上次触发长度”为基准，累计新增 7 字才触发下一次重算。
+			threshold := lastThinkLen + 7
 			if inputLen >= threshold {
 				p.cancelThinkStream()
 				streamCtx, cancel := context.WithCancel(ctx)
