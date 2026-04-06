@@ -181,12 +181,26 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, 40001, "invalid json body")
 		return
 	}
-	if strings.TrimSpace(req.TaskID) == "" {
+	req.TaskID = strings.TrimSpace(req.TaskID)
+	req.SessionID = strings.TrimSpace(req.SessionID)
+	req.RequestID = strings.TrimSpace(req.RequestID)
+	if req.TaskID == "" {
 		writeError(w, http.StatusBadRequest, 40001, "task_id is required")
+		return
+	}
+	if req.SessionID == "" {
+		writeError(w, http.StatusBadRequest, 40001, "session_id is required")
 		return
 	}
 	s := findSessionByTaskID(req.TaskID)
 	if s == nil || s.pipeline == nil {
+		writeSuccess(w, http.StatusOK, map[string]any{
+			"accepted":  true,
+			"delivered": false,
+		})
+		return
+	}
+	if s.SessionID != req.SessionID {
 		writeSuccess(w, http.StatusOK, map[string]any{
 			"accepted":  true,
 			"delivered": false,
@@ -226,6 +240,8 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		MsgType:    msgType,
 		Content:    content,
 		Metadata: map[string]string{
+			"session_id": req.SessionID,
+			"request_id": req.RequestID,
 			"task_id":    req.TaskID,
 			"page_id":    req.PageID,
 			"context_id": req.ContextID,

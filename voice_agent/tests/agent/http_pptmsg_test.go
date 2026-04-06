@@ -1,13 +1,13 @@
 package agent_test
 
 import (
-	agent "voiceagent/agent"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+	agent "voiceagent/agent"
 )
 
 // ===========================================================================
@@ -26,7 +26,7 @@ func TestHandlePPTMessage_PPTStatus(t *testing.T) {
 	agent.RegisterTask("task_msg_1", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_msg_1","msg_type":"ppt_status","tts_text":"生成中","status":"rendering","progress":50}`
+	body := `{"task_id":"task_msg_1","session_id":"sess_ppt_msg","msg_type":"ppt_status","tts_text":"生成中","status":"rendering","progress":50}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestHandlePPTMessage_PageRendered(t *testing.T) {
 	agent.RegisterTask("task_pg", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_pg","msg_type":"page_rendered","page_id":"p1","render_url":"http://r/p1","page_index":0}`
+	body := `{"task_id":"task_pg","session_id":"sess_page_r","msg_type":"page_rendered","page_id":"p1","render_url":"http://r/p1","page_index":0}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestHandlePPTMessage_PPTPreview(t *testing.T) {
 	agent.RegisterTask("task_pv", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_pv","msg_type":"ppt_preview","page_order":["p1","p2"],"pages_info":[{"page_id":"p1","status":"completed","last_update":0,"render_url":"http://r/p1"}]}`
+	body := `{"task_id":"task_pv","session_id":"sess_preview_msg","msg_type":"ppt_preview","page_order":["p1","p2"],"pages_info":[{"page_id":"p1","status":"completed","last_update":0,"render_url":"http://r/p1"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestHandlePPTMessage_ExportReady(t *testing.T) {
 	agent.RegisterTask("task_ex", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_ex","msg_type":"export_ready","download_url":"http://dl/ppt.pptx","format":"pptx"}`
+	body := `{"task_id":"task_ex","session_id":"sess_export","msg_type":"export_ready","download_url":"http://dl/ppt.pptx","format":"pptx"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -146,7 +146,7 @@ func TestHandlePPTMessage_Error(t *testing.T) {
 	agent.RegisterTask("task_err", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_err","msg_type":"error","tts_text":"渲染失败","error_code":50300}`
+	body := `{"task_id":"task_err","session_id":"sess_err","msg_type":"error","tts_text":"渲染失败","error_code":50300}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -175,7 +175,7 @@ func TestHandlePPTMessage_ErrorDefaultCode(t *testing.T) {
 	agent.RegisterTask("task_err2", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_err2","msg_type":"error","tts_text":"出错了"}`
+	body := `{"task_id":"task_err2","session_id":"sess_err2","msg_type":"error","tts_text":"出错了"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -204,7 +204,7 @@ func TestHandlePPTMessage_ConflictQuestion_ForceHighPriority(t *testing.T) {
 	agent.RegisterTask("task_cf", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_cf","msg_type":"conflict_question","tts_text":"用什么颜色？","context_id":"ctx_cf1","priority":"normal"}`
+	body := `{"task_id":"task_cf","session_id":"sess_conflict","msg_type":"conflict_question","tts_text":"用什么颜色？","context_id":"ctx_cf1","priority":"normal"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -240,7 +240,7 @@ func TestHandlePPTMessage_DefaultMsgType(t *testing.T) {
 	agent.RegisterTask("task_df", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_df","tts_text":"通知"}`
+	body := `{"task_id":"task_df","session_id":"sess_default","tts_text":"通知"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -257,7 +257,7 @@ func TestHandlePPTMessage_DefaultMsgType(t *testing.T) {
 }
 
 func TestHandlePPTMessage_NoSession(t *testing.T) {
-	body := `{"task_id":"task_orphan","msg_type":"ppt_status","tts_text":"test"}`
+	body := `{"task_id":"task_orphan","session_id":"sess_orphan","msg_type":"ppt_status","tts_text":"test"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -277,13 +277,55 @@ func TestHandlePPTMessage_NoSession(t *testing.T) {
 }
 
 func TestHandlePPTMessage_EmptyTaskID(t *testing.T) {
-	body := `{"task_id":"","msg_type":"ppt_status"}`
+	body := `{"task_id":"","session_id":"sess_test","msg_type":"ppt_status"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	agent.HandleServiceCallback(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestHandlePPTMessage_EmptySessionID(t *testing.T) {
+	body := `{"task_id":"task_any","session_id":"","msg_type":"ppt_status"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	agent.HandleServiceCallback(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestHandlePPTMessage_SessionMismatch(t *testing.T) {
+	mock := &agent.MockServices{}
+	s := agent.NewTestSession(mock)
+	s.SessionID = "sess_owner"
+	s.RegisterTask("task_mismatch", "test")
+	p := agent.NewTestPipeline(s, mock)
+	_ = p
+
+	agent.RegisterSession(s)
+	agent.RegisterTask("task_mismatch", s.SessionID)
+	defer agent.UnregisterSession(s)
+
+	body := `{"task_id":"task_mismatch","session_id":"sess_other","msg_type":"ppt_status","tts_text":"test"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	agent.HandleServiceCallback(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+
+	var resp agent.APIResponse
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	var data map[string]any
+	_ = json.Unmarshal(resp.Data, &data)
+	if data["delivered"] != false {
+		t.Error("delivered should be false when session_id mismatches task owner")
 	}
 }
 
@@ -318,7 +360,7 @@ func TestHandlePPTMessage_DefaultTTSText(t *testing.T) {
 	agent.RegisterTask("task_notts", s.SessionID)
 	defer agent.UnregisterSession(s)
 
-	body := `{"task_id":"task_notts","msg_type":"ppt_status","status":"done"}`
+	body := `{"task_id":"task_notts","session_id":"sess_notts","msg_type":"ppt_status","status":"done"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/ppt_message", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
