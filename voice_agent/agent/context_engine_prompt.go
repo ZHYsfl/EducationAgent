@@ -11,6 +11,7 @@ const contextEngineProtocolInstructions = `
 
 ## 动作协议
 执行操作时使用: @{type|key:value|key:value}
+## 思考协议
 内部思考使用: #{思考内容}（不显示给用户，用于复杂推理）
 
 ### 内部思考 #{} 使用场景
