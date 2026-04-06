@@ -3,19 +3,38 @@
 本文只做一件事：把当前 Voice Agent 的 context 管理逻辑集中讲清楚，方便你做数据集。
 不改运行逻辑，不讨论可视化。
 
-## 1）唯一主入口
+## 1）唯一拼装函数（不是唯一触发入口）
 
-每轮推理的上下文构造只走一条主线：
+严格来说，只有“拼装函数”是唯一的：  
+所有运行时系统提示词最终都通过 `ContextManager.BuildPrompt(...)` 生成。
 
-- `Pipeline.startProcessing()`
-- -> `buildFullSystemPrompt(ctx, true)`
-- -> `ContextManager.BuildPrompt(...)`
+但触发这件事的入口不止一个，当前有 3 条路径：
+
+1. 文本输入路径（常规）
+- `Session.handleTextInput` -> `Pipeline.startProcessing`
+- `startProcessing` -> `buildFullSystemPrompt(ctx, true)` -> `ContextManager.BuildPrompt(...)`
+
+2. 上下文回灌路径（idle 时触发）
+- `Pipeline.EnqueueContext` -> `processContextUpdate`
+- `processContextUpdate` -> `startProcessing` -> `buildFullSystemPrompt(ctx, true)` -> `ContextManager.BuildPrompt(...)`
+
+3. 语音交互 think 路径
+- `thinkLoop` -> `runThinkStream`
+- `runThinkStream` -> `buildSystemPrompt(ctx)` -> `buildFullSystemPrompt(ctx, false)` -> `ContextManager.BuildPrompt(...)`
 
 代码锚点：
+- `agent/session_ws.go:90`
+- `agent/session_ws.go:101`
 - `agent/pipeline_process.go:13`
 - `agent/pipeline_process.go:18`
+- `agent/pipeline_ctx.go:53`
+- `agent/pipeline_ctx.go:96`
+- `agent/pipeline_ctx.go:102`
+- `agent/pipeline_process.go:271`
+- `agent/pipeline_process.go:289`
+- `agent/pipeline_process.go:290`
 - `agent/pipeline_system_prompt.go:55`
-- `agent/context_manager.go:372`
+- `agent/context_manager.go:254`
 
 ## 2）上下文状态到底存在哪
 
