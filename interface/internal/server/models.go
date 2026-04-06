@@ -56,6 +56,8 @@ func (FileDeleteJobModel) TableName() string { return "file_delete_jobs" }
 
 type SearchRequestModel struct {
 	RequestID string `gorm:"primaryKey;column:request_id;size:64"`
+	TaskID    string `gorm:"column:task_id;size:64;not null;default:'';index:idx_search_task"`
+	SessionID string `gorm:"column:session_id;size:64;not null;default:'';index:idx_search_session"`
 	UserID    string `gorm:"column:user_id;size:64;not null;index:idx_search_user"`
 	Query     string `gorm:"column:query;type:text;not null"`
 	Status    string `gorm:"column:status;size:16;not null;index:idx_search_status"`

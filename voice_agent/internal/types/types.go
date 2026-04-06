@@ -150,6 +150,7 @@ type UserProfile struct {
 type SearchRequest struct {
 	RequestID  string `json:"request_id,omitempty"`
 	UserID     string `json:"user_id"`
+	SessionID  string `json:"session_id,omitempty"` // 供 search-service 回调 Voice Agent 时关联会话
 	Query      string `json:"query"`
 	MaxResults int    `json:"max_results,omitempty"`
 	Language   string `json:"language,omitempty"`

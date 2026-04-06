@@ -47,6 +47,11 @@ func findSessionByTaskID(taskID string) *Session {
 	sessionRegistryMu.RLock()
 	defer sessionRegistryMu.RUnlock()
 
+	// API 约定 task_id 可为 session_id；WebSocket 会话以 session_id 注册，未必在 taskIndex 中。
+	if s, ok := sessionRegistry[taskID]; ok {
+		return s
+	}
+
 	if sid, ok := taskIndex[taskID]; ok {
 		if s, exists := sessionRegistry[sid]; exists {
 			return s
