@@ -142,6 +142,16 @@ type QueryServicer interface {
 	DoQuery(ctx context.Context, req model.KBQueryRequest) ([]model.RetrievedChunk, error)
 }
 
+// DoQuery 实现 QueryServicer，供其他包调用（不带 gin.Context 的同步查询）
+func (h *QueryHandler) DoQuery(ctx context.Context, req model.KBQueryRequest) ([]model.RetrievedChunk, error) {
+	chunks, err := h.vec.SearchChunks(ctx, store.SearchChunksReq{
+		UserID:    req.UserID,
+		QueryText: req.Query,
+		TopK:      req.TopK,
+	})
+	return chunks, err
+}
+
 // Query POST /api/v1/kb/query
 // 支持两种模式：
 //   - 异步模式（传 session_id）：立即返回 accepted:true，完成后回调 voice-agent
@@ -282,7 +292,7 @@ func (h *QueryHandler) doQueryAndSummarize(ctx context.Context, req model.KBQuer
 		if fetchTopK > len(chunks) {
 			fetchTopK = len(chunks)
 		}
-		reranked, err := h.reranker.Rerank(ctx, effectiveQuery, chunks[:fetchTopK)
+		reranked, err := h.reranker.Rerank(ctx, effectiveQuery, chunks[:fetchTopK])
 		if err != nil {
 			log.Printf("[QueryHandler] rerank failed: %v", err)
 		} else {

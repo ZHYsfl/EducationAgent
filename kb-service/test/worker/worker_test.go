@@ -16,7 +16,7 @@ import (
 
 // newWorker 创建测试用 worker（队列大小 16，1 个 goroutine）
 func newWorker(meta *testutil.MockMetaStore, vec *testutil.MockVecStore, emb parser.Embedder) *worker.IndexWorker {
-	return worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 16, 1)
+	return worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), emb, 16, 1, 3)
 }
 
 // waitStatus 轮询等待文档状态变为非 processing，最多等 3 秒
@@ -139,7 +139,7 @@ func TestWorker_QueueFull(t *testing.T) {
 	meta := testutil.NewMockMeta()
 	vec := &testutil.MockVecStore{}
 	// 用 SleepEmbedder 让 worker 处理第 1 个时阻塞，使队列撑满
-	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), &testutil.SleepEmbedder{Dur: 200 * time.Millisecond}, 1, 1)
+	w := worker.NewIndexWorker(meta, vec, parser.NewSimpleParser(""), &testutil.SleepEmbedder{Dur: 200 * time.Millisecond}, 1, 1, 3)
 
 	for i := 0; i < 3; i++ {
 		docID := fmt.Sprintf("doc_qf%d", i)

@@ -141,4 +141,3 @@ func (r *JinaReranker) Rerank(ctx context.Context, query string, chunks []model.
 	})
 	return chunks, nil
 }
-}

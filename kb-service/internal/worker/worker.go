@@ -227,7 +227,7 @@ func (w *IndexWorker) DrainDLQ() {
 			return
 		}
 		log.Printf("[IndexWorker] draining %d DLQ jobs", len(jobs))
-		for _, job := range jobs {
+		for i, job := range jobs {
 			select {
 			case w.queue <- job:
 				log.Printf("[IndexWorker] DLQ replayed doc_id=%s", job.DocID)
