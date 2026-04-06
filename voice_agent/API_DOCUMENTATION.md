@@ -577,13 +577,17 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
 
 ```json
 {
-  "request_id": "string",        // 可选，请求ID
+  "request_id": "string",        // 可选，请求ID（异步追踪）
+  "task_id": "string",           // 必填，任务ID（回调路由主键）
+  "session_id": "string",        // 必填，会话ID（并发隔离/审计）
   "user_id": "string",           // 必填，用户ID
   "query": "string",             // 必填，搜索关键词
-  "max_results": 0,              // 可选，最大结果数，整数，默认10
+  "max_results": 0,                // 可选，最大结果数，整数，默认10
   "language": "string"           // 可选，语言，如 "zh-CN", "en-US"
 }
 ```
+
+**回调路由约定**：搜索服务回调 `POST /api/v1/voice/callback` 时，必须携带同一 `task_id` 与 `session_id`。
 
 **响应格式**:
 
@@ -594,7 +598,7 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
   "data": {
     "request_id": "string",      // 必填，请求ID
     "status": "string",          // 必填，状态，可选值: "success", "failed", "partial"
-    "results": [                 // 可选，搜索结果列表
+    "results": [                   // 可选，搜索结果列表
       {
         "title": "string",       // 必填，标题
         "url": "string",         // 必填，URL
@@ -603,7 +607,7 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
       }
     ],
     "summary": "string",         // 必填，搜索结果摘要
-    "duration": 0                // 可选，搜索耗时（毫秒）
+    "duration": 0                  // 可选，搜索耗时（毫秒）
   }
 }
 ```
@@ -614,6 +618,8 @@ curl -X GET http://memory-service-url/api/v1/memory/working/sess_abc123
 curl -X POST http://search-service-url/api/v1/search/query \
   -H "Content-Type: application/json" \
   -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
     "user_id": "user_001",
     "query": "导数的应用",
     "max_results": 5,
@@ -1228,18 +1234,20 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ```json
 {
-  "task_id": "string",           // 必填，任务ID
+  "task_id": "string",           // 必填，任务ID（路由主键）
+  "session_id": "string",        // 必填，会话ID（并发校验/审计）
+  "request_id": "string",        // 可选，请求ID（异步链路追踪）
   "msg_type": "string",          // 可选，消息类型，默认 "tool_result"
   "priority": "string",          // 可选，优先级，可选值: "normal", "high"，默认 "normal"
   "tts_text": "string",          // 可选，TTS文本，默认 "PPT 状态已更新"
   "status": "string",            // 可选，状态（用于 ppt_status 类型）
-  "progress": 0,                 // 可选，进度（0-100）
+  "progress": 0,                   // 可选，进度（0-100）
   "page_id": "string",           // 可选，页面ID
   "context_id": "string",        // 可选，上下文ID（用于冲突解决）
   "render_url": "string",        // 可选，渲染URL（用于 page_rendered 类型）
-  "page_index": 0,               // 可选，页面索引
+  "page_index": 0,                 // 可选，页面索引
   "page_order": ["string"],      // 可选，页面顺序（用于 ppt_preview 类型）
-  "pages_info": [                // 可选，页面信息列表（用于 ppt_preview 类型）
+  "pages_info": [                  // 可选，页面信息列表（用于 ppt_preview 类型）
     {
       "page_id": "string",
       "status": "string",
@@ -1249,9 +1257,11 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   ],
   "download_url": "string",      // 可选，下载URL（用于 export_ready 类型）
   "format": "string",            // 可选，格式（用于 export_ready 类型）
-  "error_code": 0                // 可选，错误码（用于 error 类型）
+  "error_code": 0                  // 可选，错误码（用于 error 类型）
 }
 ```
+
+**路由约定**：`task_id` 用于定位任务与会话映射，`session_id` 用于并发校验与审计追踪（建议与任务创建时会话一致）。
 
 **msg_type 可选值**:
 
@@ -1287,6 +1297,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "ppt_status",
     "status": "generating",
     "progress": 50,
@@ -1301,6 +1312,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "page_rendered",
     "page_id": "page_003",
     "render_url": "https://cdn.example.com/renders/page_003.png",
@@ -1316,6 +1328,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "conflict_question",
     "page_id": "page_005",
     "context_id": "ctx_abc123",
@@ -1331,6 +1344,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "export_ready",
     "download_url": "https://cdn.example.com/exports/task_001.pptx",
     "format": "pptx",
@@ -1345,6 +1359,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "error",
     "error_code": 50001,
     "tts_text": "生成失败，请重试"
@@ -1358,6 +1373,8 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "request_id": "req_search_001",
     "msg_type": "search_result",
     "tts_text": "已找到相关资料：量子力学的基本原理包括波粒二象性、不确定性原理等"
   }'
@@ -1370,6 +1387,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/callback \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "kb_result",
     "tts_text": "根据知识库，牛顿第二定律表述为：物体的加速度与作用力成正比，与质量成反比"
   }'
