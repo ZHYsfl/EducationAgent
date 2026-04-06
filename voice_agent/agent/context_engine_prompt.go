@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-const protocolInstructions = `
+const contextEngineProtocolInstructions = `
 
 ## 动作协议
 执行操作时使用: @{type|key:value|key:value}
@@ -89,7 +89,7 @@ func (cm *ContextManager) BuildPrompt(baseSystemPrompt string, includeContextQue
 	}
 
 	// Layer 5: Protocol instructions
-	sb.WriteString(protocolInstructions)
+	sb.WriteString(contextEngineProtocolInstructions)
 
 	return sb.String()
 }
