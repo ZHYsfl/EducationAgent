@@ -336,6 +336,7 @@ func (a *App) searchQuery(c *gin.Context) {
 	var req struct {
 		RequestID  string `json:"request_id"`
 		UserID     string `json:"user_id"`
+		SessionID  string `json:"session_id"` // 可选；用于 §4 异步完成后回调 Voice（task_id 使用 session_id）
 		Query      string `json:"query"`
 		MaxResults int    `json:"max_results"`
 		Language   string `json:"language"`
@@ -366,7 +367,12 @@ func (a *App) searchQuery(c *gin.Context) {
 		req.RequestID = newID("search_")
 	}
 	if req.Language == "" {
-		req.Language = "zh"
+		req.Language = "zh-CN"
+	}
+	sid := strings.TrimSpace(req.SessionID)
+	if sid != "" && !strings.HasPrefix(sid, "sess_") {
+		fail(c, 40001, "参数 session_id 非法")
+		return
 	}
 
 	var dup SearchRequestModel
@@ -395,7 +401,7 @@ func (a *App) searchQuery(c *gin.Context) {
 		return
 	}
 
-	go a.runSearchJob(req.RequestID, req.UserID, req.Query, req.MaxResults, req.Language)
+	go a.runSearchJob(req.RequestID, req.UserID, sid, req.Query, req.MaxResults, req.Language)
 
 	ok(c, gin.H{
 		"request_id": req.RequestID,

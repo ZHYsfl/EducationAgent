@@ -43,6 +43,18 @@ func TestSessionRegistry(t *testing.T) {
 	}
 }
 
+func TestFindSessionByTaskID_SessionIDDirect(t *testing.T) {
+	s := agent.NewTestSession(nil)
+	s.SessionID = "sess_direct_1"
+	agent.RegisterSession(s)
+	defer agent.UnregisterSession(s)
+
+	found := agent.FindSessionByTaskID("sess_direct_1")
+	if found == nil || found.SessionID != "sess_direct_1" {
+		t.Fatal("FindSessionByTaskID should resolve task_id equal to session_id (search callback §4)")
+	}
+}
+
 func TestUnregisterSession_CleansTaskIndex(t *testing.T) {
 	s := agent.NewTestSession(nil)
 	s.SessionID = "sess_unreg"

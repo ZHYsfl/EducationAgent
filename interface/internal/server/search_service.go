@@ -93,7 +93,7 @@ func (a *App) markSearchJobPersistFailed(requestID string, duration int64, cause
 	}
 }
 
-func (a *App) runSearchJob(requestID, userID, query string, maxResults int, language string) {
+func (a *App) runSearchJob(requestID, userID, sessionID, query string, maxResults int, language string) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
 	defer cancel()
 	results, summary, duration, pipelineStatus := a.runSearchPipeline(ctx, userID, query, maxResults, language)
@@ -107,16 +107,18 @@ func (a *App) runSearchJob(requestID, userID, query string, maxResults int, lang
 			resultsJSON = string(b)
 		}
 	}
-	err := a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(map[string]interface{}{
+	updErr := a.db.Model(&SearchRequestModel{}).Where("request_id = ?", requestID).Updates(map[string]interface{}{
 		"status":     status,
 		"results":    resultsJSON,
 		"summary":    summary,
 		"duration":   duration,
 		"updated_at": nowMs(),
 	}).Error
-	if err != nil {
-		a.markSearchJobPersistFailed(requestID, duration, err)
+	persistFailed := updErr != nil
+	if persistFailed {
+		a.markSearchJobPersistFailed(requestID, duration, updErr)
 	}
+	a.notifySearchCompletion(requestID, userID, sessionID, pipelineStatus, persistFailed, results, summary)
 }
 
 func (a *App) kbLikelyHasAnswer(userID, query string) (bool, error) {
