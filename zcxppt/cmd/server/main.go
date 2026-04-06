@@ -151,6 +151,8 @@ func main() {
 
 	r := http.NewRouter(pptHandler, feedbackHandler, exportHandler, authMW)
 
+	startTimeoutTicker(feedbackService)
+
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
 	log.Printf("zcxppt service listening on %s", addr)
 	if err := r.Run(addr); err != nil {
@@ -169,4 +171,17 @@ func validateConfig(cfg config.Config) error {
 		return errors.New("INTERNAL_KEY is required")
 	}
 	return nil
+}
+
+func startTimeoutTicker(feedbackService *service.FeedbackService) {
+	go func() {
+		ticker := time.NewTicker(45 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx := context.Background()
+			if err := feedbackService.ProcessTimeoutTick(ctx); err != nil {
+				log.Printf("[timeout_ticker] tick failed: %v", err)
+			}
+		}
+	}()
 }
