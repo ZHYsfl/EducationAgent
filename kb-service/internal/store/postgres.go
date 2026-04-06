@@ -207,8 +207,15 @@ func (s *PostgresStore) UpdateDocumentStatus(docID, status, errMsg string, chunk
 func (s *PostgresStore) DeleteDocument(docID string) (string, error) {
 	ctx := context.Background()
 
+	// BUG 5.4 修复：将读取 content_hash 移入事务内，避免 TOCTOU 竞态导致 DecrDocCount 多减
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	var collID, userID, sourceURL, contentHash string
-	err := s.db.QueryRowContext(ctx,
+	err = tx.QueryRowContext(ctx,
 		`SELECT collection_id, user_id, source_url FROM kb_documents WHERE doc_id=$1`, docID).
 		Scan(&collID, &userID, &sourceURL)
 	if err == sql.ErrNoRows {
@@ -217,15 +224,9 @@ func (s *PostgresStore) DeleteDocument(docID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// 取出内容指纹用于清理
-	_ = s.db.QueryRowContext(ctx,
+	// 事务内读取 content hash
+	_ = tx.QueryRowContext(ctx,
 		`SELECT content_hash FROM kb_content_hashes WHERE doc_id=$1`, docID).Scan(&contentHash)
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback() //nolint:errcheck
 
 	if _, err = tx.ExecContext(ctx, `DELETE FROM kb_documents WHERE doc_id=$1`, docID); err != nil {
 		return "", err
@@ -324,7 +325,7 @@ func (s *PostgresStore) RecordContentHash(userID, contentHash, docID string, cre
 
 // ── DLQ ────────────────────────────────────────────────────────────────────────
 
-func (s *PostgresStore) DLQPush(job store.IndexJob) error {
+func (s *PostgresStore) DLQPush(job IndexJob) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.ExecContext(context.Background(), `
 		INSERT INTO kb_dlq
@@ -335,7 +336,7 @@ func (s *PostgresStore) DLQPush(job store.IndexJob) error {
 	return err
 }
 
-func (s *PostgresStore) DLQPop(count int) ([]store.IndexJob, error) {
+func (s *PostgresStore) DLQPop(count int) ([]IndexJob, error) {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -352,10 +353,10 @@ func (s *PostgresStore) DLQPop(count int) ([]store.IndexJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	var jobs []store.IndexJob
+	var jobs []IndexJob
 	var ids []int64
 	for rows.Next() {
-		var j store.IndexJob
+		var j IndexJob
 		var id int64
 		if err := rows.Scan(&id, &j.DocID, &j.CollectionID, &j.UserID,
 			&j.FileURL, &j.Content, &j.FileType, &j.Title, &j.Retry); err != nil {

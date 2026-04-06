@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"kb-service/internal/llm"
@@ -35,7 +38,7 @@ func newQueryBM25(tokens []string) *queryBM25 {
 	}
 	dl := float64(len(tokens))
 	bm.avgDL = dl
-	N := float64(10000) // 估算总文档数，保证 idf 为正
+	N := float64(10000)
 	bm.idfMap = make(map[string]float64)
 	for term, tf := range freq {
 		idf := math.Log((N - float64(tf) + 0.5) / (float64(tf) + 0.5))
@@ -83,7 +86,6 @@ func queryTokenize(text string) []string {
 		"and": true, "is": true, "for": true, "on": true, "with": true, "as": true,
 		"by": true, "at": true, "from": true, "that": true, "this": true,
 	}
-	// 简单中文字符分词 + 英文 token
 	for _, r := range text {
 		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
 			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) {
@@ -94,7 +96,6 @@ func queryTokenize(text string) []string {
 			}
 		}
 	}
-	// 英文/数字词
 	for _, word := range strings.FieldsFunc(text, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
@@ -107,23 +108,54 @@ func queryTokenize(text string) []string {
 	return tokens
 }
 
-// QueryHandler 处理语义检索接口
-type QueryHandler struct {
-	vec      store.VecStore
-	embedder parser.Embedder
-	refiner  *llm.QueryRefiner // 模糊自然语言 query 意图精化，nil = 不启用
-	reranker Reranker          // Rerank 模型，nil = 不启用
+// Tokenize 导出版，供 qdrant.go 混合检索使用
+func Tokenize(text string) []string {
+	return queryTokenize(text)
 }
 
+// QueryHandler 处理语义检索接口
+type QueryHandler struct {
+	vec          store.VecStore
+	embedder     parser.Embedder
+	refiner      *llm.QueryRefiner
+	reranker     Reranker
+	voiceCBURL   string // voice-agent 回调 URL，异步模式使用
+	httpClient   *http.Client
+}
+
+var _ QueryServicer = (*QueryHandler)(nil)
+
 // NewQueryHandler 创建 QueryHandler
-// reranker 可为 nil，表示不启用 rerank
-func NewQueryHandler(vec store.VecStore, embedder parser.Embedder, refiner *llm.QueryRefiner, reranker Reranker) *QueryHandler {
-	return &QueryHandler{vec: vec, embedder: embedder, refiner: refiner, reranker: reranker}
+func NewQueryHandler(vec store.VecStore, embedder parser.Embedder, refiner *llm.QueryRefiner, reranker Reranker, voiceCallbackURL string) *QueryHandler {
+	return &QueryHandler{
+		vec:        vec,
+		embedder:   embedder,
+		refiner:    refiner,
+		reranker:   reranker,
+		voiceCBURL: voiceCallbackURL,
+		httpClient: &http.Client{Timeout: 10 * 1000000000},
+	}
+}
+
+// QueryServicer 接口：暴露 DoQuery 给其他包调用
+type QueryServicer interface {
+	DoQuery(ctx context.Context, req model.KBQueryRequest) ([]model.RetrievedChunk, error)
+}
+
+// DoQuery 实现 QueryServicer，供其他包调用（不带 gin.Context 的同步查询）
+func (h *QueryHandler) DoQuery(ctx context.Context, req model.KBQueryRequest) ([]model.RetrievedChunk, error) {
+	chunks, err := h.vec.SearchChunks(ctx, store.SearchChunksReq{
+		UserID:    req.UserID,
+		QueryText: req.Query,
+		TopK:      req.TopK,
+	})
+	return chunks, err
 }
 
 // Query POST /api/v1/kb/query
-// 核心 RAG 语义检索接口（规范 §4.3.5）
-// 流程：query → [LLM意图精化] → 向量化 + BM25 → [Hybrid/Rerank] → 结果
+// 支持两种模式：
+//   - 异步模式（传 session_id）：立即返回 accepted:true，完成后回调 voice-agent
+//   - 同步模式（不传 session_id）：立即返回 summary
 func (h *QueryHandler) Query(c *gin.Context) {
 	var req model.KBQueryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -139,17 +171,44 @@ func (h *QueryHandler) Query(c *gin.Context) {
 		return
 	}
 
-	// 默认值
+	// BUG 1.2 修复：top_k 必须 > 0，不传或传 0 应返回参数错误
 	if req.TopK <= 0 {
-		req.TopK = 5
+		util.Fail(c, util.CodeParamError, "top_k 必须大于 0")
+		return
 	}
 	if req.TopK > 20 {
 		req.TopK = 20
 	}
-	if req.ScoreThreshold <= 0 {
-		req.ScoreThreshold = 0.5
+	// BUG 1.3 修复：score_threshold=0.0 表示不设阈值，不再静默覆盖为 0.5
+	// 允许 0.0（不设阈值），但拒绝 >1.0 的非法值
+	if req.ScoreThreshold > 1.0 {
+		util.Fail(c, util.CodeParamError, "score_threshold 不能大于 1.0")
+		return
 	}
 
+	if req.SessionID != "" {
+		// ── 异步模式：立即返回 accepted:true，后台执行检索并回调 ───────────
+		util.OK(c, gin.H{"accepted": true})
+
+		go func() {
+			summary, err := h.doQueryAndSummarize(context.Background(), req)
+			h.sendVoiceCallback(req.SessionID, summary, err)
+		}()
+		return
+	}
+
+	// ── 同步模式：立即执行检索 + 生成摘要 ──────────────────────────────────
+	summary, err := h.doQueryAndSummarize(c.Request.Context(), req)
+	if err != nil {
+		util.Fail(c, util.CodeDependencyUnavailable, err.Error())
+		return
+	}
+
+	util.OK(c, gin.H{"summary": summary})
+}
+
+// doQueryAndSummarize 执行一次完整检索（去重后取 topK 作为摘要上下文）
+func (h *QueryHandler) doQueryAndSummarize(ctx context.Context, req model.KBQueryRequest) (string, error) {
 	hybrid := "false"
 	if req.Hybrid {
 		hybrid = "true"
@@ -159,26 +218,21 @@ func (h *QueryHandler) Query(c *gin.Context) {
 		rerank = "true"
 	}
 
-	// ── 自然语言意图精化 ───────────────────────────────────────────────────
 	effectiveQuery := req.Query
 	if h.refiner != nil {
-		effectiveQuery = h.refiner.Refine(c.Request.Context(), req.Query)
+		effectiveQuery = h.refiner.Refine(ctx, req.Query)
 	}
 
-	// ── 向量化（dense）──────────────────────────────────────────────────
-	vecs, err := h.embedder.Embed(c.Request.Context(), []string{effectiveQuery})
+	vecs, err := h.embedder.Embed(ctx, []string{effectiveQuery})
 	if err != nil {
 		metrics.QueryTotal.WithLabelValues(hybrid, rerank, "embed_error").Inc()
-		util.Fail(c, util.CodeDependencyUnavailable, "向量化失败: "+err.Error())
-		return
+		return "", fmt.Errorf("向量化失败: %w", err)
 	}
 	if len(vecs) == 0 {
 		metrics.QueryTotal.WithLabelValues(hybrid, rerank, "embed_empty").Inc()
-		util.Fail(c, util.CodeDependencyUnavailable, "向量化返回为空")
-		return
+		return "", fmt.Errorf("向量化返回为空")
 	}
 
-	// ── 混合检索：Dense 检索 → 本地 BM25 关键词评分 ────────────────────
 	queryTokens := queryTokenize(effectiveQuery)
 	var sparseIndices []uint32
 	var sparseValues []float32
@@ -187,53 +241,48 @@ func (h *QueryHandler) Query(c *gin.Context) {
 		sparseIndices, sparseValues = bm.Score(queryTokens)
 	}
 
-	// ── 解析过滤器 ───────────────────────────────────────────────────────
 	searchReq := store.SearchChunksReq{
-		Vector:          vecs[0],
-		SparseVector:    sparseIndices,
-		SparseValues:    sparseValues,
+		Vector:         vecs[0],
+		SparseVector:   sparseIndices,
+		SparseValues:   sparseValues,
 		QueryText:      effectiveQuery,
-		UserID:          req.UserID,
-		CollectionID:    req.CollectionID,
-		TopK:            req.TopK,
-		ScoreThreshold:  req.ScoreThreshold,
-		Hybrid:          req.Hybrid,
-		Rerank:          req.Rerank,
-		DenseWeight:     req.DenseWeight,
-		RerankTopK:      req.RerankTopK,
+		UserID:         req.UserID,
+		CollectionID:   req.CollectionID,
+		TopK:           req.TopK,
+		ScoreThreshold: req.ScoreThreshold,
+		Hybrid:         req.Hybrid,
+		Rerank:         req.Rerank,
+		DenseWeight:    req.DenseWeight,
+		RerankTopK:    req.RerankTopK,
 	}
-	// 从请求的 filters 解析（兼容旧的 map 格式）
 	if req.Filters != nil {
 		if v, ok := req.Filters["source_type"]; ok {
-			searchReq.Filters.SourceType = v
+			searchReq.Filters.SourceType = fmt.Sprintf("%v", v)
 		}
 		if v, ok := req.Filters["origin"]; ok {
-			searchReq.Filters.Origin = v
+			searchReq.Filters.Origin = fmt.Sprintf("%v", v)
 		}
 		if v, ok := req.Filters["date_from"]; ok {
-			if f, ok := parseInt64(v); ok {
+			if f, ok := parseInt64(fmt.Sprintf("%v", v)); ok {
 				searchReq.Filters.DateFrom = f
 			}
 		}
 		if v, ok := req.Filters["date_to"]; ok {
-			if f, ok := parseInt64(v); ok {
+			if f, ok := parseInt64(fmt.Sprintf("%v", v)); ok {
 				searchReq.Filters.DateTo = f
 			}
 		}
 	}
 
-	// ── 语义检索 ─────────────────────────────────────────────────────────
-	chunks, err := h.vec.SearchChunks(c.Request.Context(), searchReq)
+	chunks, err := h.vec.SearchChunks(ctx, searchReq)
 	if err != nil {
 		metrics.QueryTotal.WithLabelValues(hybrid, rerank, "search_error").Inc()
-		util.Fail(c, util.CodeDependencyUnavailable, "向量检索失败: "+err.Error())
-		return
+		return "", fmt.Errorf("向量检索失败: %w", err)
 	}
 	if chunks == nil {
 		chunks = []model.RetrievedChunk{}
 	}
 
-	// ── Rerank（语义重排序）──────────────────────────────────────────────
 	if h.reranker != nil && len(chunks) > 0 && req.Rerank {
 		rerankTopK := req.RerankTopK
 		if rerankTopK <= 0 {
@@ -243,22 +292,135 @@ func (h *QueryHandler) Query(c *gin.Context) {
 		if fetchTopK > len(chunks) {
 			fetchTopK = len(chunks)
 		}
-		reranked, err := h.reranker.Rerank(c.Request.Context(), effectiveQuery, chunks[:fetchTopK])
+		reranked, err := h.reranker.Rerank(ctx, effectiveQuery, chunks[:fetchTopK])
 		if err != nil {
-			log.Printf("[QueryHandler] rerank failed, using original results: %v", err)
+			log.Printf("[QueryHandler] rerank failed: %v", err)
 		} else {
 			chunks = reranked
 		}
 	}
 
-	// ── 指标埋点 ────────────────────────────────────────────────────────
 	n := len(chunks)
 	metrics.QueryChunksReturned.WithLabelValues(hybrid).Observe(float64(n))
 	metrics.QueryTotal.WithLabelValues(hybrid, rerank, "success").Inc()
-	log.Printf("[Query] user=%s query=%q hybrid=%v rerank=%v filters=%v results=%d",
-		req.UserID, effectiveQuery, req.Hybrid, req.Rerank, req.Filters, n)
+	log.Printf("[Query] user=%s query=%q hybrid=%v rerank=%v results=%d",
+		req.UserID, effectiveQuery, req.Hybrid, req.Rerank, n)
 
-	util.OK(c, model.KBQueryResponse{
+	// 生成摘要：拼接 chunk 内容作为上下文
+	return h.buildSummary(ctx, effectiveQuery, chunks)
+}
+
+// buildSummary 将 chunks 拼接为摘要字符串
+func (h *QueryHandler) buildSummary(ctx context.Context, query string, chunks []model.RetrievedChunk) (string, error) {
+	if len(chunks) == 0 {
+		return "未找到相关内容。", nil
+	}
+	var sb strings.Builder
+	for i, c := range chunks {
+		if i > 0 {
+			sb.WriteString("\n---\n")
+		}
+		sb.WriteString(c.Content)
+		if i >= 5 {
+			break
+		}
+	}
+	return sb.String(), nil
+}
+
+// sendVoiceCallback 异步回调 voice-agent 的 ppt_message 端点
+func (h *QueryHandler) sendVoiceCallback(sessionID, summary string, err error) {
+	if h.voiceCBURL == "" {
+		log.Printf("[QueryHandler] no voice callback URL configured, skipping callback session=%s", sessionID)
+		return
+	}
+	summaryField := summary
+	if err != nil {
+		summaryField = fmt.Sprintf("检索失败: %v", err)
+	}
+	body := gin.H{
+		"task_id":  sessionID,
+		"msg_type": "kb_result",
+		"summary":  summaryField,
+	}
+	payload, _ := json.Marshal(body)
+	resp, err := h.httpClient.Post(h.voiceCBURL, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("[QueryHandler] voice callback failed session=%s: %v", sessionID, err)
+		return
+	}
+	defer resp.Body.Close()
+	log.Printf("[QueryHandler] voice callback sent session=%s status=%d", sessionID, resp.StatusCode)
+}
+
+// QueryChunks POST /api/v1/kb/query-chunks
+// 关键词检索：记忆模块 / PPT Agent 调用，同步返回 chunk 列表
+// 传 user_id → 同时检索用户个人知识库；不传 → 仅检索专业知识库
+func (h *QueryHandler) QueryChunks(c *gin.Context) {
+	var req model.QueryChunksRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		util.Fail(c, util.CodeParamError, "请求体解析失败: "+err.Error())
+		return
+	}
+	if len(req.Keywords) == 0 {
+		util.Fail(c, util.CodeParamError, "keywords 不能为空")
+		return
+	}
+
+	// BUG 1.2 修复：top_k 必须 > 0
+	if req.TopK <= 0 {
+		util.Fail(c, util.CodeParamError, "top_k 必须大于 0")
+		return
+	}
+	if req.TopK > 20 {
+		req.TopK = 20
+	}
+	// BUG 1.3 修复：score_threshold=0.0 表示不设阈值，不再静默覆盖
+	if req.ScoreThreshold > 1.0 {
+		util.Fail(c, util.CodeParamError, "score_threshold 不能大于 1.0")
+		return
+	}
+
+	// ── 关键词分词 + BM25 评分 ──────────────────────────────────────────────
+	var allTokens []string
+	for _, kw := range req.Keywords {
+		allTokens = append(allTokens, queryTokenize(kw)...)
+	}
+	if len(allTokens) == 0 {
+		allTokens = req.Keywords
+	}
+
+	bm := newQueryBM25(allTokens)
+	sparseIndices, sparseValues := bm.Score(allTokens)
+
+	searchReq := store.SearchChunksReq{
+		SparseVector:   sparseIndices,
+		SparseValues:   sparseValues,
+		QueryText:      strings.Join(req.Keywords, " "),
+		UserID:         req.UserID,
+		CollectionID:   req.CollectionID,
+		TopK:           req.TopK,
+		ScoreThreshold: req.ScoreThreshold,
+		Hybrid:         true, // 混合模式，dense=0 让 BM25 主导
+		DenseWeight:    0,    // dense 权重=0，完全依赖 BM25
+	}
+
+	chunks, err := h.vec.SearchChunks(c.Request.Context(), searchReq)
+	if err != nil {
+		util.Fail(c, util.CodeDependencyUnavailable, "关键词检索失败: "+err.Error())
+		return
+	}
+	if chunks == nil {
+		chunks = []model.RetrievedChunk{}
+	}
+
+	n := len(chunks)
+	metrics.QueryChunksReturned.WithLabelValues("keyword").Observe(float64(n))
+	metrics.QueryTotal.WithLabelValues("keyword", "false", "success").Inc()
+	log.Printf("[QueryChunks] keywords=%v user=%s topk=%d results=%d",
+		req.Keywords, req.UserID, req.TopK, n)
+
+	util.OK(c, model.QueryChunksResponse{
 		Chunks: chunks,
 		Total:  n,
 	})

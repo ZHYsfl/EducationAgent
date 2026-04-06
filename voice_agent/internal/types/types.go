@@ -173,6 +173,9 @@ type SearchResult struct {
 
 type IngestFromSearchRequest struct {
 	UserID       string             `json:"user_id"`
+	SessionID    string             `json:"session_id"`
+	TaskID       string             `json:"task_id"`
+	RequestID    string             `json:"request_id,omitempty"`
 	CollectionID string             `json:"collection_id,omitempty"`
 	Items        []SearchIngestItem `json:"items"`
 }

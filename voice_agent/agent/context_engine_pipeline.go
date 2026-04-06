@@ -5,11 +5,223 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"voiceagent/internal/protocol"
+	"voiceagent/internal/types"
 )
+
+// ---------------------------------------------------------------------------
+// Context Queue Ingress & Routing
+// ---------------------------------------------------------------------------
+
+// EnqueueContext adds a context message to the queue and triggers active push if idle.
+func (p *Pipeline) EnqueueContext(msg types.ContextMessage) {
+	// Handle requirements updates immediately
+	if msg.MsgType == "requirements_updated" {
+		p.handleRequirementsUpdate(msg.Content)
+		return
+	}
+
+	// Handle task_list_update: register task and notify frontend
+	if msg.MsgType == "task_list_update" {
+		taskID := msg.Metadata["task_id"]
+		topic := msg.Metadata["topic"]
+		if taskID != "" {
+			p.session.RegisterTask(taskID, topic)
+			p.session.SetActiveTask(taskID)
+			p.session.SendJSON(WSMessage{
+				Type:         "task_list_update",
+				ActiveTaskID: taskID,
+				Tasks:        p.session.GetOwnedTasks(),
+			})
+		}
+		return
+	}
+
+	if msg.Priority == "high" {
+		select {
+		case p.highPriorityQueue <- msg:
+		default:
+			log.Printf("[ctx] high priority queue full")
+		}
+	} else {
+		select {
+		case p.contextQueue <- msg:
+		default:
+			log.Printf("[ctx] context queue full")
+		}
+	}
+
+	// If current session is idle, actively trigger one round to consume the update.
+	if p.session.GetState() == StateIdle {
+		p.sessionCtxMu.RLock()
+		sCtx := p.sessionCtx
+		p.sessionCtxMu.RUnlock()
+		if sCtx != nil && sCtx.Err() == nil {
+			if p.session.CompareAndSetState(StateIdle, StateProcessing) {
+				go p.processContextUpdate(sCtx, msg)
+			}
+		}
+	}
+}
+
+func (p *Pipeline) processContextUpdate(ctx context.Context, msg types.ContextMessage) {
+	prompt := fmt.Sprintf("新任务结果（%s）: %s", msg.ActionType, msg.Content)
+	p.startProcessing(ctx, prompt)
+}
+
+// IngestContextFromCallback is the single callback ingestion method used by HTTP callback.
+func (p *Pipeline) IngestContextFromCallback(ctx context.Context, msg ContextMessage) {
+	p.enqueueContextMessage(ctx, msg)
+}
+
+func (p *Pipeline) enqueueContextMessage(ctx context.Context, msg ContextMessage) {
+	switch msg.Priority {
+	case "high":
+		select {
+		case p.highPriorityQueue <- msg:
+		case <-ctx.Done():
+		}
+	default:
+		select {
+		case p.contextQueue <- msg:
+		case <-ctx.Done():
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Context Consumption Helpers
+// ---------------------------------------------------------------------------
+
+func (p *Pipeline) drainContextQueue() []ContextMessage {
+	p.pendingMu.Lock()
+	defer p.pendingMu.Unlock()
+
+	msgs := []ContextMessage{}
+	if len(p.pendingContexts) > 0 {
+		msgs = append(msgs, p.pendingContexts...)
+		p.pendingContexts = nil
+	}
+
+	for {
+		select {
+		case msg := <-p.contextQueue:
+			msgs = append(msgs, msg)
+		default:
+			return msgs
+		}
+	}
+}
+
+func FormatContextForLLM(msgs []ContextMessage) string {
+	if len(msgs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n[系统补充信息 - 以下是后台检索到的相关资料，供回答参考]\n")
+	for _, m := range msgs {
+		sb.WriteString(fmt.Sprintf("\n--- 操作: %s | 类型: %s ---\n%s\n", m.ActionType, m.MsgType, m.Content))
+	}
+	return sb.String()
+}
+
+func (p *Pipeline) highPriorityListener(ctx context.Context) {
+	for {
+		select {
+		case msg := <-p.highPriorityQueue:
+			switch msg.MsgType {
+			case "conflict_question", "system_notify":
+				if msg.MsgType == "conflict_question" {
+					p.session.SendJSON(WSMessage{
+						Type:      "conflict_ask",
+						TaskID:    msg.Metadata["task_id"],
+						PageID:    msg.Metadata["page_id"],
+						ContextID: msg.Metadata["context_id"],
+						Question:  msg.Content,
+					})
+				}
+
+				p.session.SetState(StateSpeaking)
+				sentenceCh := make(chan string, 1)
+				sentenceCh <- msg.Content
+				close(sentenceCh)
+				p.ttsWorker(ctx, sentenceCh)
+				p.session.SetState(StateIdle)
+
+				if msg.MsgType == "conflict_question" {
+					pageID := msg.Metadata["page_id"]
+					baseTS := int64(0)
+					if tsStr := msg.Metadata["base_timestamp"]; tsStr != "" {
+						if ts, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
+							baseTS = ts
+						}
+					}
+					p.session.AddPendingQuestion(msg.Metadata["context_id"], msg.Metadata["task_id"], pageID, baseTS, msg.Content)
+				}
+
+				if ctx.Err() != nil {
+					// system_notify interrupted: skip without retry
+					if msg.MsgType == "system_notify" {
+						log.Printf("[high-priority] system_notify interrupted, skipping")
+						continue
+					}
+
+					// conflict_question retry mechanism
+					retries := 0
+					if r, ok := msg.Metadata["_retries"]; ok {
+						fmt.Sscanf(r, "%d", &retries)
+					}
+					retries++
+					if retries > 2 {
+						log.Printf("[high-priority] conflict_question interrupted %d times, demoting to context",
+							retries)
+						p.pendingMu.Lock()
+						p.pendingContexts = append(p.pendingContexts, msg)
+						p.pendingMu.Unlock()
+						continue
+					}
+
+					log.Printf("[high-priority] conflict_question interrupted, will retry (retry=%d)", retries)
+					if msg.Metadata == nil {
+						msg.Metadata = make(map[string]string)
+					}
+					msg.Metadata["_retries"] = fmt.Sprintf("%d", retries)
+
+					// Requeue with non-blocking send
+					select {
+					case p.highPriorityQueue <- msg:
+					default:
+						p.pendingMu.Lock()
+						p.pendingContexts = append(p.pendingContexts, msg)
+						p.pendingMu.Unlock()
+					}
+
+					// Exit if context is cancelled after requeue
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						continue
+					}
+				}
+			default:
+				p.pendingMu.Lock()
+				p.pendingContexts = append(p.pendingContexts, msg)
+				p.pendingMu.Unlock()
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Requirements & Post-processing
+// ---------------------------------------------------------------------------
 
 func (p *Pipeline) handleRequirementsUpdate(jsonData string) {
 	var updates map[string]interface{}
@@ -105,7 +317,7 @@ func buildSummaryText(r *TaskRequirements) string {
 	}
 	fmt.Fprintf(&sb, "【目标受众】%s\n", r.TargetAudience)
 	if len(r.TeachingGoals) > 0 {
-		fmt.Fprintf(&sb, "【教学目标】%s\n", strings.Join(r.TeachingGoals, "；"))
+		fmt.Fprintf(&sb, "【教学目标】%s\n", strings.Join(r.TeachingGoals, "，"))
 	}
 	if len(r.KnowledgePoints) > 0 {
 		fmt.Fprintf(&sb, "【核心知识点】%s\n", strings.Join(r.KnowledgePoints, "、"))
@@ -157,7 +369,6 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 			contextIDs = append(contextIDs, cid)
 		}
 	} else {
-		// 从 actions 中收集所有 resolve_conflict
 		for _, action := range actions {
 			if action.Type == "resolve_conflict" {
 				contextID := action.Params["context_id"]
@@ -166,7 +377,6 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 				}
 			}
 		}
-		// 如果没找到，使用第一个
 		if len(contextIDs) == 0 {
 			for cid := range p.session.PendingQuestions {
 				contextIDs = append(contextIDs, cid)
@@ -176,7 +386,6 @@ func (p *Pipeline) tryResolveConflict(_ context.Context, userText string, action
 	}
 	p.session.pendingQMu.RUnlock()
 
-	// 处理所有标记的冲突
 	for _, contextID := range contextIDs {
 		if resolved, ok := p.session.ResolvePendingQuestion(contextID); ok {
 			log.Printf("[pipeline] resolving conflict context_id=%s task_id=%s", contextID, resolved.TaskID)
@@ -255,46 +464,4 @@ func (p *Pipeline) pushRemainingContext() {
 	}); err != nil {
 		log.Printf("[pipeline] PushContext session-end failed: %v", err)
 	}
-}
-
-func (p *Pipeline) buildTaskListContext() string {
-	p.session.activeTaskMu.RLock()
-	defer p.session.activeTaskMu.RUnlock()
-	if len(p.session.OwnedTasks) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("\n\n[系统提示 - 当前用户的 PPT 任务列表]\n")
-	for tid, topic := range p.session.OwnedTasks {
-		marker := ""
-		if tid == p.session.ActiveTaskID {
-			marker = " (当前活跃)"
-		}
-		sb.WriteString(fmt.Sprintf("- task_id=%s, 主题=\"%s\"%s\n", tid, topic, marker))
-	}
-	if len(p.session.OwnedTasks) > 1 {
-		sb.WriteString("\n用户可能用简称、缩写、别名来指代某个任务（例如用\"高数\"指\"高等数学\"）。\n")
-		sb.WriteString("请根据语义判断用户说的是哪个任务。如果确实无法判断，主动追问用户，绝不要猜。\n")
-		sb.WriteString("默认操作当前活跃的任务，除非用户明确提到了其他任务。\n")
-	}
-	return sb.String()
-}
-
-func (p *Pipeline) buildPendingQuestionsContext() string {
-	p.session.pendingQMu.RLock()
-	defer p.session.pendingQMu.RUnlock()
-	if len(p.session.PendingQuestions) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("\n\n[系统提示 - 待回答的冲突问题]\n")
-	sb.WriteString("以下是 PPT Agent 提出的需要用户确认的问题，请判断用户是否在回答这些问题：\n")
-	for cid, pq := range p.session.PendingQuestions {
-		sb.WriteString(fmt.Sprintf("- context_id=%s, task_id=%s\n  问题: %s\n", cid, pq.TaskID, pq.QuestionText))
-	}
-	if len(p.session.PendingQuestions) > 1 {
-		sb.WriteString("\n有多个待确认问题，请使用动作标记指定：")
-		sb.WriteString("@{resolve_conflict|context_id:xxx}\n")
-	}
-	return sb.String()
 }

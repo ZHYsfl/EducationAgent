@@ -65,6 +65,15 @@ func findSessionByTaskID(taskID string) *Session {
 	return nil
 }
 
+func findSessionByTaskOrSessionID(taskID string) *Session {
+	if s := findSessionByTaskID(taskID); s != nil {
+		return s
+	}
+	sessionRegistryMu.RLock()
+	defer sessionRegistryMu.RUnlock()
+	return sessionRegistry[taskID]
+}
+
 // RegisterTask registers a task_id → session_id mapping in the global index.
 // Exported for use in tests from tests/agent (package agent_test).
 func RegisterTask(taskID, sessionID string) {
@@ -94,29 +103,6 @@ func getGlobalClients() ExternalServices {
 // Exported for use in tests from tests/agent (package agent_test).
 func GetGlobalClients() ExternalServices {
 	return getGlobalClients()
-}
-
-// HandleUpload handles POST /api/v1/upload (exported for main.go).
-func HandleUpload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, 40001, "method not allowed")
-		return
-	}
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		writeError(w, http.StatusBadRequest, 40001, "content-type must be multipart/form-data")
-		return
-	}
-	clients := getGlobalClients()
-	if clients == nil {
-		writeError(w, http.StatusServiceUnavailable, 50200, "service clients not ready")
-		return
-	}
-	data, err := clients.UploadFile(r)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, 50200, fmt.Sprintf("upload gateway failed: %v", err))
-		return
-	}
-	writeRawData(w, http.StatusOK, 200, "success", data)
 }
 
 // HandlePreview handles GET /api/v1/tasks/{task_id}/preview (exported for main.go).
@@ -186,12 +172,26 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, 40001, "invalid json body")
 		return
 	}
-	if strings.TrimSpace(req.TaskID) == "" {
+	req.TaskID = strings.TrimSpace(req.TaskID)
+	req.SessionID = strings.TrimSpace(req.SessionID)
+	req.RequestID = strings.TrimSpace(req.RequestID)
+	if req.TaskID == "" {
 		writeError(w, http.StatusBadRequest, 40001, "task_id is required")
 		return
 	}
-	s := findSessionByTaskID(req.TaskID)
+	if req.SessionID == "" {
+		writeError(w, http.StatusBadRequest, 40001, "session_id is required")
+		return
+	}
+	s := findSessionByTaskOrSessionID(req.TaskID)
 	if s == nil || s.pipeline == nil {
+		writeSuccess(w, http.StatusOK, map[string]any{
+			"accepted":  true,
+			"delivered": false,
+		})
+		return
+	}
+	if s.SessionID != req.SessionID {
 		writeSuccess(w, http.StatusOK, map[string]any{
 			"accepted":  true,
 			"delivered": false,
@@ -212,6 +212,12 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	content := strings.TrimSpace(req.TTSText)
 	if content == "" {
+		switch msgType {
+		case "kb_result", "search_result":
+			content = strings.TrimSpace(req.Summary)
+		}
+	}
+	if content == "" {
 		content = "PPT 状态已更新"
 	}
 	if msgType == "conflict_question" {
@@ -231,13 +237,15 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		MsgType:    msgType,
 		Content:    content,
 		Metadata: map[string]string{
+			"session_id": req.SessionID,
+			"request_id": req.RequestID,
 			"task_id":    req.TaskID,
 			"page_id":    req.PageID,
 			"context_id": req.ContextID,
 		},
 		Timestamp: time.Now().UnixMilli(),
 	}
-	s.pipeline.enqueueContextMessage(r.Context(), msg)
+	s.pipeline.IngestContextFromCallback(r.Context(), msg)
 
 	switch msgType {
 	case "ppt_status":

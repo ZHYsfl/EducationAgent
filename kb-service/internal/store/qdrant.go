@@ -106,7 +106,8 @@ func (bm *BM25) Score(doc []string) []uint32 {
 			idf = 0.1
 		}
 		tf := freqMap[term]
-		norm := tf * (bm.k1 + 1) / (tf + bm.k1*(1-bm.b+b*(dl/bm.avgDL)))
+		docLenFactor := bm.k1*(1-bm.b + bm.b*dl/bm.avgDL)
+		norm := tf * (bm.k1 + 1) / (tf + docLenFactor)
 		score := idf * norm
 		if score > 0 {
 			indices = append(indices, idx)
@@ -175,7 +176,7 @@ func Tokenize(text string) []string {
 	// 去除停用词（常见中文停用词）
 	stopWords := map[string]bool{
 		"的": true, "了": true, "是": true, "在": true, "和": true, "与": true,
-		"或": true, "的": true, "而": true, "及": true, "等": true, "对": true,
+		"或": true, "而": true, "及": true, "等": true, "对": true,
 		"于": true, "为": true, "以": true, "有": true, "这": true, "那": true,
 		"the": true, "a": true, "an": true, "of": true, "in": true, "to": true,
 		"and": true, "is": true, "for": true, "on": true, "with": true, "as": true,
@@ -426,7 +427,7 @@ func localBM25Score(chunks []model.RetrievedChunk, queryTokens []string) []float
 	for i, c := range chunks {
 		dl := float64(docLens[i])
 		var score float64
-		for term, tf := range qFreq {
+		for term := range qFreq {
 			idf := idfMap[term]
 			// 统计 term 在 chunk 中的出现次数
 			chunkTF := float64(strings.Count(c.Content, term))
@@ -455,10 +456,10 @@ func rrfFusionDenseBM25(chunks []model.RetrievedChunk, bm25Scores []float64, den
 	var scored []scoredChunk
 	for i, c := range chunks {
 		// Dense rank = i+1（已按 cosine 分数降序）
-		denseRRF := denseWeight / (k + float64(i+1))
+		denseRRF := float64(denseWeight) / (k + float64(i+1))
 		// BM25 rank：按 bm25 分数降序，取 rank 为该 chunk 在降序排列中的位置
 		bm25Rank := float64(findBM25Rank(bm25Scores, i))
-		sparseRRF := sparseWeight / (k + bm25Rank)
+		sparseRRF := float64(sparseWeight) / (k + bm25Rank)
 		fused := denseRRF + sparseRRF
 		scored = append(scored, scoredChunk{chunk: c, score: fused})
 	}
@@ -482,11 +483,6 @@ func findBM25Rank(scores []float64, chunkIdx int) int {
 		}
 	}
 	return higher + 1
-}
-
-// sparseSearch 已废弃，混合检索改用本地 BM25 评分
-func (q *QdrantStore) sparseSearch(ctx context.Context, indices []uint32, values []float32, limit int, scoreThreshold float64, filter []map[string]any) ([]string, []float64, error) {
-	return nil, nil, nil
 }
 
 // buildFilter 从请求构建 Qdrant filter

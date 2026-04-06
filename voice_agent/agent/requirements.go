@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 )
@@ -149,7 +148,7 @@ func (r *TaskRequirements) RefreshCollectedFields() {
 	r.CollectedFields = collected
 }
 
-func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) string {
+func (r *TaskRequirements) BuildRequirementsSystemPrompt() string {
 	if r == nil {
 		return ""
 	}
@@ -177,9 +176,6 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 		}
 	}
 
-	sb.WriteString("\n【用户画像（来自记忆模块）】\n")
-	sb.WriteString(formatProfileSummary(profile))
-
 	sb.WriteString("\n【行为准则】\n")
 	sb.WriteString("1. 自然地融入对话，不要机械地逐条追问\n")
 	sb.WriteString("2. 每轮最多问1-2个问题\n")
@@ -188,60 +184,4 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt(profile *UserProfile) s
 	sb.WriteString("5. 所有必填字段收集完毕后，前端会弹出卡片让用户确认，等待用户语音确认\n")
 	sb.WriteString("6. 用户确认后调用 @{ppt_init|...} 工具开始制作PPT\n")
 	return sb.String()
-}
-
-func formatStringMap(m map[string]string) string {
-	if len(m) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, k+"="+m[k])
-	}
-	return strings.Join(parts, ",")
-}
-
-// formatProfileSummary 将 Memory 返回的 UserProfile 全部非空字段写入系统提示，供需求收集 LLM 参考。
-// 字段定义见 types.go UserProfile。
-func formatProfileSummary(profile *UserProfile) string {
-	if profile == nil {
-		return "暂无画像信息。"
-	}
-	var items []string
-	if profile.DisplayName != "" {
-		items = append(items, "姓名="+profile.DisplayName)
-	}
-	if profile.Subject != "" {
-		items = append(items, "学科="+profile.Subject)
-	}
-	if profile.School != "" {
-		items = append(items, "学校="+profile.School)
-	}
-	if profile.TeachingStyle != "" {
-		items = append(items, "授课风格="+profile.TeachingStyle)
-	}
-	if profile.ContentDepth != "" {
-		items = append(items, "内容深度="+profile.ContentDepth)
-	}
-	if s := formatStringMap(profile.Preferences); s != "" {
-		items = append(items, "偏好="+s)
-	}
-	if s := formatStringMap(profile.VisualPreferences); s != "" {
-		items = append(items, "视觉偏好="+s)
-	}
-	if profile.HistorySummary != "" {
-		items = append(items, "历史摘要="+profile.HistorySummary)
-	}
-	if profile.LastActiveAt != 0 {
-		items = append(items, fmt.Sprintf("最近活跃(ms)=%d", profile.LastActiveAt))
-	}
-	if len(items) == 0 {
-		return "暂无画像信息。"
-	}
-	return strings.Join(items, "；")
 }

@@ -101,7 +101,7 @@ func main() {
 
 	collH   := handler.NewCollectionHandler(pg)
 	docH    := handler.NewDocumentHandler(pg, vec, w, oss)
-	queryH  := handler.NewQueryHandler(vec, embedder, refiner, rerankerImpl)
+	queryH  := handler.NewQueryHandler(vec, embedder, refiner, rerankerImpl, getEnv("VOICE_CALLBACK_URL", ""))
 	ingestH := handler.NewIngestHandler(pg, embedder, p, w)
 	parseH  := handler.NewParseHandler(p)
 
@@ -115,6 +115,7 @@ func main() {
 		api.GET("/documents/:doc_id",                     docH.GetDocument)
 		api.DELETE("/documents/:doc_id",                  docH.DeleteDocument)
 		api.POST("/query",                                queryH.Query)
+		api.POST("/query-chunks",                         queryH.QueryChunks)
 		api.POST("/ingest-from-search",                   ingestH.IngestFromSearch)
 		api.POST("/parse",                                parseH.Parse)
 	}

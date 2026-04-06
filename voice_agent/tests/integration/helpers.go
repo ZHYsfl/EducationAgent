@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -45,31 +47,44 @@ func sendMsg(t *testing.T, conn *websocket.Conn, msg agent.WSMessage) {
 
 func waitForState(t *testing.T, conn *websocket.Conn, expectedState string, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	defer conn.SetReadDeadline(time.Time{})
+
+	for {
 		var msg agent.WSMessage
-		if err := conn.ReadJSON(&msg); err == nil {
-			if msg.Type == "status" && msg.State == expectedState {
-				return
+		if err := conn.ReadJSON(&msg); err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				t.Fatalf("connection closed while waiting for state %q: %v", expectedState, err)
 			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatalf("timeout waiting for state: %s", expectedState)
+			}
+			t.Fatalf("read json while waiting for state %q: %v", expectedState, err)
+		}
+		if msg.Type == "status" && msg.State == expectedState {
+			return
 		}
 	}
-	t.Fatalf("timeout waiting for state: %s", expectedState)
 }
 
 func waitForMessageType(t *testing.T, conn *websocket.Conn, msgType string, timeout time.Duration) agent.WSMessage {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	defer conn.SetReadDeadline(time.Time{})
+
+	for {
 		var msg agent.WSMessage
-		if err := conn.ReadJSON(&msg); err == nil {
-			if msg.Type == msgType {
-				return msg
+		if err := conn.ReadJSON(&msg); err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				t.Fatalf("connection closed while waiting for message type %q: %v", msgType, err)
 			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatalf("timeout waiting for message type: %s", msgType)
+			}
+			t.Fatalf("read json while waiting for message type %q: %v", msgType, err)
+		}
+		if msg.Type == msgType {
+			return msg
 		}
 	}
-	t.Fatalf("timeout waiting for message type: %s", msgType)
-	return agent.WSMessage{}
 }

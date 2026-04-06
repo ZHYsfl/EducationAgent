@@ -413,6 +413,9 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 ```json
 {
   "user_id": "string",           // 可选，有则写入用户个人知识库，无则写入公共专业知识库
+  "session_id": "string",        // 必填，会话ID（全链路追踪）
+  "task_id": "string",           // 必填，任务ID（定位会话内具体任务）
+  "request_id": "string",        // 可选，请求ID（关联 search 请求）
   "collection_id": "string",     // 可选，集合ID
   "items": [
     {
@@ -440,6 +443,9 @@ curl -X POST http://kb-service-url/api/v1/kb/query-chunks \
 curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
   -H "Content-Type: application/json" \
   -d '{
+    "session_id": "sess_abc123",
+    "task_id": "task_001",
+    "request_id": "req_search_001",
     "collection_id": "math_collection",
     "items": [
       {
@@ -604,6 +610,8 @@ curl -X POST http://memory-service-url/api/v1/memory/context/push \
 ```json
 {
   "request_id": "string",        // 可选，不提供则由服务生成
+  "task_id": "string",           // 必填，任务ID（用于回调路由）
+  "session_id": "string",        // 必填，会话ID（用于并发隔离/审计）
   "user_id": "string",           // 必填
   "session_id": "string",        // 可选；建议 Voice Agent 传入当前 WebSocket 会话 ID，便于异步完成后回调 `ppt_message` 时定位会话（task_id 使用 session_id）
   "query": "string",             // 必填
@@ -636,6 +644,8 @@ curl -X POST http://memory-service-url/api/v1/memory/context/push \
 curl -X POST http://search-service-url/api/v1/search/query \
   -H "Content-Type: application/json" \
   -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
     "user_id": "user_001",
     "query": "导数的应用",
     "max_results": 5,
@@ -1075,40 +1085,7 @@ Voice Agent 对外提供以下接口供其他系统调用。
 
 ## HTTP REST 接口
 
-### 1. 文件上传（代理）
-
-**接口路径**: `POST /api/v1/upload`
-
-透明代理到 db-service 的 `/api/v1/files/upload`。
-
-**响应格式**:
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "file_id": "string",
-    "filename": "string",
-    "file_type": "string",
-    "file_size": 0,
-    "storage_url": "string",
-    "purpose": "string"
-  }
-}
-```
-
-**使用示例**:
-
-```bash
-curl -X POST http://voice-agent-url/api/v1/upload \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@/path/to/document.pdf"
-```
-
----
-
-### 2. 获取任务预览
+### 1. 获取任务预览
 
 **接口路径**: `GET /api/v1/tasks/{task_id}/preview`
 
@@ -1143,7 +1120,7 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ---
 
-### 3. 接收异步服务回调
+### 2. 接收异步服务回调
 
 **接口路径**: `POST /api/v1/voice/ppt_message`
 
@@ -1151,7 +1128,9 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 
 ```json
 {
-  "task_id": "string",           // 必填，任务ID（或 session_id）
+  "task_id": "string",           // 必填，任务ID（路由主键）
+  "session_id": "string",        // 必填，会话ID（并发校验/审计）
+  "request_id": "string",        // 可选，请求ID（异步链路追踪）
   "msg_type": "string",          // 可选，默认 "tool_result"
   "priority": "string",          // 可选，"normal" 或 "high"，默认 "normal"
   "tts_text": "string",          // 可选，TTS文本
@@ -1169,6 +1148,8 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   "summary": "string"            // 可选，用于 kb_result（记忆模块回调的检索摘要）
 }
 ```
+
+**路由约定**：`task_id` 用于定位任务与会话映射，`session_id` 用于并发校验与审计追踪（建议与任务创建时会话一致）。
 
 **msg_type 可选值**:
 
@@ -1205,6 +1186,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
     "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "ppt_status",
     "status": "generating",
     "progress": 50,
@@ -1218,12 +1200,10 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
 curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -H "Content-Type: application/json" \
   -d '{
-    "task_id": "sess_abc123",
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
     "msg_type": "kb_result",
-    "chunks": [
-      {"chunk_id": "c1", "content": "导数是函数的瞬时变化率...", "source": "oss://user_001/history_001.txt", "score": 0.92}
-    ],
-    "profile_summary": "高中数学教师，偏好简洁风格"
+    "summary": "导数是函数在某一点的瞬时变化率。可通过切线斜率、极限定义和典型例题来讲解。"
   }'
 ```
 

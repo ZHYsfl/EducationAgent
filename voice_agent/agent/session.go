@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
 	adaptivepkg "voiceagent/internal/adaptive"
 	svcclients "voiceagent/internal/clients"
@@ -17,6 +18,8 @@ import (
 
 // ErrUserIDRequired is returned when NewSession is called with an empty user_id.
 var ErrUserIDRequired = errors.New("session: user_id is required")
+
+const bootstrapMemoryRecallQuery = "请结合历史上下文，返回该用户的教学风格、内容深度偏好、常用课件结构和其他可复用偏好摘要。"
 
 func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.ExternalServices, sessionID, userID string) (*Session, error) {
 	if strings.TrimSpace(userID) == "" {
@@ -40,7 +43,25 @@ func NewSession(conn *websocket.Conn, config *cfgpkg.Config, clients svcclients.
 		PendingQuestions: make(map[string]PendingQuestion),
 	}
 	s.pipeline = NewPipeline(s, config, clients)
+	go s.bootstrapMemoryRecall()
 	return s, nil
+}
+
+func (s *Session) bootstrapMemoryRecall() {
+	if s.clients == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	_, err := s.clients.RecallMemory(ctx, MemoryRecallRequest{
+		UserID:    s.UserID,
+		SessionID: s.SessionID,
+		Query:     bootstrapMemoryRecallQuery,
+		TopK:      5,
+	})
+	if err != nil {
+		log.Printf("[session] bootstrap memory recall failed: %v", err)
+	}
 }
 
 func (s *Session) Run() {
