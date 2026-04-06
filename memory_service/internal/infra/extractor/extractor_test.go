@@ -186,3 +186,28 @@ func TestHybridExtractorNormalizesMultiFieldTeacherUtteranceBetterThanRules(t *t
 		t.Fatalf("expected improved hybrid summary")
 	}
 }
+
+func TestRuleBasedExtractorSupportsChineseLessonPrepSignals(t *testing.T) {
+	ex := RuleBasedExtractor{}
+	res, err := ex.Extract("user_u1", "sess_cn", []model.ConversationTurn{
+		{Role: "user", Content: "这节课讲牛顿第一定律，知识点包括惯性、受力分析。"},
+		{Role: "user", Content: "教学目标是让学生理解惯性，面向高一学生，时长45分钟。"},
+		{Role: "user", Content: "这次课件用深蓝简洁风格，只用教材里的图。"},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	signals := res.TaskStateSignals()
+	if signals.LessonTopic == "" {
+		t.Fatalf("expected chinese topic signal")
+	}
+	if len(signals.KnowledgePoints) == 0 || len(signals.TeachingGoals) == 0 {
+		t.Fatalf("expected chinese structured task signals, got %#v", signals)
+	}
+	if signals.Duration != "45分钟" {
+		t.Fatalf("expected chinese duration extraction, got %q", signals.Duration)
+	}
+	if len(signals.ReferenceMaterialUsage) == 0 {
+		t.Fatalf("expected chinese reference usage signal")
+	}
+}

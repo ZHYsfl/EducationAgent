@@ -26,3 +26,12 @@ func (r *AuthRepository) GetUserByID(id string) (model.User, error) {
 	}
 	return user, err
 }
+
+func (r *AuthRepository) GetSessionByID(id string) (model.Session, error) {
+	var session model.Session
+	err := r.db.Where("id = ?", id).First(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.Session{}, ErrNotFound
+	}
+	return session, err
+}
