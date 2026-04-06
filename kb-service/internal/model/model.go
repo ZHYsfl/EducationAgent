@@ -121,9 +121,11 @@ type QueryChunksResponse struct {
 
 // IngestFromSearchRequest POST /api/v1/kb/ingest-from-search
 type IngestFromSearchRequest struct {
-	UserID       string              `json:"user_id,omitempty"`     // 可选，有则入用户个人库，无则入公共库
-	CollectionID string              `json:"collection_id,omitempty"` // 可选
-	Items        []SearchIngestItem  `json:"items"`                  // 必填
+	UserID       string             `json:"user_id,omitempty"`       // 可选，有则入用户个人库，无则入公共库
+	CollectionID string             `json:"collection_id,omitempty"` // 可选
+	TaskID       string             `json:"task_id,omitempty"`       // 可选，任务ID，用于链路追踪与幂等去重
+	SessionID    string             `json:"session_id,omitempty"`    // 可选，会话ID，用于链路追踪与审计
+	Items        []SearchIngestItem `json:"items"`                   // 必填
 }
 
 // SearchIngestItem 搜索结果条目
