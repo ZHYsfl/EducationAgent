@@ -93,22 +93,35 @@ func (p *Pipeline) highPriorityListener(ctx context.Context) {
 						p.pendingMu.Lock()
 						p.pendingContexts = append(p.pendingContexts, msg)
 						p.pendingMu.Unlock()
-					} else {
-						log.Printf("[high-priority] conflict_question interrupted, will retry (retry=%d)",
-							retries)
-						if msg.Metadata == nil {
-							msg.Metadata = make(map[string]string)
-						}
-						msg.Metadata["_retries"] = fmt.Sprintf("%d", retries)
-						select {
-						case p.highPriorityQueue <- msg:
-						default:
-							p.pendingMu.Lock()
-							p.pendingContexts = append(p.pendingContexts, msg)
-							p.pendingMu.Unlock()
-						}
+						continue
 					}
-					continue
+
+					log.Printf("[high-priority] conflict_question interrupted, will retry (retry=%d)", retries)
+					if msg.Metadata == nil {
+						msg.Metadata = make(map[string]string)
+					}
+					msg.Metadata["_retries"] = fmt.Sprintf("%d", retries)
+
+					// Requeue with non-blocking send
+					select {
+					case p.highPriorityQueue <- msg:
+						// Successfully requeued
+					default:
+						// Queue full, demote to pending
+						p.pendingMu.Lock()
+						p.pendingContexts = append(p.pendingContexts, msg)
+						p.pendingMu.Unlock()
+					}
+
+					// After requeue, check if context is still cancelled
+					// If so, exit listener to avoid reprocessing with cancelled context
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						// Context recovered, continue listening
+						continue
+					}
 				}
 			default:
 				p.pendingMu.Lock()

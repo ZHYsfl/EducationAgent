@@ -51,40 +51,10 @@ const protocolInstructions = `
 
 // buildFullSystemPrompt constructs the complete system prompt with all context layers.
 // includeContextQueue: if true, drains and includes context messages from queue.
-func (p *Pipeline) buildFullSystemPrompt(ctx context.Context, includeContextQueue bool) string {
-	systemPrompt := p.config.SystemPrompt
-
-	// Layer 1: Requirements mode override (replaces base prompt)
-	p.session.reqMu.RLock()
-	reqSnapshot := CloneTaskRequirements(p.session.Requirements)
-	p.session.reqMu.RUnlock()
-	if reqSnapshot != nil && (reqSnapshot.Status == "collecting" || reqSnapshot.Status == "ready") {
-		systemPrompt = reqSnapshot.BuildRequirementsSystemPrompt(nil)
+// DEPRECATED: Use p.contextMgr.BuildPrompt() directly instead.
+func (p *Pipeline) buildFullSystemPrompt(_ context.Context, includeContextQueue bool) string {
+	if p.contextMgr == nil {
+		p.contextMgr = NewContextManager(p.session)
 	}
-
-	// Layer 2: Task list context
-	taskListContext := p.buildTaskListContext()
-	if taskListContext != "" {
-		systemPrompt += taskListContext
-	}
-
-	// Layer 3: Pending questions context
-	pendingQContext := p.buildPendingQuestionsContext()
-	if pendingQContext != "" {
-		systemPrompt += pendingQContext
-	}
-
-	// Layer 4: Context queue messages (RAG, search results, etc.)
-	if includeContextQueue {
-		contextMsgs := p.drainContextQueue()
-		contextPrompt := FormatContextForLLM(contextMsgs)
-		if contextPrompt != "" {
-			systemPrompt += contextPrompt
-		}
-	}
-
-	// Layer 5: Protocol instructions
-	systemPrompt += protocolInstructions
-
-	return systemPrompt
+	return p.contextMgr.BuildPrompt(p.config.SystemPrompt, includeContextQueue, p.pendingContexts, p.contextQueue, &p.pendingMu)
 }

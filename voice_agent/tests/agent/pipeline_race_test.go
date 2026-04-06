@@ -269,7 +269,7 @@ func TestPipeline_ConcurrentDrainAndEnqueue(t *testing.T) {
 func TestPipeline_FullChaos(t *testing.T) {
 	mock := &agent.MockServices{}
 	s := agent.NewTestSession(mock)
-	p := agent.NewTestPipeline(s, mock)
+	p := agent.NewTestPipelineWithTTS(s, mock)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
