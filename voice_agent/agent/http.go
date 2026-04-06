@@ -232,7 +232,7 @@ func HandleServiceCallback(w http.ResponseWriter, r *http.Request) {
 		},
 		Timestamp: time.Now().UnixMilli(),
 	}
-	s.pipeline.enqueueContextMessage(r.Context(), msg)
+	s.pipeline.IngestContextFromCallback(r.Context(), msg)
 
 	switch msgType {
 	case "ppt_status":

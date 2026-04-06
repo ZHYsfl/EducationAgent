@@ -75,33 +75,9 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		// Accumulate actions
 		allActions = append(allActions, result.Actions...)
 
-		// Execute any detected actions asynchronously
+		// Execute any detected actions asynchronously.
 		for _, action := range result.Actions {
-			reqs := p.session.GetRequirements()
-			if reqs == nil {
-				reqs = &TaskRequirements{}
-			}
-			sessionCtx := executor.SessionContext{
-				UserID:            p.session.UserID,
-				SessionID:         p.session.SessionID,
-				ActiveTaskID:      p.session.ActiveTaskID,
-				ViewingPageID:     p.session.ViewingPageID,
-				BaseTimestamp:     p.session.LastVADTimestamp,
-				Topic:             reqs.Topic,
-				Subject:           reqs.Subject,
-				TotalPages:        reqs.TotalPages,
-				Audience:          reqs.TargetAudience,
-				GlobalStyle:       reqs.GlobalStyle,
-				KnowledgePoints:   reqs.KnowledgePoints,
-				TeachingGoals:     reqs.TeachingGoals,
-				TeachingLogic:     reqs.TeachingLogic,
-				KeyDifficulties:   reqs.KeyDifficulties,
-				Duration:          reqs.Duration,
-				InteractionDesign: reqs.InteractionDesign,
-				OutputFormats:     reqs.OutputFormats,
-				ReferenceFiles:    reqs.ReferenceFiles,
-			}
-			p.executor.Execute(action, sessionCtx, p.EnqueueContext)
+			p.executeAction(ctx, action)
 		}
 
 		// Filter out #{...} and @{...} for display/TTS
