@@ -12,13 +12,14 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gin-gonic/gin"
 	"kb-service/internal/llm"
 	"kb-service/internal/metrics"
 	"kb-service/internal/model"
 	"kb-service/internal/parser"
 	"kb-service/internal/store"
 	"kb-service/pkg/util"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ── BM25 查询评分器 ────────────────────────────────────────────────────────
@@ -55,7 +56,10 @@ func (bm *queryBM25) Score(tokens []string) ([]uint32, []float32) {
 	for _, t := range tokens {
 		freq[t]++
 	}
-	type kv struct{ term string; score float64 }
+	type kv struct {
+		term  string
+		score float64
+	}
 	var kvs []kv
 	for term, tf := range freq {
 		idf := bm.idfMap[term]
@@ -115,12 +119,12 @@ func Tokenize(text string) []string {
 
 // QueryHandler 处理语义检索接口
 type QueryHandler struct {
-	vec          store.VecStore
-	embedder     parser.Embedder
-	refiner      *llm.QueryRefiner
-	reranker     Reranker
-	voiceCBURL   string // voice-agent 回调 URL，异步模式使用
-	httpClient   *http.Client
+	vec        store.VecStore
+	embedder   parser.Embedder
+	refiner    *llm.QueryRefiner
+	reranker   Reranker
+	voiceCBURL string // voice-agent 回调 URL，异步模式使用
+	httpClient *http.Client
 }
 
 var _ QueryServicer = (*QueryHandler)(nil)
@@ -253,7 +257,7 @@ func (h *QueryHandler) doQueryAndSummarize(ctx context.Context, req model.KBQuer
 		Hybrid:         req.Hybrid,
 		Rerank:         req.Rerank,
 		DenseWeight:    req.DenseWeight,
-		RerankTopK:    req.RerankTopK,
+		RerankTopK:     req.RerankTopK,
 	}
 	if req.Filters != nil {
 		if v, ok := req.Filters["source_type"]; ok {
@@ -339,9 +343,10 @@ func (h *QueryHandler) sendVoiceCallback(sessionID, summary string, err error) {
 		summaryField = fmt.Sprintf("检索失败: %v", err)
 	}
 	body := gin.H{
-		"task_id":  sessionID,
-		"msg_type": "kb_result",
-		"summary":  summaryField,
+		"task_id":    sessionID,
+		"session_id": sessionID,
+		"event_type": "kb_query",
+		"summary":    summaryField,
 	}
 	payload, _ := json.Marshal(body)
 	resp, err := h.httpClient.Post(h.voiceCBURL, "application/json", bytes.NewReader(payload))

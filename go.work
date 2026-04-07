@@ -1,0 +1,7 @@
+go 1.25.5
+
+use (
+	./tool_calling_go
+	./voice_agent
+	./voice_agent_v2
+)

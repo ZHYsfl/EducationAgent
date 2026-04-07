@@ -1,11 +1,9 @@
-# Voice Agent 接口文档
+﻿# Voice Agent 接口文档
 
 本文档详细描述 Voice Agent 系统的所有接口，包括：
 
 - **我们需要外部实现的接口**（Voice Agent 作为客户端调用）
 - **我们提供的接口**（外部系统调用 Voice Agent）
-
----
 
 ## 目录
 
@@ -25,6 +23,7 @@
 2. [HTTP REST 接口](#http-rest-接口)
 
 ---
+
 
 > **上下文长度判断说明**: voice agent 的 `ConversationHistory` 以字符数估算 token 用量（中文约 1.5 char/token，英文约 4 char/token）。当历史消息累计字符数超过 **8000 字符**时触发压缩，将最老的 1/3 消息 push 给记忆模块后从本地删除。
 
@@ -86,6 +85,24 @@ Voice Agent 作为客户端，需要调用以下外部服务的接口。
 }
 ```
 
+**回调约定（对应工具 `ppt_init`）**:
+- 后续回调 `POST /api/v1/voice/ppt_message` 时，`event_type` 使用具体事件名（例如 `"ppt_status"`）。
+
+**回调示例**:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "event_type": "ppt_status",
+    "status": "generating",
+    "progress": 20,
+    "tts_text": "正在生成课件"
+  }'
+```
+
 **使用示例**:
 
 ```bash
@@ -117,6 +134,8 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/init \
 
 **接口路径**: `POST /api/v1/ppt/feedback`
 
+> **voice_agent_v2 约定**: 冲突回答不再使用单独动作类型。无论是普通修改还是冲突回复，统一通过本接口上送 `raw_text`（即 `ppt_mod`）。Voice Agent 会结合 pending 冲突上下文自动归属；若无法唯一归属，则保持 pending，等待下一轮澄清。
+
 **请求参数**:
 
 ```json
@@ -142,6 +161,23 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/init \
   "code": 200,
   "message": "success"
 }
+```
+
+**回调约定（对应工具 `ppt_mod`）**:
+- 后续回调 `POST /api/v1/voice/ppt_message` 时，`event_type` 使用具体事件名（例如 `"ppt_status"`）。
+
+**回调示例**:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "event_type": "ppt_status",
+    "status": "processing",
+    "tts_text": "已收到修改意见，正在调整"
+  }'
 ```
 
 **使用示例**:
@@ -235,12 +271,10 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
   }'
 ```
 
----
-
 ## 2. 知识库服务接口
 
 > **架构说明**: kb-service 同时服务两类调用方：
-> - **voice agent 调用** `POST /api/v1/kb/query` → 异步受理，结果通过 `ppt_message` 回调（`msg_type: "kb_result"`）返回 summary
+> - **voice agent 调用** `POST /api/v1/kb/query` → 异步受理，结果通过 `ppt_message` 回调（`event_type: "kb_query"`）返回 summary
 > - **记忆模块 / PPT Agent 调用** `POST /api/v1/kb/query-chunks` → 同步返回 `[]chunk`，用于 RAG 检索
 >   - 传 `user_id`：同时检索用户个人知识库
 >   - 不传 `user_id`：仅检索专业知识库
@@ -249,7 +283,7 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 
 **接口路径**: `POST /api/v1/kb/query`
 
-**说明**: 异步受理，立即返回 `accepted: true`，检索完成后回调 `POST /api/v1/voice/ppt_message`（`msg_type: "kb_result"`）。
+**说明**: 异步受理，立即返回 `accepted: true`，检索完成后回调 `POST /api/v1/voice/ppt_message`（`event_type: "kb_query"`）。
 
 **请求参数**:
 
@@ -277,8 +311,9 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
 
 ```json
 {
-  "task_id": "string",           // 对应 session_id
-  "msg_type": "kb_result",
+  "task_id": "string",           // 必填，任务路由ID（kb-service 当前实现与 session_id 相同）
+  "session_id": "string",        // 必填，会话ID
+  "event_type": "kb_query",      // 必填（voice_agent_v2），与工具协议对齐
   "summary": "string"
 }
 ```
@@ -293,6 +328,19 @@ curl -X POST http://kb-service-url/api/v1/kb/query \
     "session_id": "sess_abc123",
     "query": "导数的几何意义是什么",
     "top_k": 5
+  }'
+```
+
+**回调示例**（对应工具 `kb_query`）:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "event_type": "kb_query",
+    "summary": "导数可理解为函数在某点的瞬时变化率。"
   }'
 ```
 
@@ -335,8 +383,6 @@ curl -X POST http://kb-service-url/api/v1/kb/query \
     "score_threshold": 0.7
   }'
 ```
-
----
 
 ### 2.2 关键词 chunk 检索（供记忆模块 / PPT Agent 调用）
 
@@ -468,7 +514,7 @@ curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
 
 **接口路径**: `POST /api/v1/memory/recall`
 
-**说明**: 本接口为**异步受理**。记忆模块收到请求后立即返回 `success`，随后在后台将 query 拆分为关键词切片并 push 给 kb-service 检索，检索完成后通过回调 `POST /api/v1/voice/ppt_message`（`msg_type: "kb_result"`）将结果返回给 voice agent。
+**说明**: 本接口为**异步受理**。记忆模块收到请求后立即返回 `success`，随后在后台将 query 拆分为关键词切片并 push 给 kb-service 检索，检索完成后通过回调 `POST /api/v1/voice/ppt_message`（`event_type: "get_memory"`）将结果返回给 voice agent。
 
 **请求参数**:
 
@@ -497,8 +543,9 @@ curl -X POST http://kb-service-url/api/v1/kb/ingest-from-search \
 
 ```json
 {
-  "task_id": "string",           // 对应 session_id
-  "msg_type": "kb_result",
+  "task_id": "string",           // 必填，任务路由ID
+  "session_id": "string",        // 必填，会话ID
+  "event_type": "get_memory",    // 必填（voice_agent_v2），与工具协议对齐
   "summary": "string"            // 必填，基于检索结果生成的摘要文本
 }
 ```
@@ -513,6 +560,19 @@ curl -X POST http://memory-service-url/api/v1/memory/recall \
     "session_id": "sess_abc123",
     "query": "用户的教学风格偏好",
     "top_k": 5
+  }'
+```
+
+**回调示例**（对应工具 `get_memory`）:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "event_type": "get_memory",
+    "summary": "用户偏好案例驱动、图文并茂、每 5 页一个互动问题。"
   }'
 ```
 
@@ -603,7 +663,7 @@ curl -X POST http://memory-service-url/api/v1/memory/context/push \
 
 **接口路径**: `POST /api/v1/search/query`
 
-**说明**: 异步任务受理。搜索完成后回调 `POST /api/v1/voice/ppt_message`，`msg_type` 为 `"search_result"`。
+**说明**: 异步任务受理。搜索完成后回调 `POST /api/v1/voice/ppt_message`，`event_type` 为 `"web_search"`。
 
 **请求参数**:
 
@@ -647,6 +707,20 @@ curl -X POST http://search-service-url/api/v1/search/query \
     "query": "导数的应用",
     "max_results": 5,
     "language": "zh-CN"
+  }'
+```
+
+**回调示例**:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "request_id": "search_123",
+    "event_type": "web_search",
+    "summary": "导数应用包括速度、加速度、最优化等场景。"
   }'
 ```
 
@@ -1073,6 +1147,21 @@ Voice Agent 对外提供以下接口供其他系统调用。
 {"type": "task_list_update", "active_task_id": "string", "tasks": {"task_id": "topic"}}
 ```
 
+**搜索结果通知**:
+```json
+{"type": "search_result", "task_id": "string", "text": "string"}
+```
+
+**知识库检索结果通知**:
+```json
+{"type": "kb_result", "task_id": "string", "text": "string"}
+```
+
+**记忆检索结果通知**:
+```json
+{"type": "memory_result", "task_id": "string", "text": "string"}
+```
+
 **错误消息**:
 ```json
 {"type": "error", "code": 0, "message": "string"}
@@ -1094,7 +1183,7 @@ Voice Agent 对外提供以下接口供其他系统调用。
   "message": "success",
   "data": {
     "task_id": "string",
-    "status": "string",          // "generating", "completed", "failed"
+    "status": "string",          // "rendering", "suspended_for_human", "completed", "failed"
     "page_order": ["string"],
     "current_viewing_page_id": "string",
     "pages": [
@@ -1128,13 +1217,13 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   "task_id": "string",           // 必填，任务ID（路由主键）
   "session_id": "string",        // 必填，会话ID（并发校验/审计）
   "request_id": "string",        // 可选，请求ID（异步链路追踪）
-  "msg_type": "string",          // 可选，默认 "tool_result"
+  "event_type": "string",        // 必填（voice_agent_v2），统一事件字段（工具回调时与工具协议对齐）
   "priority": "string",          // 可选，"normal" 或 "high"，默认 "normal"
   "tts_text": "string",          // 可选，TTS文本
   "status": "string",            // 可选，用于 ppt_status 类型
   "progress": 0,                 // 可选，进度 0-100
   "page_id": "string",           // 可选
-  "context_id": "string",        // 可选，用于冲突解决
+  "context_id": "string",        // 可选，用于冲突问题标识/回调关联
   "render_url": "string",        // 可选，用于 page_rendered
   "page_index": 0,               // 可选
   "page_order": ["string"],      // 可选，用于 ppt_preview
@@ -1142,25 +1231,56 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
   "download_url": "string",      // 可选，用于 export_ready
   "format": "string",            // 可选，用于 export_ready
   "error_code": 0,               // 可选，用于 error
-  "summary": "string"            // 可选，用于 kb_result（记忆模块回调的检索摘要）
+  "summary": "string"            // 可选，用于 kb_query/get_memory/web_search 等摘要回调
 }
 ```
 
-**路由约定**：`task_id` 用于定位任务与会话映射，`session_id` 用于并发校验与审计追踪（建议与任务创建时会话一致）。
+**路由约定**：`task_id` 用于定位任务与会话映射，`session_id` 用于并发校验与审计追踪（建议与任务创建时会话一致）；`event_type` 为统一事件字段。
 
-**msg_type 可选值**:
+**消息流说明（实现层）**:
+- 外部回调先进入 Voice Agent 内部总线消息 `ContextMessage`（内部结构，不直接给前端）。
+- Pipeline 消费后，再按事件转成 `WSMessage` 推送给前端。
+- 因此前端看到的是 `WSMessage`；`ContextMessage` 只用于后端内部编排。
+- 当前实现中，`ContextMessage` 已统一为 `event_type`，不再使用历史的多字段分流结构。
+
+**内部 `ContextMessage`（实现快照）**:
+
+```json
+{
+  "event_type": "string",        // 统一事件名（如 kb_query/web_search/get_memory/ppt_status/conflict_question）
+  "priority": "normal|high",
+  "content": "string",
+  "metadata": {
+    "task_id": "string",
+    "page_id": "string",
+    "context_id": "string"
+  }
+}
+```
+
+**关于 `ppt_init` 的两次内部派发**:
+- 一次是 `system_notify`（用于即时播报“正在生成课件”）。
+- 一次是 `task_list_update`（用于同步 task 列表、active_task）。
+- 两者职责不同：一个偏“用户反馈”，一个偏“状态同步”。
+
+**event_type 可选值**:
 
 | 值 | 说明 |
 |---|---|
-| `tool_result` | 工具执行结果（默认） |
+| `kb_query` | `@{kb_query|...}` 工具回调 |
+| `web_search` | `@{web_search|...}` 工具回调 |
+| `get_memory` | `@{get_memory|...}` 工具回调 |
+| `update_requirements` | `@{update_requirements|...}` 内部工具回调 |
+| `require_confirm` | `@{require_confirm}` 内部工具回调 |
+| `ppt_init` | `@{ppt_init|...}` 的直接工具消息 |
+| `ppt_mod` | `@{ppt_mod|...}` 的直接工具消息 |
 | `ppt_status` | PPT 状态更新 |
 | `page_rendered` | 页面渲染完成 |
 | `ppt_preview` | PPT 预览 |
 | `export_ready` | 导出就绪 |
 | `conflict_question` | 冲突询问（自动设为高优先级，推送 `conflict_ask` 给客户端） |
-| `conflict_resolved` | 冲突已解决（voice agent 将用户答案通过 `SendFeedback` 转发给 PPT Agent） |
-| `search_result` | 搜索服务回调结果 |
-| `kb_result` | 记忆模块触发 kb 检索后的回调结果 |
+| `system_notify` | 内部高优先级提示 |
+| `task_list_update` | 内部任务列表更新 |
 | `error` | 错误消息 |
 
 **响应格式**:
@@ -1184,7 +1304,7 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -d '{
     "task_id": "task_001",
     "session_id": "sess_abc123",
-    "msg_type": "ppt_status",
+    "event_type": "ppt_status",
     "status": "generating",
     "progress": 50,
     "tts_text": "正在生成第10页"
@@ -1199,9 +1319,44 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -d '{
     "task_id": "task_001",
     "session_id": "sess_abc123",
-    "msg_type": "kb_result",
+    "event_type": "get_memory",
     "summary": "导数是函数在某一点的瞬时变化率。可通过切线斜率、极限定义和典型例题来讲解。"
   }'
 ```
 
 ---
+
+## 附录A：内部工具约定（非外部接口）
+
+### A.1 工具 `update_requirements`
+
+> 该工具用于增量更新需求字段（`topic/description/total_pages/...`），由 Voice Agent **内部实现**，不要求外部服务提供新接口。
+
+**内部实现约定**:
+- 动作：`@{update_requirements|topic:...|description:...}`
+- 内部上下文注入：`<tool>update_requirements:xxxxxx</tool>`
+
+**使用案例（内部）**:
+
+```text
+@{update_requirements|topic:高等数学|audience:大学一年级|total_pages:20}
+<tool>update_requirements:已更新需求字段 topic/audience/total_pages</tool>
+```
+
+### A.2 工具 `require_confirm`
+
+> 该工具用于“需求收集完成后请求人工确认”，由 Voice Agent **内部实现**，不要求外部服务提供新接口。
+
+**内部实现约定**:
+- 动作：`@{require_confirm}`
+- 内部上下文注入：`<tool>require_confirm:xxxxxx</tool>`
+- 用户确认后继续触发：`@{ppt_init|...}`
+
+**使用案例（内部）**:
+
+```text
+@{require_confirm}
+<tool>require_confirm:已发送确认请求，等待用户确认</tool>
+@{ppt_init|topic:高等数学|...}
+```
+
