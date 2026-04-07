@@ -80,3 +80,43 @@ func TestParserDuplicateActions(t *testing.T) {
 		t.Errorf("expected kb_query, got %s", result2.Actions[0].Type)
 	}
 }
+
+func TestParserOpenActionState(t *testing.T) {
+	parser := NewParser()
+
+	r1 := parser.Feed("abc @{kb_query|q:test")
+	if !r1.HasOpenAction {
+		t.Fatal("expected open action state before closing brace")
+	}
+	if len(r1.Actions) != 0 {
+		t.Fatalf("expected 0 completed actions, got %d", len(r1.Actions))
+	}
+
+	r2 := parser.Feed("}")
+	if r2.HasOpenAction {
+		t.Fatal("expected open action state to be cleared after closing brace")
+	}
+	if len(r2.Actions) != 1 {
+		t.Fatalf("expected 1 completed action, got %d", len(r2.Actions))
+	}
+}
+
+func TestParserDanglingAtTreatedAsOpenActionPrefix(t *testing.T) {
+	parser := NewParser()
+
+	r1 := parser.Feed("hello @")
+	if !r1.HasOpenAction {
+		t.Fatal("expected dangling @ to be treated as open action prefix")
+	}
+	if len(r1.Actions) != 0 {
+		t.Fatalf("expected 0 completed actions, got %d", len(r1.Actions))
+	}
+
+	r2 := parser.Feed("{kb_query|q:test}")
+	if r2.HasOpenAction {
+		t.Fatal("expected open action state to be cleared after full action")
+	}
+	if len(r2.Actions) != 1 {
+		t.Fatalf("expected 1 completed action, got %d", len(r2.Actions))
+	}
+}

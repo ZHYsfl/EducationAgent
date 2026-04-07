@@ -27,6 +27,10 @@ type Config struct {
 	FillerPhrases  []string // filler phrases for small LLM
 	MaxFillers     int      // max fillers for small LLM
 
+	ThinkDeltaChars    int // retrigger threshold based on last trigger length + delta
+	ThinkMinIntervalMS int // minimum milliseconds between think retriggers
+	ThinkActionGuardMS int // guard window after action prefix detection
+
 	SystemPrompt string // system prompt
 
 	AdaptiveSizesFile string // adaptive sizes file path
@@ -46,6 +50,18 @@ func LoadConfig() *Config {
 	port, _ := strconv.Atoi(getEnv("SERVER_PORT", "9000"))
 	tokenBudget, _ := strconv.Atoi(getEnv("TOKEN_BUDGET", "50"))
 	fillerInterval, _ := strconv.Atoi(getEnv("FILLER_INTERVAL", "100"))
+	thinkDeltaChars, _ := strconv.Atoi(getEnv("THINK_DELTA_CHARS", "7"))
+	thinkMinIntervalMS, _ := strconv.Atoi(getEnv("THINK_MIN_INTERVAL_MS", "2000"))
+	thinkActionGuardMS, _ := strconv.Atoi(getEnv("THINK_ACTION_GUARD_MS", "1500"))
+	if thinkDeltaChars <= 0 {
+		thinkDeltaChars = 7
+	}
+	if thinkMinIntervalMS <= 0 {
+		thinkMinIntervalMS = 2000
+	}
+	if thinkActionGuardMS <= 0 {
+		thinkActionGuardMS = 1500
+	}
 
 	return &Config{
 		ServerPort: port,
@@ -68,14 +84,17 @@ func LoadConfig() *Config {
 			getEnv("FILLER_PHRASE_2", "还在想，稍等一下"),
 			getEnv("FILLER_PHRASE_3", "马上就好"),
 		},
-		MaxFillers:        3,
-		SystemPrompt:      getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),
-		AdaptiveSizesFile: getEnv("ADAPTIVE_SIZES_FILE", "adaptive_sizes.json"),
+		MaxFillers:         3,
+		ThinkDeltaChars:    thinkDeltaChars,
+		ThinkMinIntervalMS: thinkMinIntervalMS,
+		ThinkActionGuardMS: thinkActionGuardMS,
+		SystemPrompt:       getEnv("SYSTEM_PROMPT", "你是一个有帮助的AI教育助手，请用中文回答问题。"),
+		AdaptiveSizesFile:  getEnv("ADAPTIVE_SIZES_FILE", "adaptive_sizes.json"),
 
-		PPTAgentURL:   getEnv("PPT_AGENT_URL", "http://localhost:9100"),
-		KBServiceURL:  getEnv("KB_SERVICE_URL", "http://localhost:9200"),
-		MemoryURL:     getEnv("MEMORY_SERVICE_URL", "http://localhost:9300"),
-		SearchURL:     getEnv("SEARCH_SERVICE_URL", "http://localhost:9400"),
+		PPTAgentURL:  getEnv("PPT_AGENT_URL", "http://localhost:9100"),
+		KBServiceURL: getEnv("KB_SERVICE_URL", "http://localhost:9200"),
+		MemoryURL:    getEnv("MEMORY_SERVICE_URL", "http://localhost:9300"),
+		SearchURL:    getEnv("SEARCH_SERVICE_URL", "http://localhost:9400"),
 		DBServiceURL: getEnv("DB_SERVICE_URL", "http://localhost:9500"),
 	}
 }

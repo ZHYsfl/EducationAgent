@@ -1,10 +1,10 @@
 package agent_test
 
 import (
-	agent "voiceagent/agent"
 	"strings"
 	"testing"
 	"time"
+	agent "voiceagent/agent"
 )
 
 func newRunnableSessionForTextInput(t *testing.T) *agent.Session {
@@ -32,7 +32,6 @@ func TestHandleTextMessage_VADEndDispatchesToPipeline(t *testing.T) {
 		t.Fatal("expected vad_end signal to pipeline")
 	}
 }
-
 
 func TestHandleTextMessage_VADStartDispatch(t *testing.T) {
 	s := agent.NewTestSession(&agent.MockServices{})
@@ -78,5 +77,24 @@ func TestHandleTextInput_FromSpeaking_InterruptsAndProcesses(t *testing.T) {
 	waitUntil(t, 2*time.Second, func() bool { return s.GetState() == agent.StateIdle }, "speaking input did not finish")
 	if len(s.GetPipeline().GetHistory().Messages()) == 0 {
 		t.Fatal("history should contain processed messages")
+	}
+}
+
+func TestHandleTextInput_FromListening_InterruptsAndProcesses(t *testing.T) {
+	s := newRunnableSessionForTextInput(t)
+	s.SetState(agent.StateListening)
+
+	s.HandleTextInput(agent.WSMessage{Type: "text_input", Text: "直接按打字提交"})
+
+	waitUntil(t, 2*time.Second, func() bool { return s.GetState() == agent.StateIdle }, "listening input did not finish")
+	foundUser := false
+	for _, m := range s.GetPipeline().GetHistory().Messages() {
+		if m.Role == "user" && strings.Contains(m.Content, "直接按打字提交") {
+			foundUser = true
+			break
+		}
+	}
+	if !foundUser {
+		t.Fatalf("expected typed user input in history, got: %+v", s.GetPipeline().GetHistory().Messages())
 	}
 }

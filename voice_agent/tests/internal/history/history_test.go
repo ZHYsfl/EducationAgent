@@ -23,7 +23,7 @@ func TestConversationHistory_AddAndRetrieve(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	if !strings.Contains(s, "hello") || !strings.Contains(s, "被打断") {
+	if !strings.Contains(s, "hello") || !strings.Contains(s, "interrupted") {
 		t.Fatalf("expected user and interrupted assistant content in payload: %s", s)
 	}
 }
@@ -44,7 +44,7 @@ func TestConversationHistory_ToOpenAIWithThoughtAndPrompt(t *testing.T) {
 	if !strings.Contains(s, "custom system") {
 		t.Fatalf("expected runtime system prompt in first message: %s", s)
 	}
-	if !strings.Contains(s, "draft thought") || !strings.Contains(s, "预思考草稿") {
+	if !strings.Contains(s, "draft thought") {
 		t.Fatalf("expected previous thought appended to system: %s", s)
 	}
 }
@@ -75,8 +75,8 @@ func TestConversationHistory_ToOpenAIWithDraftAndThought(t *testing.T) {
 	}
 	raw, _ := json.Marshal(msgs)
 	s := string(raw)
-	if !strings.Contains(s, "partial text") || !strings.Contains(s, "some thinking") || !strings.Contains(s, "内部草稿") {
-		t.Fatalf("expected partial user + assistant-wrapped thought: %s", s)
+	if !strings.Contains(s, "partial text") || !strings.Contains(s, "some thinking") {
+		t.Fatalf("expected partial user + prior thought: %s", s)
 	}
 }
 
@@ -91,5 +91,17 @@ func TestConversationHistory_NoPreviousThought(t *testing.T) {
 	raw, _ := json.Marshal(msgs)
 	if !strings.Contains(string(raw), "partial") {
 		t.Fatalf("expected partial user message: %s", string(raw))
+	}
+}
+
+func TestConversationHistory_ToOpenAIWithDraftThoughtAndPrompt(t *testing.T) {
+	h := history.NewConversationHistory("stored")
+	h.AddUser("u1")
+
+	msgs := h.ToOpenAIWithDraftThoughtAndPrompt("draft", "t1", "runtime")
+	raw, _ := json.Marshal(msgs)
+	s := string(raw)
+	if !strings.Contains(s, "runtime") || !strings.Contains(s, "draft") || !strings.Contains(s, "t1") {
+		t.Fatalf("unexpected payload: %s", s)
 	}
 }

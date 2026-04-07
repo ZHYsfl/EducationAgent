@@ -1,4 +1,4 @@
-package history
+﻿package history
 
 import (
 	"sync"
@@ -39,7 +39,7 @@ func (h *ConversationHistory) AddInterruptedAssistant(content string) {
 	h.mu.Lock()
 	h.messages = append(h.messages, HistoryMessage{
 		Role:    "assistant",
-		Content: content + " [被打断]",
+		Content: content + "</interrupted>",
 	})
 	h.mu.Unlock()
 }
@@ -96,25 +96,12 @@ func (h *ConversationHistory) messagesWithSystemLocked(system string) []openai.C
 	return msgs
 }
 
-// ToOpenAIWithDraftAndThought builds messages for draft thinking rounds:
-// history + partial user text + previous thinker output (if any).
+// ToOpenAIWithDraftAndThought builds messages for draft thinking rounds.
 func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previousThought string) []openai.ChatCompletionMessageParamUnion {
-	msgs := h.ToOpenAI()
-	msgs = append(msgs, openai.UserMessage(draftUserText))
-	if previousThought != "" {
-		msgs = append(msgs, openai.AssistantMessage("[内部草稿，可能不完整或片面，仅供继续推理，不可直接复述] "+previousThought+" [思考中...]"))
-	}
-	return msgs
+	return h.ToOpenAIWithDraftThoughtAndPrompt(draftUserText, previousThought, "")
 }
 
-// ToOpenAIWithThoughtAndPrompt builds the main reply request after the user turn is finalized.
-//
-//   - previousThought: streaming "draft thinking" text accumulated before this turn (may be empty).
-//   - systemPrompt: full runtime system string for this turn (requirements mode, RAG, task list, etc.).
-//     When non-empty it replaces the stored h.systemPrompt for this call only; when empty, h.systemPrompt is used.
-//
-// previousThought is appended to the system message (not a separate role) so the model sees it as
-// non-authoritative context, not as user or assistant dialogue.
+// ToOpenAIWithThoughtAndPrompt builds the final reply request after the user turn is finalized.
 func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -124,7 +111,25 @@ func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, syst
 		prompt = systemPrompt
 	}
 	if previousThought != "" {
-		prompt += "\n\n[预思考草稿 - 基于用户部分输入生成，可能方向有误，仅供参考，以用户完整输入为准]\n" + previousThought
+		prompt += previousThought
 	}
 	return h.messagesWithSystemLocked(prompt)
+}
+
+// ToOpenAIWithDraftThoughtAndPrompt builds draft-thinking messages without mutating
+// conversation history: [system(runtime), ...history, user(draft), assistant(previousThought?)].
+func (h *ConversationHistory) ToOpenAIWithDraftThoughtAndPrompt(draftUserText, previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	prompt := h.systemPrompt
+	if systemPrompt != "" {
+		prompt = systemPrompt
+	}
+	msgs := h.messagesWithSystemLocked(prompt)
+	msgs = append(msgs, openai.UserMessage(draftUserText))
+	if previousThought != "" {
+		msgs = append(msgs, openai.AssistantMessage(previousThought))
+	}
+	return msgs
 }

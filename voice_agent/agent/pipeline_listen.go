@@ -9,6 +9,8 @@ import (
 
 // ---------------------------------------------------------------------------
 // O/T/A Concurrent Architecture
+// ---------------------------------------------------------------------------
+
 // StartInteractive runs the concurrent O/T/A pipeline.
 func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.runMu.Lock()
@@ -44,6 +46,7 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.tokensMu.Lock()
 	p.rawGeneratedTokens.Reset()
 	p.tokensMu.Unlock()
+	p.resetThinkDraft()
 
 	// Start high-priority listener
 	go p.highPriorityListener(ctx)
@@ -90,6 +93,25 @@ func (p *Pipeline) asrLoop(ctx context.Context) {
 	}
 
 	var partialTexts []string
+	var latestPartial string
+	var finalText string
+	gotFinal := false
+	gotVADEnd := false
+	audioClosed := false
+	finalLaunched := false
+
+	launchFinal := func() {
+		if finalLaunched || !gotVADEnd {
+			return
+		}
+		text := strings.TrimSpace(finalText)
+		if text == "" {
+			return
+		}
+		finalLaunched = true
+		procCtx := p.session.newPipelineContext()
+		go p.startProcessing(procCtx, text)
+	}
 
 	for {
 		select {
@@ -109,22 +131,24 @@ func (p *Pipeline) asrLoop(ctx context.Context) {
 
 		case result, ok := <-asrResultCh:
 			if !ok {
+				if gotVADEnd && !gotFinal {
+					// Fallback when ASR stream closes without explicit final frame.
+					finalText = latestPartial
+				}
+				launchFinal()
 				return
 			}
 
-			if result.Mode == "2pass-offline" {
-				// 2pass 是基于全部音频的最终结果，替换之前的流式累积
+			if result.Mode == "2pass-offline" || result.IsFinal {
 				partialTexts = nil
-				select {
-				case p.userInputCh <- result.Text:
-				case <-ctx.Done():
-					return
-				}
+				finalText = result.Text
+				gotFinal = true
 				p.session.SendJSON(WSMessage{Type: "transcript_final", Text: result.Text})
+				launchFinal()
 			} else {
-				// 流式结果：累积并发送
 				partialTexts = append(partialTexts, result.Text)
 				currentText := strings.Join(partialTexts, "")
+				latestPartial = currentText
 				select {
 				case p.userInputCh <- currentText:
 				default:
@@ -133,8 +157,12 @@ func (p *Pipeline) asrLoop(ctx context.Context) {
 			}
 
 		case <-vadEndCh:
-			close(asrAudioCh)
-			return
+			gotVADEnd = true
+			if !audioClosed {
+				close(asrAudioCh)
+				audioClosed = true
+			}
+			launchFinal()
 
 		case <-ctx.Done():
 			return

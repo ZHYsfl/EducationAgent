@@ -1,16 +1,17 @@
 package agent_test
 
 import (
-	agent "voiceagent/agent"
 	"context"
 	"strings"
 	"testing"
+
+	agent "voiceagent/agent"
 	"voiceagent/internal/protocol"
 )
 
-// ===========================================================================
+// ============================================================================
 // tryResolveConflict
-// ===========================================================================
+// ============================================================================
 
 func TestTryResolveConflict_SinglePending(t *testing.T) {
 	mock := &agent.MockServices{}
@@ -42,7 +43,7 @@ func TestTryResolveConflict_SinglePending(t *testing.T) {
 		t.Errorf("Intents should be nil, got %v", fb.Intents)
 	}
 
-	// Pending question should be removed
+	// Pending question should be removed.
 	_, ok := s.ResolvePendingQuestion("ctx_conflict_1")
 	if ok {
 		t.Error("pending question should have been consumed")
@@ -96,7 +97,6 @@ func TestTryResolveConflict_MultiplePending_MultipleActions(t *testing.T) {
 		t.Fatalf("expected 2 feedbacks, got %d", len(calls))
 	}
 
-	// 验证两个冲突都被处理
 	taskIDs := map[string]bool{}
 	for _, call := range calls {
 		taskIDs[call.TaskID] = true
@@ -105,7 +105,6 @@ func TestTryResolveConflict_MultiplePending_MultipleActions(t *testing.T) {
 		t.Errorf("should resolve both task_1 and task_2, got %v", taskIDs)
 	}
 
-	// 验证两个问题都被移除
 	if _, ok := s.ResolvePendingQuestion("ctx_a"); ok {
 		t.Error("ctx_a should have been consumed")
 	}
@@ -136,10 +135,9 @@ func TestTryResolveConflict_NilClients(t *testing.T) {
 	}
 }
 
-
-// ===========================================================================
+// ============================================================================
 // buildTaskListContext
-// ===========================================================================
+// ============================================================================
 
 func TestBuildTaskListContext_NoTasks(t *testing.T) {
 	mock := &agent.MockServices{}
@@ -167,7 +165,7 @@ func TestBuildTaskListContext_SingleTask(t *testing.T) {
 	if !strings.Contains(result, "task_t1") {
 		t.Error("should contain task ID")
 	}
-	if !strings.Contains(result, "当前活跃") {
+	if !strings.Contains(result, "当前任务") {
 		t.Error("should mark active task")
 	}
 }
@@ -185,14 +183,14 @@ func TestBuildTaskListContext_MultipleTasks(t *testing.T) {
 	if !strings.Contains(result, "数学") || !strings.Contains(result, "物理") {
 		t.Error("should contain both task topics")
 	}
-	if !strings.Contains(result, "用户可能用简称") {
-		t.Error("should include multi-task instructions for LLM")
+	if !strings.Contains(result, "存在多任务时，请先确认用户当前指的是哪一个任务。") {
+		t.Error("should include multi-task disambiguation instruction")
 	}
 }
 
-// ===========================================================================
+// ============================================================================
 // buildPendingQuestionsContext
-// ===========================================================================
+// ============================================================================
 
 func TestBuildPendingQuestionsContext_NoQuestions(t *testing.T) {
 	mock := &agent.MockServices{}

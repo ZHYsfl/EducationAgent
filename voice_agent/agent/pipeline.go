@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"toolcalling"
 	adaptivepkg "voiceagent/internal/adaptive"
@@ -32,8 +33,8 @@ type Pipeline struct {
 	ttsClient tts.TTSProvider
 
 	// ========== Session Context ==========
-	sessionCtx    context.Context
-	sessionCtxMu  sync.RWMutex
+	sessionCtx   context.Context
+	sessionCtxMu sync.RWMutex
 
 	// ========== State Management ==========
 	history  *hist.ConversationHistory
@@ -41,7 +42,7 @@ type Pipeline struct {
 
 	// ========== Audio Streaming (protected by ioMu) ==========
 	audioBuf *audio.AudioBuffer
-	audioCh  chan []byte   // audio data from session → pipeline
+	audioCh  chan []byte   // audio data from session 鈫?pipeline
 	vadEndCh chan struct{} // signal: user stopped speaking
 	ioMu     sync.RWMutex  // protects audioCh/vadEndCh pointer swaps
 	runMu    sync.Mutex    // ensures only one StartListening runs at a time
@@ -52,13 +53,17 @@ type Pipeline struct {
 	tokensMu           sync.Mutex
 
 	// ========== O/T/A Concurrent Channels ==========
-	userInputCh chan string // ASR → Think
-	tokenCh     chan string // Think → Output
-	sentenceCh  chan string // Output → TTS
+	userInputCh chan string // ASR 鈫?Think
+	tokenCh     chan string // Think 鈫?Output
+	sentenceCh  chan string // Output 鈫?TTS
 
 	// ========== Think Stream Control ==========
 	thinkCancel   context.CancelFunc
 	thinkCancelMu sync.Mutex
+	thinkGuardMu  sync.RWMutex
+	thinkGuardTo  time.Time
+	thinkDraftMu  sync.Mutex
+	thinkDraftRaw strings.Builder
 
 	// ========== Context Queue (protected by pendingMu) ==========
 	contextQueue      chan types.ContextMessage
@@ -110,7 +115,7 @@ func NewPipeline(session *Session, config *cfgpkg.Config, clients svcclients.Ext
 	}
 
 	p.executor = executor.New(clients)
-	p.contextMgr = NewContextManager(session)
+	p.contextMgr = NewContextManager(session, p)
 
 	return p
 }
@@ -196,7 +201,7 @@ func (p *Pipeline) GetAudioCh() chan []byte {
 	return p.audioCh
 }
 
-// SetAudioCh sets the audioCh directly (for testing — bypasses ioMu swap logic).
+// SetAudioCh sets the audioCh directly (for testing; bypasses ioMu swap logic).
 func (p *Pipeline) SetAudioCh(ch chan []byte) {
 	p.ioMu.Lock()
 	p.audioCh = ch
@@ -248,14 +253,29 @@ func (p *Pipeline) SetPendingContexts(msgs []types.ContextMessage) {
 }
 
 func (p *Pipeline) OnInterrupt() {
-	// 立即取消当前思考流
+	// Stop current think stream first.
 	p.cancelThinkStream()
 
-	// 读取并保存已生成的内容
+	// If stream tail contains an incomplete action (e.g. "@{..."),
+	// wait up to 3 checks (1s each) for closure before hard trimming.
+	for i := 0; i < 3; i++ {
+		p.tokensMu.Lock()
+		raw := p.rawGeneratedTokens.String()
+		p.tokensMu.Unlock()
+		if !protocol.HasOpenActionPrefix(raw) {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
 	p.tokensMu.Lock()
 	raw := p.rawGeneratedTokens.String()
 	p.rawGeneratedTokens.Reset()
 	p.tokensMu.Unlock()
+
+	if trimmed, changed := protocol.TrimTrailingIncompleteAction(raw); changed {
+		raw = trimmed
+	}
 
 	if raw != "" {
 		p.history.AddInterruptedAssistant(raw)
