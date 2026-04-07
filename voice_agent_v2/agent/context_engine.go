@@ -125,7 +125,7 @@ done:
 func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 	if msg.EventType == "update_requirements" {
 		p.applyRequirementsUpdate(msg.Content)
-		return
+		msg.Content = "需求信息已更新"
 	}
 
 	if msg.EventType == "conflict_question" {
