@@ -84,6 +84,28 @@ func (r *RedisTaskRepository) UpdateStatus(taskID, status string, progress int) 
 	return t, nil
 }
 
+func (r *RedisTaskRepository) UpdatePlanID(taskID, planID string) error {
+	ctx := context.Background()
+	t, err := r.GetByID(taskID)
+	if err != nil {
+		return err
+	}
+	t.PlanID = planID
+	t.UpdatedAt = time.Now().UTC()
+	return r.saveTask(ctx, t)
+}
+
+func (r *RedisTaskRepository) UpdateContentResultID(taskID, resultID string) error {
+	ctx := context.Background()
+	t, err := r.GetByID(taskID)
+	if err != nil {
+		return err
+	}
+	t.ContentResultID = resultID
+	t.UpdatedAt = time.Now().UTC()
+	return r.saveTask(ctx, t)
+}
+
 func (r *RedisTaskRepository) ListBySession(sessionID string, page, pageSize int) ([]model.Task, int, error) {
 	ctx := context.Background()
 	if page <= 0 {
