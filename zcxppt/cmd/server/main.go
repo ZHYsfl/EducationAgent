@@ -144,12 +144,48 @@ func main() {
 		exportService.AttachPPTRepository(pptRepo)
 	}
 
+	teachingPlanService := service.NewTeachingPlanService(
+		service.LLMClientConfig{
+			APIKey:  cfg.LLMAPIKey,
+			Model:   cfg.LLMModel,
+			BaseURL: cfg.LLMBaseURL,
+		},
+		service.RenderServiceConfig{
+			PythonPath: cfg.PythonPath,
+			ScriptPath: cfg.RenderScriptPath,
+			RenderDir:  cfg.RenderDir,
+			URLPrefix:  cfg.RenderURLPrefix,
+		},
+		ossClient,
+	)
+
+	contentDiversityService := service.NewContentDiversityService(
+		service.LLMClientConfig{
+			APIKey:  cfg.LLMAPIKey,
+			Model:   cfg.LLMModel,
+			BaseURL: cfg.LLMBaseURL,
+		},
+		service.RenderServiceConfig{
+			PythonPath: cfg.PythonPath,
+			ScriptPath: cfg.RenderScriptPath,
+			RenderDir:  cfg.RenderDir,
+			URLPrefix:  cfg.RenderURLPrefix,
+		},
+		ossClient,
+	)
+
 	pptHandler := handlers.NewPPTHandler(pptService)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackService, intentParser)
 	exportHandler := handlers.NewExportHandler(exportService)
+	teachingPlanHandler := handlers.NewTeachingPlanHandler(teachingPlanService)
+	contentDiversityHandler := handlers.NewContentDiversityHandler(contentDiversityService)
 	authMW := middleware.NewAuthMiddleware(cfg.JWTSecret, cfg.InternalKey)
 
-	r := http.NewRouter(pptHandler, feedbackHandler, exportHandler, authMW)
+	// 联动：Init 时自动生成教案和内容多样性（解耦并发）
+	pptService.AttachTeachingPlanService(teachingPlanService)
+	pptService.AttachContentDiversityService(contentDiversityService)
+
+	r := http.NewRouter(pptHandler, feedbackHandler, exportHandler, teachingPlanHandler, contentDiversityHandler, authMW)
 
 	startTimeoutTicker(feedbackService)
 

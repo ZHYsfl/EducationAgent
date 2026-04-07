@@ -39,6 +39,10 @@ type PPTService struct {
 	llmConfig      LLMClientConfig
 	renderer       *renderer.Renderer
 	refFusion      *RefFusionService
+
+	// 联动服务：在 Init 时自动生成教案和内容多样性
+	teachingPlanService     *TeachingPlanService
+	contentDiversityService *ContentDiversityService
 }
 
 func NewPPTService(taskRepo repository.TaskRepository, pptRepo repository.PPTRepository, feedbackRepo repository.FeedbackRepository) *PPTService {
@@ -56,6 +60,16 @@ func (s *PPTService) AttachRenderer(r *renderer.Renderer) {
 
 func (s *PPTService) AttachRefFusionService(r *RefFusionService) {
 	s.refFusion = r
+}
+
+// AttachTeachingPlanService sets the TeachingPlanService for auto-generation on Init.
+func (s *PPTService) AttachTeachingPlanService(ts *TeachingPlanService) {
+	s.teachingPlanService = ts
+}
+
+// AttachContentDiversityService sets the ContentDiversityService for auto-generation on Init.
+func (s *PPTService) AttachContentDiversityService(cds *ContentDiversityService) {
+	s.contentDiversityService = cds
 }
 
 func (s *PPTService) ConfigureInitGenerator(kbBaseURL string, llmCfg LLMClientConfig) {
@@ -204,6 +218,60 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 	if err != nil {
 		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
 	}
+
+	// ── 联动生成：教案 + 内容多样性 ──────────────────────────────────
+	// 两个 goroutine 均与 PPT 生成解耦，并发执行
+	if req.AutoGenerateTeachingPlan && s.teachingPlanService != nil {
+		go func() {
+			planReq := model.TeachingPlanRequest{
+				TaskID:           taskID,
+				Topic:            req.Topic,
+				Subject:          req.Subject,
+				Description:      req.Description,
+				Audience:         req.Audience,
+				Duration:         req.TeachingElements.Duration,
+				TeachingElements: req.TeachingElements,
+			}
+			planResp, planErr := s.teachingPlanService.Generate(context.Background(), planReq)
+			if planErr != nil {
+				log.Printf("auto teaching_plan generation failed: task_id=%s err=%v", taskID, planErr)
+				return
+			}
+			_ = s.taskRepo.UpdatePlanID(taskID, planResp.PlanID)
+			log.Printf("auto teaching_plan generated: task_id=%s plan_id=%s", taskID, planResp.PlanID)
+		}()
+	}
+
+	if req.AutoGenerateContentDiversity && s.contentDiversityService != nil {
+		go func() {
+			divReq := model.ContentDiversityRequest{
+				TaskID:           taskID,
+				Topic:            req.Topic,
+				Subject:          req.Subject,
+				KBSummary:        kbSummary,
+				Type:             coalesce(req.ContentDiversityType, "both"),
+				GameType:         coalesce(req.ContentDiversityGameType, "random"),
+				AnimationStyle:   coalesce(req.ContentDiversityAnimationStyle, "all"),
+			}
+			divResp, divErr := s.contentDiversityService.Generate(context.Background(), divReq)
+			if divErr != nil {
+				log.Printf("auto content_diversity generation failed: task_id=%s err=%v", taskID, divErr)
+				return
+			}
+			_ = s.taskRepo.UpdateContentResultID(taskID, divResp.ResultID)
+			log.Printf("auto content_diversity generated: task_id=%s result_id=%s", taskID, divResp.ResultID)
+		}()
+	}
+}
+
+// coalesce returns the first non-empty string, or "" if none.
+func coalesce(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 type kbParseRequest struct {
