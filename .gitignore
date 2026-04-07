@@ -219,19 +219,12 @@ qwen_omni/
 
 # Local planning/agent instruction artifacts
 plans/
-<<<<<<< HEAD
-=======
 tests/
->>>>>>> origin/wang
 AGENTS.md
 memory_tech.md
 .codex
-storage/
-
-<<<<<<< HEAD
+API_DOCUMENTATION_EN.md
 PLAN.md
-=======
->>>>>>> origin/wang
 
 # Cursor project files
 .cursor/
