@@ -27,7 +27,7 @@ func TestContextManager_Export(t *testing.T) {
 	}
 
 	// 创建 ContextManager
-	cm := NewContextManager(session)
+	cm := NewContextManager(session, nil)
 
 	// 导出快照
 	snapshot := cm.Export()
@@ -72,7 +72,7 @@ func TestContextManager_ExportJSON(t *testing.T) {
 		},
 	}
 
-	cm := NewContextManager(session)
+	cm := NewContextManager(session, nil)
 	jsonStr, err := cm.ExportJSON()
 	if err != nil {
 		t.Fatalf("ExportJSON failed: %v", err)

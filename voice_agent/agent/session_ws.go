@@ -93,7 +93,9 @@ func (s *Session) handleTextInput(msg WSMessage) {
 		return
 	}
 	state := s.GetState()
-	if state == StateProcessing || state == StateSpeaking {
+	if state == StateListening || state == StateProcessing || state == StateSpeaking {
+		// Typed submit is treated as an explicit interrupt in all active voice states.
+		// This allows immediate promotion to final processing.
 		s.pipeline.OnInterrupt()
 		s.cancelCurrentPipeline()
 	}

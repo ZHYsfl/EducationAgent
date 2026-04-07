@@ -36,7 +36,7 @@ func (p *Pipeline) TryResolveConflict(ctx context.Context, userText string, acti
 // BuildTaskListContext calls the ContextManager's buildLayer2TaskList method.
 func (p *Pipeline) BuildTaskListContext() string {
 	if p.contextMgr == nil {
-		p.contextMgr = NewContextManager(p.session)
+		p.contextMgr = NewContextManager(p.session, p)
 	}
 	return p.contextMgr.buildLayer2TaskList()
 }
@@ -44,7 +44,7 @@ func (p *Pipeline) BuildTaskListContext() string {
 // BuildPendingQuestionsContext calls the ContextManager's buildLayer3PendingQuestions method.
 func (p *Pipeline) BuildPendingQuestionsContext() string {
 	if p.contextMgr == nil {
-		p.contextMgr = NewContextManager(p.session)
+		p.contextMgr = NewContextManager(p.session, p)
 	}
 	return p.contextMgr.buildLayer3PendingQuestions()
 }
@@ -79,9 +79,9 @@ func (p *Pipeline) TTSWorker(ctx context.Context, sentenceCh <-chan string) {
 	p.ttsWorker(ctx, sentenceCh)
 }
 
-// EnqueueContextMessage calls the unexported enqueueContextMessage method.
+// EnqueueContextMessage calls EnqueueContext (enqueueContextMessage was removed).
 func (p *Pipeline) EnqueueContextMessage(ctx context.Context, msg ContextMessage) {
-	p.enqueueContextMessage(ctx, msg)
+	p.EnqueueContext(msg)
 }
 
 // NewTestRequirements creates a test requirements object.

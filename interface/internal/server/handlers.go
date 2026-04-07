@@ -414,7 +414,7 @@ func (a *App) searchQuery(c *gin.Context) {
 		return
 	}
 
-	go a.runSearchJob(req.RequestID, tid, req.UserID, req.Query, req.MaxResults, req.Language)
+	go a.runSearchJob(req.RequestID, tid, sid, req.UserID, req.Query, req.MaxResults, req.Language)
 
 	ok(c, gin.H{
 		"request_id": req.RequestID,
