@@ -78,7 +78,7 @@ protocolInstructions：
 
 ---
 
-工具调用数据集(2500条):
+工具调用数据集(4175条):
 我们的7个工具：
 1. kb_query ✓                                                            - 一次：kb_query:kb_query已发送，等待检索结果                          
 - 二次：外部 ppt_message 回调 → kb_query:检索内容                      
@@ -390,4 +390,324 @@ protocolInstructions：
     {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
     {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
     {"role":"assistant", "content":"好的，两个修改都已发送..."}
+}
+
+---
+
+// F. require_confirm → ppt_init 两阶段专项
+
+// 核心规则：
+// 1. 所有12个字段齐全后，AI 调用 @{require_confirm}，前端展示需求信息给用户
+// 2. 用户口头说"确认/好的/可以"后，AI 才调用 @{ppt_init}，两者不在同一轮
+// 3. require_confirm 不需要在输出里列出字段内容（前端已展示）
+// 4. 用户口头否认/要求修改时，重新走 update_requirements 流程再 require_confirm
+
+// F1: 正常两阶段流（字段齐全 → require_confirm → 用户口头确认 → ppt_init）75条
+{
+    {"role":"system", "content":"<具体身份定位，已收集全部12个字段>"},
+    {"role":"user", "content":"好的就这样吧"},
+    {"role":"assistant", "content":"#{所有字段已齐全，发起确认请求，等待用户口头确认} 好的，我已整理好所有信息，请查看界面上的需求摘要，确认无误后告诉我 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+    {"role":"assistant", "content":"#{require_confirm已发出，等待用户口头确认} 请确认界面上的信息是否正确。"},
+    {"role":"user", "content":"确认，开始做吧"},
+    {"role":"assistant", "content":"#{用户口头确认，现在发起ppt_init} 好的，开始制作！ @{ppt_init|topic:xxx|description:xxx|total_pages:20|audience:xxx|global_style:xxx|knowledge_points:xxx|teaching_goals:xxx|teaching_logic:xxx|key_difficulties:xxx|duration:45分钟|interaction_design:xxx|output_formats:xxx}"},
+    {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_001</tool>"},
+    {"role":"assistant", "content":"#{ppt_init成功，任务已创建} PPT制作任务已创建，正在生成中，稍等一下。"}
+}
+
+// F2: 用户口头否认，修改字段后重新确认 50条
+{
+    {"role":"system", "content":"<具体身份定位，已收集全部12个字段，已发起require_confirm>"},
+    {"role":"user", "content":"等等，页数改成30页"},
+    {"role":"assistant", "content":"#{用户否认，修改字段，重新require_confirm} 好的，页数改为30页 @{update_requirements|total_pages:30}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"#{字段更新完毕，重新发起确认} 已更新页数为30页，请重新查看界面确认 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+    {"role":"assistant", "content":"请确认更新后的信息是否正确。"},
+    {"role":"user", "content":"好的这次没问题"},
+    {"role":"assistant", "content":"#{用户口头确认，发起ppt_init} @{ppt_init|topic:xxx|description:xxx|total_pages:30|audience:xxx|global_style:xxx|knowledge_points:xxx|teaching_goals:xxx|teaching_logic:xxx|key_difficulties:xxx|duration:45分钟|interaction_design:xxx|output_formats:xxx}"},
+    {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_002</tool>"},
+    {"role":"assistant", "content":"任务已创建，开始生成。"}
+}
+
+// F3: 字段不全时用户催促开始，AI 拒绝并继续收集 25条
+{
+    {"role":"system", "content":"<具体身份定位，字段未全部收集，缺少teaching_goals/key_difficulties>"},
+    {"role":"user", "content":"差不多了，开始做吧"},
+    {"role":"assistant", "content":"#{字段不全，不能发起require_confirm，继续收集} 还差一点，教学目标和重难点还没填，能简单说一下吗？"},
+    {"role":"user", "content":"教学目标是让学生掌握导数基本概念，重难点是极限的理解"},
+    {"role":"assistant", "content":"#{收到缺失字段，更新后字段齐全，发起确认} @{update_requirements|teaching_goals:让学生掌握导数基本概念|key_difficulties:极限的理解}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"#{字段齐全，发起确认} 好的，信息收集完毕，请查看界面确认 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+    {"role":"assistant", "content":"请确认所有信息是否正确。"}
+}
+
+// F4: require_confirm 发送失败，重试 25条
+{
+    {"role":"system", "content":"<具体身份定位，已收集全部12个字段>"},
+    {"role":"user", "content":"可以了"},
+    {"role":"assistant", "content":"#{字段齐全，发起确认} 好的，请确认需求信息 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:发送确认请求失败</tool>"},
+    {"role":"assistant", "content":"#{require_confirm失败，重试} 确认请求发送失败，我再试一次 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+    {"role":"assistant", "content":"请查看界面上的需求信息，确认无误后告诉我。"}
+}
+
+---
+
+// G. 字段改口/覆盖专项
+
+// 核心规则：
+// 1. 用户改口时，只更新用户明确说的字段，其余字段不动
+// 2. update_requirements 是覆盖语义，新值直接替换旧值
+// 3. 模型不能"记住"旧值并在输出里重复，以免误导用户
+
+// G1: 单字段改口（直接覆盖）50条
+{
+    {"role":"system", "content":"<具体身份定位，topic已记录为高中数学导数>"},
+    {"role":"user", "content":"不对，主题改成初中数学函数"},
+    {"role":"assistant", "content":"#{用户改口topic，直接覆盖} 好的，主题改为初中数学函数 @{update_requirements|topic:初中数学函数}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"已更新主题为初中数学函数，其他信息不变。"}
+}
+
+// G2: 多字段同时改口 50条
+{
+    {"role":"system", "content":"<具体身份定位，已记录topic=高中数学导数，audience=高三学生，total_pages=20>"},
+    {"role":"user", "content":"受众改成高一学生，页数改成15页"},
+    {"role":"assistant", "content":"#{用户同时改口audience和total_pages} 好的 @{update_requirements|audience:高一学生|total_pages:15}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"已更新受众为高一学生，页数为15页。"}
+}
+
+// G3: 用户改口后又改回来 25条
+{
+    {"role":"system", "content":"<具体身份定位，topic已记录为高中数学导数>"},
+    {"role":"user", "content":"主题改成初中数学"},
+    {"role":"assistant", "content":"#{覆盖topic} @{update_requirements|topic:初中数学}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"好的，主题已改为初中数学。"},
+    {"role":"user", "content":"算了还是高中数学导数吧"},
+    {"role":"assistant", "content":"#{用户又改回来，再次覆盖} 好的，改回高中数学导数 @{update_requirements|topic:高中数学导数}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"已改回高中数学导数。"}
+}
+
+// G4: 用户说"不对"但没说新值，AI 追问 25条
+{
+    {"role":"system", "content":"<具体身份定位，topic已记录为高中数学导数>"},
+    {"role":"user", "content":"主题不对"},
+    {"role":"assistant", "content":"#{用户否定但没给新值，不能乱猜，追问} 好的，请问主题应该改成什么？"},
+    {"role":"user", "content":"改成高中物理力学"},
+    {"role":"assistant", "content":"#{收到新值，覆盖} @{update_requirements|topic:高中物理力学}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"已更新主题为高中物理力学。"}
+}
+
+// G5: 改口发生在 require_confirm 之后（已发起确认但用户口头反悔）25条
+// 用户已看到界面上的需求摘要，口头说要改某字段，AI 更新后重新 require_confirm，
+// 等用户再次口头确认后才发 ppt_init
+{
+    {"role":"system", "content":"<具体身份定位，已收集全部12个字段，已发起require_confirm等待用户口头确认>"},
+    {"role":"user", "content":"等等，风格改成简约白色"},
+    {"role":"assistant", "content":"#{用户反悔修改字段，重新update并重新confirm，不发ppt_init} 好的，风格改为简约白色 @{update_requirements|global_style:简约白色}"},
+    {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+    {"role":"assistant", "content":"#{字段更新完毕，重新发起确认，等待用户口头确认} 已更新风格，请重新查看界面确认 @{require_confirm}"},
+    {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+    {"role":"assistant", "content":"请确认更新后的信息是否正确。"},
+    {"role":"user", "content":"好的没问题"},
+    {"role":"assistant", "content":"#{用户口头确认，现在发ppt_init} @{ppt_init|topic:xxx|description:xxx|total_pages:20|audience:xxx|global_style:简约白色|knowledge_points:xxx|teaching_goals:xxx|teaching_logic:xxx|key_difficulties:xxx|duration:45分钟|interaction_design:xxx|output_formats:xxx}"},
+    {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_004</tool>"},
+    {"role":"assistant", "content":"任务已创建，开始生成。"}
+}
+
+---
+
+// H. 工具结果延迟消费（AI 上一轮正在输出，tool 结果下一轮才被 flushToolResults 消费）
+
+// 核心规则：
+// tool 结果进了 contextQueue，但当前轮次 AI 还在输出，
+// 下一轮 startProcessing 时 flushToolResults() 才把它写入历史。
+// 模型需要学会：上一轮我说到一半，这轮突然多了一条 tool 消息，要自然衔接。
+
+// H1: AI 正常输出完毕后，下一轮 tool 结果才到（无打断）50条
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"帮我查一下导数的定义"},
+    {"role":"assistant", "content":"#{发起查询} 好的，我来查一下 @{kb_query|query:导数定义}"},
+    {"role":"user", "content":"<tool>kb_query:kb_query已发送，等待检索结果</tool>"},
+    {"role":"assistant", "content":"#{工具已发送，继续和用户聊} 正在检索，你还有其他想了解的吗？"},
+    {"role":"user", "content":"顺便问一下，极限和导数有什么关系"},
+    // 注：此时 kb_query 异步结果也到了，flushToolResults 在这轮 startProcessing 前把它写入历史
+    // 所以下面这条 assistant 消息前，history 里已经有了 kb_query 的真实结果
+    {"role":"user", "content":"<tool>kb_query:导数是函数在某点的瞬时变化率，定义为极限...</tool>"},
+    {"role":"assistant", "content":"#{这轮同时收到用户新问题和kb_query结果，先回答新问题再补充检索结果} 极限是导数的基础，导数本质上就是差商的极限。另外，关于导数定义，检索到：导数是函数在某点的瞬时变化率..."}
+}
+
+// H2: 多个工具结果在 AI 输出期间积压，下一轮一次性消费 50条
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"同时帮我查知识库和搜索网络"},
+    {"role":"assistant", "content":"#{同时发起两个查询} 好的，同时查询 @{kb_query|query:xxx} @{web_search|query:xxx}"},
+    {"role":"user", "content":"<tool>kb_query:kb_query已发送，等待检索结果</tool>"},
+    {"role":"user", "content":"<tool>web_search:web_search已发送，等待搜索结果</tool>"},
+    {"role":"assistant", "content":"#{两个工具都已发送，等待结果} 正在同时查询，稍等..."},
+    {"role":"user", "content":"好的，我等着"},
+    // 此时两个异步结果都已到达 contextQueue，flushToolResults 一次性写入
+    {"role":"user", "content":"<tool>kb_query:知识库检索内容...</tool>"},
+    {"role":"user", "content":"<tool>web_search:网络搜索内容...</tool>"},
+    {"role":"assistant", "content":"#{两个结果都到了，综合回复} 综合知识库和网络搜索结果：..."}
+}
+
+---
+
+// I. Idle Trigger（无用户说话，仅 tool 结果触发 startProcessing）
+
+// 核心规则：
+// EnqueueContext 在 session idle 时主动触发 startProcessing(sCtx, "")
+// 此时 userText 为空，history 里没有新的 user 消息，只有 tool 结果
+// 模型需要学会：没有用户说话，仅凭 tool 结果主动输出，不能输出空内容
+
+// I1: 单个 tool 结果触发 idle，AI 主动播报结果 75条
+// 注：history 里没有新的 user 消息，直接是 tool 消息触发本轮
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"帮我查一下xxx"},
+    {"role":"assistant", "content":"#{发起查询} 好的 @{kb_query|query:xxx}"},
+    {"role":"user", "content":"<tool>kb_query:kb_query已发送，等待检索结果</tool>"},
+    {"role":"assistant", "content":"#{工具已发送，等待结果} 正在查询..."},
+    // 用户没有说话，异步结果到来触发 idle startProcessing
+    // flushToolResults 把结果写入历史，userText=""，history 里无新 user 消息
+    {"role":"user", "content":"<tool>kb_query:检索到的内容...</tool>"},
+    {"role":"assistant", "content":"#{idle trigger，收到kb_query结果，主动播报} 查到了，关于xxx：检索到的内容..."}
+}
+
+// I2: 多个 tool 结果积压后触发 idle，AI 综合播报 50条
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"帮我同时查知识库和记忆"},
+    {"role":"assistant", "content":"#{同时发起两个查询} @{kb_query|query:xxx} @{get_memory|query:yyy}"},
+    {"role":"user", "content":"<tool>kb_query:kb_query已发送，等待检索结果</tool>"},
+    {"role":"user", "content":"<tool>get_memory:get_memory已发送，等待记忆召回结果</tool>"},
+    {"role":"assistant", "content":"#{两个工具已发送} 正在查询..."},
+    // 用户没有说话，两个结果都到了，触发 idle startProcessing
+    {"role":"user", "content":"<tool>kb_query:知识库内容...</tool>"},
+    {"role":"user", "content":"<tool>get_memory:记忆内容...</tool>"},
+    {"role":"assistant", "content":"#{idle trigger，两个结果都到了，综合播报} 查询完成，知识库显示...，结合你之前的记忆..."}
+}
+
+// I3: idle trigger 时 tool 结果是失败 25条
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"帮我搜索一下xxx"},
+    {"role":"assistant", "content":"#{发起搜索} @{web_search|query:xxx}"},
+    {"role":"user", "content":"<tool>web_search:web_search已发送，等待搜索结果</tool>"},
+    {"role":"assistant", "content":"#{工具已发送} 正在搜索..."},
+    // 用户没有说话，失败结果触发 idle startProcessing
+    {"role":"user", "content":"<tool>web_search:搜索失败</tool>"},
+    {"role":"assistant", "content":"#{idle trigger，搜索失败，主动告知用户} 搜索好像遇到了问题，暂时无法获取结果，你可以稍后再试或换个关键词。"}
+}
+
+---
+
+// J. ppt_mod 一句话多意图专项
+
+// 核心规则：
+// 1. 用户一句话包含多个独立修改意图，每个意图单独一个 @{ppt_mod}
+// 2. 每个 @{ppt_mod} 的 raw_text 是用户原话（整句），user_distance 都是 1
+// 3. 不能把多个意图合并成一个 @{ppt_mod}
+// 4. 意图之间顺序不重要，但每个都要发出
+
+// J1: 两个修改意图，同一句话 75条
+{
+    {"role":"user", "content":"把第三页背景改成蓝色，标题字体换成黑体"},
+    {"role":"assistant", "content":"#{用户一句话两个意图，各发一个ppt_mod，raw_text都是原话，distance都是1} 好的，两个修改都发出去 @{ppt_mod|raw_text:把第三页背景改成蓝色，标题字体换成黑体|user_distance:1} @{ppt_mod|raw_text:把第三页背景改成蓝色，标题字体换成黑体|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"好的，背景和字体两个修改都已发送。"}
+}
+
+// J2: 三个修改意图，同一句话 50条
+{
+    {"role":"user", "content":"第三页背景改蓝色，标题换黑体，再加一张总结页"},
+    {"role":"assistant", "content":"#{三个意图，各发一个ppt_mod} @{ppt_mod|raw_text:第三页背景改蓝色，标题换黑体，再加一张总结页|user_distance:1} @{ppt_mod|raw_text:第三页背景改蓝色，标题换黑体，再加一张总结页|user_distance:1} @{ppt_mod|raw_text:第三页背景改蓝色，标题换黑体，再加一张总结页|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"好的，三个修改都已发送。"}
+}
+
+// J3: 多意图中有一个失败 25条
+{
+    {"role":"user", "content":"第二页标题改大，第五页删掉"},
+    {"role":"assistant", "content":"#{两个意图} @{ppt_mod|raw_text:第二页标题改大，第五页删掉|user_distance:1} @{ppt_mod|raw_text:第二页标题改大，第五页删掉|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"user", "content":"<tool>ppt_mod:发送反馈失败</tool>"},
+    {"role":"assistant", "content":"#{一个成功一个失败} 第二页标题修改已发送，但第五页删除请求失败了，请稍后再试。"}
+}
+
+---
+
+// K. 冲突问题（system prompt Layer3 注入 [待解决冲突问题]）专项
+
+// 核心规则：
+// 1. system prompt 里有 [待解决冲突问题] 时，AI 需要在自然对话中把冲突带出来
+// 2. 用户回答冲突后，通过 @{ppt_mod|raw_text:用户原话|user_distance:1} 反馈
+// 3. 多个冲突时，一次只问一个，不要一次性把所有冲突都抛给用户
+// 4. 冲突解决后，system prompt 里该条目会消失（下一轮不再出现）
+
+// K1: 单个冲突，AI 自然带出并等待用户回答 50条
+{
+    {"role":"system", "content":"<具体身份定位>\n\n[待解决冲突问题]\n- context_id=ctx_001, task_id=task_001\n  question=第3页标题与第5页内容存在逻辑矛盾，请确认保留哪个版本"},
+    {"role":"user", "content":"PPT做得怎么样了"},
+    {"role":"assistant", "content":"#{system里有冲突问题，自然带出} 正在生成中，不过有个地方需要你确认一下：第3页标题和第5页内容有些逻辑上的矛盾，你希望保留哪个版本？"},
+    {"role":"user", "content":"保留第3页的版本"},
+    {"role":"assistant", "content":"#{用户回答了冲突，通过ppt_mod反馈} 好的 @{ppt_mod|raw_text:保留第3页的版本|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"已反馈，保留第3页版本。"}
+}
+
+// K2: 多个冲突，逐个解决 50条
+{
+    {"role":"system", "content":"<具体身份定位>\n\n[待解决冲突问题]\n- context_id=ctx_001, task_id=task_001\n  question=第3页标题与第5页内容存在逻辑矛盾\n- context_id=ctx_002, task_id=task_001\n  question=第7页图表数据与第2页描述不一致\n存在多个冲突问题时，通过自然语言明确指向哪个任务或页面，系统会自动匹配对应冲突。"},
+    {"role":"user", "content":"有什么问题吗"},
+    {"role":"assistant", "content":"#{有两个冲突，先问第一个，不要一次全抛} 有两处需要确认。先说第一个：第3页标题和第5页内容有逻辑矛盾，你希望怎么处理？"},
+    {"role":"user", "content":"第3页标题改一下，和第5页保持一致"},
+    {"role":"assistant", "content":"#{用户回答第一个冲突，ppt_mod反馈，然后问第二个} 好的 @{ppt_mod|raw_text:第3页标题改一下，和第5页保持一致|user_distance:1} 还有一处：第7页图表数据和第2页描述不一致，以哪个为准？"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"#{收到第一个ppt_mod结果，等待用户回答第二个冲突} 第一个已处理，等你确认第7页的问题。"},
+    {"role":"user", "content":"以第2页描述为准"},
+    {"role":"assistant", "content":"#{用户回答第二个冲突} @{ppt_mod|raw_text:以第2页描述为准|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"两个冲突都已处理完毕。"}
+}
+
+// K3: 用户主动说话时 AI 顺带提冲突 25条
+// 用户说了别的事，AI 先回答，然后顺带提冲突
+{
+    {"role":"system", "content":"<具体身份定位>\n\n[待解决冲突问题]\n- context_id=ctx_003, task_id=task_001\n  question=第4页知识点与教学目标不匹配"},
+    {"role":"user", "content":"第一页标题改大一点"},
+    {"role":"assistant", "content":"#{先处理用户请求，再顺带提冲突} 好的 @{ppt_mod|raw_text:第一页标题改大一点|user_distance:1} 另外有个地方需要你确认：第4页知识点和教学目标有些不匹配，你希望怎么调整？"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"标题修改已发送，等你确认第4页的问题。"},
+    {"role":"user", "content":"知识点按教学目标重新整理"},
+    {"role":"assistant", "content":"#{用户回答冲突} @{ppt_mod|raw_text:知识点按教学目标重新整理|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"好的，已发送修改请求。"}
+}
+
+// K4: 冲突问题被打断，下一轮继续 25条
+{
+    {"role":"system", "content":"<具体身份定位>\n\n[待解决冲突问题]\n- context_id=ctx_004, task_id=task_001\n  question=第6页图片与文字描述不符"},
+    {"role":"user", "content":"有冲突吗"},
+    {"role":"assistant", "content":"#{带出冲突} 有一处：第6页图片和文字描述不符，你希望</interrupted>"},
+    {"role":"user", "content":"等等，先把第一页标题改大"},
+    {"role":"assistant", "content":"#{被打断，先处理用户新请求} 好的 @{ppt_mod|raw_text:先把第一页标题改大|user_distance:1} 改完之后再说第6页的问题。"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"标题已发送修改。关于第6页，图片和文字描述不符，你希望以图片为准还是文字为准？"},
+    {"role":"user", "content":"以文字为准"},
+    {"role":"assistant", "content":"#{用户回答冲突} @{ppt_mod|raw_text:以文字为准|user_distance:1}"},
+    {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+    {"role":"assistant", "content":"好的，已处理。"}
 }
