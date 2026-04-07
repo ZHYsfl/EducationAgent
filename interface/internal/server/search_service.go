@@ -93,7 +93,7 @@ func (a *App) markSearchJobPersistFailed(requestID string, duration int64, cause
 	}
 }
 
-func (a *App) runSearchJob(requestID, taskID, userID, query string, maxResults int, language string) {
+func (a *App) runSearchJob(requestID, taskID, sessionID, userID, query string, maxResults int, language string) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.searchTimeout)
 	defer cancel()
 	results, summary, duration, pipelineStatus := a.runSearchPipeline(ctx, userID, query, maxResults, language)
@@ -118,7 +118,7 @@ func (a *App) runSearchJob(requestID, taskID, userID, query string, maxResults i
 	if persistFailed {
 		a.markSearchJobPersistFailed(requestID, duration, updErr)
 	}
-	a.notifySearchCompletion(taskID, userID, pipelineStatus, persistFailed, results, summary)
+	a.notifySearchCompletion(requestID, taskID, sessionID, userID, pipelineStatus, persistFailed, results, summary)
 }
 
 func (a *App) kbLikelyHasAnswer(userID, query string) (bool, error) {
