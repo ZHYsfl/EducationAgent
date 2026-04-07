@@ -12,6 +12,17 @@ type PPTInitRequest struct {
 
 	TeachingElements *InitTeachingElements `json:"teaching_elements,omitempty"`
 	ReferenceFiles   []ReferenceFile       `json:"reference_files,omitempty"`
+
+	// AutoGenerateTeachingPlan: true 表示 Init 完成后自动触发教案生成（.docx）
+	AutoGenerateTeachingPlan bool `json:"auto_generate_teaching_plan,omitempty"`
+	// AutoGenerateContentDiversity: true 表示 Init 完成后自动触发动画/游戏生成
+	AutoGenerateContentDiversity bool `json:"auto_generate_content_diversity,omitempty"`
+	// ContentDiversityType: "animation" | "game" | "both"，默认 "both"
+	ContentDiversityType string `json:"content_diversity_type,omitempty"`
+	// ContentDiversityGameType: 小游戏类型，默认 "random"
+	ContentDiversityGameType string `json:"content_diversity_game_type,omitempty"`
+	// ContentDiversityAnimationStyle: 动画风格，默认 "all"
+	ContentDiversityAnimationStyle string `json:"content_diversity_animation_style,omitempty"`
 }
 
 type InitTeachingElements struct {
