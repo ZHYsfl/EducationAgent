@@ -14,7 +14,8 @@ import (
 
 type voicePPTMessage struct {
 	TaskID    string `json:"task_id"`
-	MsgType   string `json:"msg_type"`
+	SessionID string `json:"session_id"`
+	EventType string `json:"event_type"`
 	TTSText   string `json:"tts_text"`
 	Priority  string `json:"priority,omitempty"`
 	ErrorCode int    `json:"error_code,omitempty"`
@@ -41,13 +42,13 @@ type apiEnvelope struct {
 
 // notifySearchCompletion: API §4.1 搜索完成后回调 Voice Agent；若配置 KB_INGEST_URL 则按接口分配回注 kb。
 func (a *App) notifySearchCompletion(
-	taskID, userID string,
+	taskID, sessionID, userID string,
 	pipelineStatus string,
 	persistFailed bool,
 	results []SearchResultItem,
 	summary string,
 ) {
-	a.postVoiceSearchCallback(strings.TrimSpace(taskID), pipelineStatus, persistFailed, results, summary)
+	a.postVoiceSearchCallback(strings.TrimSpace(taskID), strings.TrimSpace(sessionID), pipelineStatus, persistFailed, results, summary)
 
 	if persistFailed || pipelineStatus == "failed" || len(results) == 0 {
 		return
@@ -58,12 +59,13 @@ func (a *App) notifySearchCompletion(
 	a.postKBIngestFromSearch(context.Background(), userID, results)
 }
 
-func (a *App) postVoiceSearchCallback(taskID, pipelineStatus string, persistFailed bool, results []SearchResultItem, summary string) {
+func (a *App) postVoiceSearchCallback(taskID, sessionID, pipelineStatus string, persistFailed bool, results []SearchResultItem, summary string) {
 	url := a.voiceAgentURL + "/api/v1/voice/ppt_message"
 	var payload voicePPTMessage
 	payload.TaskID = taskID
+	payload.SessionID = sessionID
 	payload.Priority = "normal"
-	payload.MsgType = "search_result"
+	payload.EventType = "web_search"
 
 	switch {
 	case persistFailed:
