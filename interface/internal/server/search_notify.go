@@ -14,6 +14,8 @@ import (
 
 type voicePPTMessage struct {
 	TaskID    string `json:"task_id"`
+	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitempty"`
 	MsgType   string `json:"msg_type"`
 	TTSText   string `json:"tts_text"`
 	Priority  string `json:"priority,omitempty"`
@@ -21,6 +23,9 @@ type voicePPTMessage struct {
 }
 
 type kbIngestBody struct {
+	SessionID    string         `json:"session_id"`
+	TaskID       string         `json:"task_id"`
+	RequestID    string         `json:"request_id,omitempty"`
 	UserID       string         `json:"user_id,omitempty"`
 	CollectionID string         `json:"collection_id,omitempty"`
 	Items        []kbIngestItem `json:"items"`
@@ -41,13 +46,13 @@ type apiEnvelope struct {
 
 // notifySearchCompletion: API §4.1 搜索完成后回调 Voice Agent；若配置 KB_INGEST_URL 则按接口分配回注 kb。
 func (a *App) notifySearchCompletion(
-	taskID, userID string,
+	requestID, taskID, sessionID, userID string,
 	pipelineStatus string,
 	persistFailed bool,
 	results []SearchResultItem,
 	summary string,
 ) {
-	a.postVoiceSearchCallback(strings.TrimSpace(taskID), pipelineStatus, persistFailed, results, summary)
+	a.postVoiceSearchCallback(strings.TrimSpace(requestID), strings.TrimSpace(taskID), strings.TrimSpace(sessionID), pipelineStatus, persistFailed, results, summary)
 
 	if persistFailed || pipelineStatus == "failed" || len(results) == 0 {
 		return
@@ -55,13 +60,15 @@ func (a *App) notifySearchCompletion(
 	if strings.TrimSpace(a.kbIngestURL) == "" || a.httpCallback == nil {
 		return
 	}
-	a.postKBIngestFromSearch(context.Background(), userID, results)
+	a.postKBIngestFromSearch(context.Background(), requestID, taskID, sessionID, userID, results)
 }
 
-func (a *App) postVoiceSearchCallback(taskID, pipelineStatus string, persistFailed bool, results []SearchResultItem, summary string) {
+func (a *App) postVoiceSearchCallback(requestID, taskID, sessionID, pipelineStatus string, persistFailed bool, results []SearchResultItem, summary string) {
 	url := a.voiceAgentURL + "/api/v1/voice/ppt_message"
 	var payload voicePPTMessage
 	payload.TaskID = taskID
+	payload.SessionID = sessionID
+	payload.RequestID = requestID
 	payload.Priority = "normal"
 	payload.MsgType = "search_result"
 
@@ -132,7 +139,7 @@ func firstNonEmpty(a, b string) string {
 	return strings.TrimSpace(b)
 }
 
-func (a *App) postKBIngestFromSearch(ctx context.Context, userID string, results []SearchResultItem) {
+func (a *App) postKBIngestFromSearch(ctx context.Context, requestID, taskID, sessionID, userID string, results []SearchResultItem) {
 	items := make([]kbIngestItem, 0, len(results))
 	for _, r := range results {
 		content := strings.TrimSpace(r.Snippet)
@@ -149,7 +156,13 @@ func (a *App) postKBIngestFromSearch(ctx context.Context, userID string, results
 	if len(items) == 0 {
 		return
 	}
-	payload := kbIngestBody{UserID: userID, Items: items}
+	payload := kbIngestBody{
+		SessionID: sessionID,
+		TaskID:    taskID,
+		RequestID: requestID,
+		UserID:    userID,
+		Items:     items,
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("kb ingest marshal: %v", err)
