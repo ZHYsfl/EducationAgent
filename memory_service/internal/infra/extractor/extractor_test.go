@@ -211,3 +211,57 @@ func TestRuleBasedExtractorSupportsChineseLessonPrepSignals(t *testing.T) {
 		t.Fatalf("expected chinese reference usage signal")
 	}
 }
+
+func TestRuleBasedExtractorPreventsChineseSequencingPollutionInStructuredFields(t *testing.T) {
+	ex := RuleBasedExtractor{}
+	res, err := ex.Extract("user_u1", "sess_pollution", []model.ConversationTurn{
+		{Role: "user", Content: "我平时偏好简洁正式的课件风格，通常先讲概念再做例题。"},
+		{Role: "user", Content: "这次是初二勾股定理课件，40分钟，重点讲证明和基础应用。"},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	signals := res.TaskStateSignals()
+	if signals.OutputStyle == "" {
+		t.Fatalf("expected output_style to remain populated")
+	}
+	if strings.Contains(signals.OutputStyle, "先讲概念再做例题") {
+		t.Fatalf("output_style should not absorb sequencing clause, got %q", signals.OutputStyle)
+	}
+	for _, point := range signals.KnowledgePoints {
+		if strings.Contains(point, "先讲") || strings.Contains(point, "再做") {
+			t.Fatalf("knowledge_points polluted by sequencing fragment: %#v", signals.KnowledgePoints)
+		}
+	}
+	for _, diff := range signals.KeyDifficulties {
+		if strings.Contains(diff, "讲证明和基础应用") {
+			t.Fatalf("key_difficulties polluted by action sequence fragment: %#v", signals.KeyDifficulties)
+		}
+	}
+}
+
+func TestRuleBasedExtractorKeepsRealChineseLessonPrepFields(t *testing.T) {
+	ex := RuleBasedExtractor{}
+	res, err := ex.Extract("user_u1", "sess_real_fields", []model.ConversationTurn{
+		{Role: "user", Content: "主题是勾股定理，知识点包括定理证明、基础应用。"},
+		{Role: "user", Content: "面向初二学生，时长40分钟，难点是证明过程。"},
+		{Role: "user", Content: "课件风格请保持简洁清晰。"},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	signals := res.TaskStateSignals()
+	if signals.LessonTopic == "" {
+		t.Fatalf("expected lesson topic")
+	}
+	if signals.TargetAudience == "" || signals.Duration != "40分钟" {
+		t.Fatalf("expected audience and duration, got %#v", signals)
+	}
+	if len(signals.KnowledgePoints) == 0 || len(signals.KeyDifficulties) == 0 {
+		t.Fatalf("expected genuine knowledge/difficulty extraction, got %#v", signals)
+	}
+	if signals.OutputStyle == "" {
+		t.Fatalf("expected output style")
+	}
+}

@@ -42,6 +42,15 @@ func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.Work
 	return &out, nil
 }
 
+type fakeVoiceAgentClient struct {
+	requests []VoicePPTMessageRequest
+}
+
+func (f *fakeVoiceAgentClient) SendPPTMessage(_ context.Context, req VoicePPTMessageRequest) error {
+	f.requests = append(f.requests, req)
+	return nil
+}
+
 func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
@@ -454,6 +463,42 @@ func TestExtractChineseDialoguePopulatesWorkingMemoryWithoutDurableTaskLocalStyl
 	}
 }
 
+func TestExtractChineseMixedDialoguePreventsFieldPollutionRegression(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	_, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn_mixed",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "我平时偏好简洁正式的课件风格，通常先讲概念再做例题。"},
+			{Role: "user", Content: "这次是初二勾股定理课件，40分钟，重点讲证明和基础应用。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_cn_mixed")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if wm.ExtractedElements.OutputStyle == "" {
+		t.Fatalf("expected output style to be preserved")
+	}
+	if strings.Contains(wm.ExtractedElements.OutputStyle, "先讲概念再做例题") {
+		t.Fatalf("output_style should not contain sequencing clause: %q", wm.ExtractedElements.OutputStyle)
+	}
+	for _, point := range wm.ExtractedElements.KnowledgePoints {
+		if strings.Contains(point, "先讲") || strings.Contains(point, "再做") {
+			t.Fatalf("knowledge points polluted by sequencing fragments: %#v", wm.ExtractedElements.KnowledgePoints)
+		}
+	}
+	for _, diff := range wm.ExtractedElements.KeyDifficulties {
+		if strings.Contains(diff, "讲证明和基础应用") {
+			t.Fatalf("key difficulties polluted by action-sequence fragment: %#v", wm.ExtractedElements.KeyDifficulties)
+		}
+	}
+}
+
 func TestExtractChineseStandingPreferencePromotesDurableVisualPreference(t *testing.T) {
 	svc, db := setupMemoryService(t)
 	ctx := context.Background()
@@ -659,5 +704,70 @@ func TestRecallTopKDefaultStillAppliesWhenNonPositive(t *testing.T) {
 	}
 	if len(resp.Facts)+len(resp.Preferences) > 10 {
 		t.Fatalf("top_k default should keep compactness budget at 10 when request top_k<=0")
+	}
+}
+
+func TestFormatRecallCallbackSummaryIsDeterministicAndCompact(t *testing.T) {
+	resp := MemoryRecallResponse{
+		ProfileSummary: "Subject: Mathematics | Visual preference: output_style=简洁蓝色 | History: teaching logic=先讲概念再做例题 | Current session: Lesson topic=勾股定理",
+		Preferences: []model.MemoryEntry{
+			{Key: "teaching_style", Value: "interactive"},
+			{Key: "color_scheme", Value: "deep blue"},
+		},
+		Facts: []model.MemoryEntry{
+			{Key: "subject", Value: "math teacher"},
+			{Key: "school_context", Value: "high school"},
+		},
+	}
+	first := FormatRecallCallbackSummary(resp)
+	second := FormatRecallCallbackSummary(resp)
+	if first != second {
+		t.Fatalf("expected deterministic callback summary")
+	}
+	if len([]rune(first)) > recallCallbackSummaryBudget {
+		t.Fatalf("expected callback summary budget <= %d, got %d", recallCallbackSummaryBudget, len([]rune(first)))
+	}
+	if strings.Contains(first, "\"preferences\"") || strings.Contains(first, "\"facts\"") {
+		t.Fatalf("callback summary should not serialize the raw sync payload")
+	}
+	if strings.Contains(first, "History:") || strings.Contains(first, "Current session:") || strings.Contains(first, "teaching logic=") {
+		t.Fatalf("callback summary should suppress low-signal internal phrasing, got %q", first)
+	}
+}
+
+func TestProcessRecallSendsCallbackWithTransportCompatibilityMapping(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	now := util.NowMilli()
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_pref','user_u1','preference','teaching_style','interactive','general',1.0,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_fact','user_u1','fact','subject','math teacher','general',1.0,'explicit',?,?);`, now, now)
+
+	client := &fakeVoiceAgentClient{}
+	svc.SetVoiceAgentClient(client)
+
+	err := svc.ProcessRecall(context.Background(), RecallJob{
+		RequestID: "req_123",
+		UserID:    "user_u1",
+		SessionID: "sess_callback",
+		Query:     "teaching style",
+		TopK:      3,
+	})
+	if err != nil {
+		t.Fatalf("process recall: %v", err)
+	}
+	if len(client.requests) != 1 {
+		t.Fatalf("expected one callback request, got %d", len(client.requests))
+	}
+	got := client.requests[0]
+	if got.TaskID != "sess_callback" || got.SessionID != "sess_callback" {
+		t.Fatalf("expected task/session transport mapping, got %#v", got)
+	}
+	if got.RequestID != "req_123" || got.MsgType != "kb_result" {
+		t.Fatalf("unexpected callback metadata: %#v", got)
+	}
+	if strings.TrimSpace(got.Summary) == "" {
+		t.Fatalf("expected non-empty callback summary")
+	}
+	if len([]rune(got.Summary)) > recallCallbackSummaryBudget {
+		t.Fatalf("expected compact callback summary, got %d runes", len([]rune(got.Summary)))
 	}
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"memory_service/internal/contract"
@@ -16,6 +17,9 @@ type MemoryService struct {
 	memRepo     *repository.MemoryRepository
 	workingRepo WorkingMemoryStore
 	extractor   extractor.Extractor
+	dispatcher  AsyncDispatcher
+	voiceClient VoiceAgentClient
+	archiver    ArchiveIndexer
 }
 
 type WorkingMemoryStore interface {
@@ -24,7 +28,13 @@ type WorkingMemoryStore interface {
 }
 
 func NewMemoryService(authRepo *repository.AuthRepository, memRepo *repository.MemoryRepository, workingRepo WorkingMemoryStore, ex extractor.Extractor) *MemoryService {
-	return &MemoryService{authRepo: authRepo, memRepo: memRepo, workingRepo: workingRepo, extractor: ex}
+	return &MemoryService{
+		authRepo:    authRepo,
+		memRepo:     memRepo,
+		workingRepo: workingRepo,
+		extractor:   ex,
+		archiver:    NoopArchiveIndexer{},
+	}
 }
 
 type MemoryExtractRequest struct {
@@ -44,6 +54,12 @@ type MemoryRecallRequest struct {
 	SessionID string `json:"session_id"`
 	Query     string `json:"query"`
 	TopK      int    `json:"top_k"`
+}
+
+type MemoryContextPushRequest struct {
+	UserID    string                   `json:"user_id"`
+	SessionID string                   `json:"session_id"`
+	Messages  []model.ConversationTurn `json:"messages"`
 }
 
 type MemoryRecallResponse struct {
@@ -82,9 +98,104 @@ type SaveWorkingMemoryRequest struct {
 	RecentTopics        []string               `json:"recent_topics"`
 }
 
+func (s *MemoryService) SetAsyncDispatcher(dispatcher AsyncDispatcher) {
+	s.dispatcher = dispatcher
+}
+
+func (s *MemoryService) SetVoiceAgentClient(client VoiceAgentClient) {
+	s.voiceClient = client
+}
+
+func (s *MemoryService) SetArchiveIndexer(archiver ArchiveIndexer) {
+	if archiver == nil {
+		s.archiver = NoopArchiveIndexer{}
+		return
+	}
+	s.archiver = archiver
+}
+
+func (s *MemoryService) AcceptRecall(ctx context.Context, requestID string, req MemoryRecallRequest) error {
+	if err := validateCanonicalRecallRequest(req); err != nil {
+		return err
+	}
+	if s.dispatcher == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	return s.dispatcher.DispatchRecall(ctx, RecallJob{
+		RequestID: strings.TrimSpace(requestID),
+		UserID:    strings.TrimSpace(req.UserID),
+		SessionID: strings.TrimSpace(req.SessionID),
+		Query:     strings.TrimSpace(req.Query),
+		TopK:      req.TopK,
+	})
+}
+
+func (s *MemoryService) ProcessRecall(ctx context.Context, job RecallJob) error {
+	resp, err := s.RecallSync(ctx, MemoryRecallRequest{
+		UserID:    job.UserID,
+		SessionID: job.SessionID,
+		Query:     job.Query,
+		TopK:      job.TopK,
+	})
+	if err != nil {
+		return err
+	}
+	if s.voiceClient == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	// task_id=session_id is a transport-compatibility mapping for the current
+	// Voice Agent callback contract, not a domain equivalence.
+	return s.voiceClient.SendPPTMessage(ctx, VoicePPTMessageRequest{
+		TaskID:    strings.TrimSpace(job.SessionID),
+		SessionID: strings.TrimSpace(job.SessionID),
+		RequestID: strings.TrimSpace(job.RequestID),
+		MsgType:   "kb_result",
+		Priority:  "normal",
+		Summary:   FormatRecallCallbackSummary(resp),
+	})
+}
+
+func (s *MemoryService) AcceptContextPush(ctx context.Context, requestID string, req MemoryContextPushRequest) error {
+	if err := validateContextPushRequest(req); err != nil {
+		return err
+	}
+	if s.dispatcher == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	return s.dispatcher.DispatchContextPush(ctx, ContextPushJob{
+		RequestID: strings.TrimSpace(requestID),
+		UserID:    strings.TrimSpace(req.UserID),
+		SessionID: strings.TrimSpace(req.SessionID),
+		Messages:  append([]model.ConversationTurn(nil), req.Messages...),
+	})
+}
+
+func (s *MemoryService) ProcessContextPush(ctx context.Context, job ContextPushJob) error {
+	_, err := s.Extract(ctx, MemoryExtractRequest{
+		UserID:    job.UserID,
+		SessionID: job.SessionID,
+		Messages:  append([]model.ConversationTurn(nil), job.Messages...),
+	})
+	if err != nil {
+		return err
+	}
+	if s.archiver == nil {
+		return nil
+	}
+	if err := s.archiver.ArchiveConversation(ctx, ArchiveConversationRequest{
+		UserID:    strings.TrimSpace(job.UserID),
+		SessionID: strings.TrimSpace(job.SessionID),
+		Messages:  append([]model.ConversationTurn(nil), job.Messages...),
+	}); err != nil {
+		log.Printf("component=memory_service route_class=canonical operation=context_push_archive user_id=%s session_id=%s request_id=%s error=%v", job.UserID, job.SessionID, job.RequestID, err)
+		return err
+	}
+	return nil
+}
+
 func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (MemoryExtractResponse, error) {
-	if strings.TrimSpace(req.UserID) == "" || len(req.Messages) == 0 {
-		return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	if err := validateExtractRequest(req); err != nil {
+		return MemoryExtractResponse{}, err
 	}
 	sessionID := strings.TrimSpace(req.SessionID)
 	if sessionID != "" {
@@ -177,19 +288,24 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 }
 
 func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error) {
-	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.Query) == "" {
-		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	return s.RecallSync(ctx, req)
+}
+
+func (s *MemoryService) RecallSync(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error) {
+	if err := validateRecallRequest(req); err != nil {
+		return MemoryRecallResponse{}, err
 	}
 	topK := req.TopK
 	if topK <= 0 {
 		topK = 10
 	}
+	userID := strings.TrimSpace(req.UserID)
 	sessionID := strings.TrimSpace(req.SessionID)
-	facts, err := s.memRepo.ListMemoryByUserAndCategory(req.UserID, "fact")
+	facts, err := s.memRepo.ListMemoryByUserAndCategory(userID, "fact")
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
-	prefs, err := s.memRepo.ListMemoryByUserAndCategory(req.UserID, "preference")
+	prefs, err := s.memRepo.ListMemoryByUserAndCategory(userID, "preference")
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
@@ -233,7 +349,7 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 	budget := buildBudget(topK, hints, len(factCandidates), len(prefCandidates))
 	selectedFacts, selectedPrefs := selectWithBudget(factCandidates, prefCandidates, budget)
 
-	profile, err := s.GetProfile(req.UserID)
+	profile, err := s.GetProfile(userID)
 	if err != nil {
 		return MemoryRecallResponse{}, err
 	}
@@ -244,6 +360,42 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 		WorkingMemory:  wm,
 		ProfileSummary: profileSummary,
 	}, nil
+}
+
+func validateExtractRequest(req MemoryExtractRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || len(req.Messages) == 0 {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateRecallRequest(req MemoryRecallRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.Query) == "" {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateCanonicalRecallRequest(req MemoryRecallRequest) *ServiceError {
+	if err := validateRecallRequest(req); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.SessionID) == "" {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateContextPushRequest(req MemoryContextPushRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.SessionID) == "" || len(req.Messages) == 0 {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	for _, msg := range req.Messages {
+		if strings.TrimSpace(msg.Role) == "" || strings.TrimSpace(msg.Content) == "" {
+			return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+		}
+	}
+	return nil
 }
 
 func (s *MemoryService) GetProfile(userID string) (UserProfile, error) {
