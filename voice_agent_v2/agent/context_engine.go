@@ -128,6 +128,15 @@ func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 		return
 	}
 
+	if msg.EventType == "conflict_question" {
+		contextID := msg.Metadata["context_id"]
+		taskID := msg.Metadata["task_id"]
+		pageID := msg.Metadata["page_id"]
+		if contextID != "" {
+			p.session.AddPendingQuestion(contextID, taskID, pageID, 0, msg.Content)
+		}
+	}
+
 	if msg.EventType == "task_list_update" {
 		taskID := msg.Metadata["task_id"]
 		topic := msg.Metadata["topic"]
