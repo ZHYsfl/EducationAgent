@@ -48,24 +48,15 @@ type Pipeline struct {
 
 	// O/T/A channels
 	userInputCh chan string // ASR partial → thinkLoop
-	tokenCh     chan string // thinkLoop → outputLoop
 	sentenceCh  chan string // outputLoop → ttsWorker
 
 	// raw token buffer for interrupt preservation
 	rawTokens strings.Builder
 	tokensMu  sync.Mutex
 
-	// speculative think draft (consumed by startProcessing)
-	thinkDraft   strings.Builder
-	thinkDraftMu sync.Mutex
-
 	// think stream cancellation
 	thinkCancel   context.CancelFunc
 	thinkCancelMu sync.Mutex
-
-	// think action guard (suppresses new think starts after action detected)
-	thinkGuardUntil time.Time
-	thinkGuardMu    sync.RWMutex
 
 	// context queues
 	contextQueue      chan ContextMessage // normal priority tool results

@@ -17,8 +17,7 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
 
 	systemPrompt := p.buildSystemPrompt(true)
-	previousThought := p.consumeThinkDraft()
-	messages := p.history.ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt)
+	messages := p.history.ToOpenAIWithThoughtAndPrompt("", systemPrompt)
 
 	log.Printf("[pipeline] processing: %s", truncate(userText, 80))
 
