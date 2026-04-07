@@ -41,8 +41,6 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.rawTokens.Reset()
 	p.tokensMu.Unlock()
 
-	go p.highPriorityListener(ctx)
-
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() { defer wg.Done(); p.asrLoop(ctx) }()

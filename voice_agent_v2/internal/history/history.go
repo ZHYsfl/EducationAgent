@@ -13,7 +13,7 @@ type ConversationHistory struct {
 }
 
 type HistoryMessage struct {
-	Role    string // "user", "assistant"
+	Role    string // "user", "assistant", "tool"
 	Content string
 }
 
@@ -26,6 +26,12 @@ func NewConversationHistory(systemPrompt string) *ConversationHistory {
 func (h *ConversationHistory) AddUser(content string) {
 	h.mu.Lock()
 	h.messages = append(h.messages, HistoryMessage{Role: "user", Content: content})
+	h.mu.Unlock()
+}
+
+func (h *ConversationHistory) AddTool(content string) {
+	h.mu.Lock()
+	h.messages = append(h.messages, HistoryMessage{Role: "tool", Content: content})
 	h.mu.Unlock()
 }
 
@@ -91,6 +97,8 @@ func (h *ConversationHistory) messagesWithSystemLocked(system string) []openai.C
 			msgs = append(msgs, openai.UserMessage(m.Content))
 		case "assistant":
 			msgs = append(msgs, openai.AssistantMessage(m.Content))
+		case "tool":
+			msgs = append(msgs, openai.UserMessage("<tool>"+m.Content+"</tool>"))
 		}
 	}
 	return msgs

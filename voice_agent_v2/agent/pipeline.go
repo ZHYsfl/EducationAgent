@@ -58,9 +58,8 @@ type Pipeline struct {
 	thinkCancel   context.CancelFunc
 	thinkCancelMu sync.Mutex
 
-	// context queues
-	contextQueue      chan ContextMessage // normal priority tool results
-	highPriorityQueue chan ContextMessage // conflict questions, system notifies
+	// context queue
+	contextQueue chan ContextMessage
 
 	// overflow buffer for messages that couldn't be queued
 	pendingContexts []ContextMessage
@@ -86,8 +85,7 @@ func NewPipeline(session *Session, config *Config, clients ExternalServices) *Pi
 		smallLLM:          toolcalling.NewAgent(toolcalling.LLMConfig{APIKey: config.SmallLLMAPIKey, Model: config.SmallLLMModel, BaseURL: config.SmallLLMBaseURL}),
 		history:           history.NewConversationHistory(config.SystemPrompt),
 		adaptive:          adaptive.NewAdaptiveController(sizes),
-		contextQueue:      make(chan ContextMessage, 64),
-		highPriorityQueue: make(chan ContextMessage, 16),
+		contextQueue: make(chan ContextMessage, 64),
 		parser:            protocol.NewParser(),
 		audioBuf:          audio.NewAudioBuffer(),
 	}
