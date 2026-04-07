@@ -34,7 +34,6 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 
 	var (
 		allVisible   strings.Builder
-		allActions   []protocol.Action
 		sentenceBuf  strings.Builder
 		pf           protocol.ProtocolFilter
 		totalTokens  int
@@ -64,7 +63,6 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		p.tokensMu.Unlock()
 
 		result := p.parser.Feed(token)
-		allActions = append(allActions, result.Actions...)
 		for _, action := range result.Actions {
 			p.executeAction(ctx, action)
 		}
@@ -131,7 +129,6 @@ func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 		if finalText != "" {
 			p.history.AddAssistant(finalText)
 		}
-		p.postProcess(ctx, userText, allActions)
 		p.maybeCompressHistory()
 	}
 

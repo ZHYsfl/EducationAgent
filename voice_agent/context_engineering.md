@@ -59,6 +59,8 @@ protocolInstructions：
 3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。
 4. 工具结果上下文统一以 <tool>...</tool> 注入。
 5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。
+6. 当前支持工具: kb_query, web_search, update_requirements, require_confirm, ppt_init, ppt_mod, get_memory。
+7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。
 
 <tool>[用户的个性化信息、教学风格、内容深度偏好、常用课件结构和其他可复用偏好]</tool>
 
