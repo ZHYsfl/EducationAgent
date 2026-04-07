@@ -99,7 +99,7 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 		BaseTimestamp: sessionCtx.BaseTimestamp,
 		ViewingPageID: sessionCtx.ViewingPageID,
 		RawText:       params["raw_text"],
-		Intents:       nil, // PPT Agent 负责解析
+		Intents:       nil,
 	}
 
 	err := e.clients.SendFeedback(ctx, req)

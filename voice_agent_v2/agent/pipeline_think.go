@@ -148,12 +148,12 @@ func (p *Pipeline) executeAction(_ context.Context, action protocol.Action) {
 	p.session.activeTaskMu.RUnlock()
 
 	sessionCtx := executor.SessionContext{
-		UserID:            p.session.UserID,
-		SessionID:         p.session.SessionID,
-		ActiveTaskID:      activeTask,
-		ViewingPageID:     viewingPage,
-		BaseTimestamp:     baseTS,
-		Topic:             reqs.Topic,
+		UserID:        p.session.UserID,
+		SessionID:     p.session.SessionID,
+		ActiveTaskID:  activeTask,
+		ViewingPageID: viewingPage,
+		BaseTimestamp: baseTS,
+		Topic:         reqs.Topic,
 		Subject:           reqs.Description,
 		TotalPages:        reqs.TotalPages,
 		Audience:          reqs.TargetAudience,
