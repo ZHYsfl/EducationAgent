@@ -38,7 +38,7 @@ func (p *Pipeline) thinkLoop(ctx context.Context) {
 }
 
 func (p *Pipeline) runThinkStream(ctx context.Context, userInput string) {
-	systemPrompt := p.buildSystemPrompt(false)
+	systemPrompt := p.buildSystemPrompt()
 	messages := p.history.ToOpenAIWithDraftThoughtAndPrompt(userInput, "", systemPrompt)
 	for range p.largeLLM.StreamChat(ctx, messages) {
 	}
