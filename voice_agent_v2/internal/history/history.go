@@ -102,6 +102,7 @@ func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previou
 }
 
 // ToOpenAIWithThoughtAndPrompt builds the final reply request after the user turn is finalized.
+// previousThought is injected as an assistant prefill so the model continues from the draft.
 func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -110,10 +111,11 @@ func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, syst
 	if systemPrompt != "" {
 		prompt = systemPrompt
 	}
+	msgs := h.messagesWithSystemLocked(prompt)
 	if previousThought != "" {
-		prompt += previousThought
+		msgs = append(msgs, openai.AssistantMessage(previousThought))
 	}
-	return h.messagesWithSystemLocked(prompt)
+	return msgs
 }
 
 // ToOpenAIWithDraftThoughtAndPrompt builds draft-thinking messages without mutating

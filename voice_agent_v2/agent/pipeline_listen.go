@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-// StartInteractive runs the O/T/A concurrent pipeline for a voice session.
-// ASR → thinkLoop → outputLoop → ttsWorker run concurrently.
+// StartInteractive runs the voice pipeline for a session.
+// ASR → thinkLoop (KV warmup) + ttsWorker run concurrently.
 func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.runMu.Lock()
 	defer p.runMu.Unlock()
@@ -23,7 +23,6 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.audioCh = audioCh
 	p.vadEndCh = vadEndCh
 	p.userInputCh = make(chan string, 10)
-	p.tokenCh = make(chan string, 100)
 	p.sentenceCh = make(chan string, p.adaptive.Get("sentence_ch"))
 	p.ioMu.Unlock()
 
@@ -41,15 +40,13 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.tokensMu.Lock()
 	p.rawTokens.Reset()
 	p.tokensMu.Unlock()
-	p.resetThinkDraft()
 
 	go p.highPriorityListener(ctx)
 
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(3)
 	go func() { defer wg.Done(); p.asrLoop(ctx) }()
 	go func() { defer wg.Done(); p.thinkLoop(ctx) }()
-	go func() { defer wg.Done(); p.outputLoop(ctx) }()
 	go func() { defer wg.Done(); p.ttsWorker(ctx, p.sentenceCh) }()
 	wg.Wait()
 }
