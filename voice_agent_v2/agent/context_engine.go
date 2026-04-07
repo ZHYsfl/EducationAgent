@@ -163,7 +163,7 @@ func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 		sCtx := p.sessionCtx
 		p.sessionCtxMu.RUnlock()
 		if sCtx != nil && sCtx.Err() == nil {
-			go p.startProcessing(sCtx, fmt.Sprintf("新工具结果（%s）", msg.EventType))
+			go p.startProcessing(sCtx, "")
 		} else {
 			p.session.SetState(StateIdle)
 		}
