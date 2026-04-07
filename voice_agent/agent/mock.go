@@ -39,11 +39,11 @@ type MockServices struct {
 	UploadFileFn      func(r *http.Request) (json.RawMessage, error)
 	NotifyVADEventFn  func(ctx context.Context, event VADEvent) error
 
-	Mu             sync.Mutex
-	FeedbackCalls  []PPTFeedbackRequest
-	VADEventCalls  []VADEvent
-	PushCtxCalls   []PushContextRequest
-	InitPPTCalls   []PPTInitRequest
+	Mu            sync.Mutex
+	FeedbackCalls []PPTFeedbackRequest
+	VADEventCalls []VADEvent
+	PushCtxCalls  []PushContextRequest
+	InitPPTCalls  []PPTInitRequest
 }
 
 func (m *MockServices) QueryKB(ctx context.Context, req KBQueryRequest) (KBQueryResponse, error) {
@@ -120,13 +120,16 @@ func (m *MockServices) NotifyVADEvent(ctx context.Context, event VADEvent) error
 // NewTestConfig returns a minimal *Config suitable for tests.
 func NewTestConfig() *Config {
 	return &Config{
-		ServerPort:        9000,
-		SystemPrompt:      "你是测试助手。",
-		AdaptiveSizesFile: "",
-		TokenBudget:       50,
-		FillerInterval:    100,
-		FillerPhrases:     []string{"稍等"},
-		MaxFillers:        3,
+		ServerPort:         9000,
+		SystemPrompt:       "你是测试助手。",
+		AdaptiveSizesFile:  "",
+		TokenBudget:        50,
+		FillerInterval:     100,
+		FillerPhrases:      []string{"稍等"},
+		MaxFillers:         3,
+		ThinkDeltaChars:    7,
+		ThinkMinIntervalMS: 800,
+		ThinkActionGuardMS: 1500,
 	}
 }
 
@@ -159,6 +162,7 @@ func NewTestPipeline(session *Session, clients ExternalServices) *Pipeline {
 		history:           hist.NewConversationHistory("test prompt"),
 		parser:            protocol.NewParser(),
 	}
+	p.contextMgr = NewContextManager(session, p)
 	session.pipeline = p
 	return p
 }
