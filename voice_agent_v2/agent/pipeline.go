@@ -48,7 +48,6 @@ type Pipeline struct {
 
 	// O/T/A channels
 	userInputCh chan string // ASR partial → thinkLoop
-	sentenceCh  chan string // outputLoop → ttsWorker
 
 	// raw token buffer for interrupt preservation
 	rawTokens strings.Builder

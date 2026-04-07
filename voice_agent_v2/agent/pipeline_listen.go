@@ -8,7 +8,7 @@ import (
 )
 
 // StartInteractive runs the voice pipeline for a session.
-// ASR → thinkLoop (KV warmup) + ttsWorker run concurrently.
+// ASR → thinkLoop (KV warmup) run concurrently. TTS is spawned per startProcessing call.
 func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.runMu.Lock()
 	defer p.runMu.Unlock()
@@ -23,7 +23,6 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.audioCh = audioCh
 	p.vadEndCh = vadEndCh
 	p.userInputCh = make(chan string, 10)
-	p.sentenceCh = make(chan string, p.adaptive.Get("sentence_ch"))
 	p.ioMu.Unlock()
 
 	defer func() {
@@ -42,10 +41,9 @@ func (p *Pipeline) StartInteractive(ctx context.Context) {
 	p.tokensMu.Unlock()
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(2)
 	go func() { defer wg.Done(); p.asrLoop(ctx) }()
 	go func() { defer wg.Done(); p.thinkLoop(ctx) }()
-	go func() { defer wg.Done(); p.ttsWorker(ctx, p.sentenceCh) }()
 	wg.Wait()
 }
 

@@ -13,8 +13,10 @@ import (
 // Called after VAD end (final ASR text) or direct text input.
 func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.SetState(StateProcessing)
-	p.history.AddUser(userText)
-	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
+	if userText != "" {
+		p.history.AddUser(userText)
+		p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
+	}
 
 	p.flushToolResults()
 	systemPrompt := p.buildSystemPrompt()
