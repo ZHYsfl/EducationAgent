@@ -75,7 +75,12 @@ func CloneTaskRequirements(in *TaskRequirements) *TaskRequirements {
 
 func (r *TaskRequirements) GetMissingFields() []string {
 	if r == nil {
-		return []string{"topic", "subject", "audience", "knowledge_points", "teaching_goals", "teaching_logic", "key_difficulties", "duration", "total_pages", "global_style", "interaction_design", "output_formats"}
+		return []string{
+			"topic", "subject", "audience", "knowledge_points",
+			"teaching_goals", "teaching_logic", "key_difficulties",
+			"duration", "total_pages", "global_style", "interaction_design",
+			"output_formats",
+		}
 	}
 	var missing []string
 	if strings.TrimSpace(r.Topic) == "" {
@@ -152,6 +157,7 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt() string {
 	if r == nil {
 		return ""
 	}
+
 	r.RefreshCollectedFields()
 	missing := r.GetMissingFields()
 
@@ -164,6 +170,33 @@ func (r *TaskRequirements) BuildRequirementsSystemPrompt() string {
 	} else {
 		for _, f := range r.CollectedFields {
 			fmt.Fprintf(&sb, "- %s\n", f)
+		}
+	}
+
+	if strings.TrimSpace(r.Topic) != "" ||
+		strings.TrimSpace(r.Subject) != "" ||
+		strings.TrimSpace(r.TargetAudience) != "" ||
+		len(r.KnowledgePoints) > 0 ||
+		len(r.TeachingGoals) > 0 ||
+		strings.TrimSpace(r.TeachingLogic) != "" {
+		sb.WriteString("\n【已收集值摘要】\n")
+		if strings.TrimSpace(r.Topic) != "" {
+			fmt.Fprintf(&sb, "- 主题: %s\n", r.Topic)
+		}
+		if strings.TrimSpace(r.Subject) != "" {
+			fmt.Fprintf(&sb, "- 学科: %s\n", r.Subject)
+		}
+		if strings.TrimSpace(r.TargetAudience) != "" {
+			fmt.Fprintf(&sb, "- 受众: %s\n", r.TargetAudience)
+		}
+		if len(r.KnowledgePoints) > 0 {
+			fmt.Fprintf(&sb, "- 知识点: %s\n", strings.Join(r.KnowledgePoints, "、"))
+		}
+		if len(r.TeachingGoals) > 0 {
+			fmt.Fprintf(&sb, "- 教学目标: %s\n", strings.Join(r.TeachingGoals, "、"))
+		}
+		if strings.TrimSpace(r.TeachingLogic) != "" {
+			fmt.Fprintf(&sb, "- 教学逻辑: %s\n", r.TeachingLogic)
 		}
 	}
 

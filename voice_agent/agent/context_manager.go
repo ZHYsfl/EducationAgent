@@ -65,16 +65,18 @@ type ContextChange struct {
 	After  any    `json:"after,omitempty"`
 }
 
-// ContextManager 统一的上下文管理器（观测层，不改变现有逻辑）
+// ContextManager 统一的上下文管理器
 type ContextManager struct {
-	session *Session
-	mu      sync.RWMutex
+	session  *Session
+	pipeline *Pipeline
+	mu       sync.RWMutex
 }
 
 // NewContextManager 创建上下文管理器
-func NewContextManager(session *Session) *ContextManager {
+func NewContextManager(session *Session, pipeline *Pipeline) *ContextManager {
 	return &ContextManager{
-		session: session,
+		session:  session,
+		pipeline: pipeline,
 	}
 }
 
