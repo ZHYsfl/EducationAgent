@@ -3,6 +3,7 @@ package extractor
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"memory_service/internal/model"
 )
@@ -48,10 +49,10 @@ func extractRequirementDialogue(userID string, messages []model.ConversationTurn
 			summaryNotes = append(summaryNotes, "topic: "+topic)
 			collected = append(collected, model.TaskSlotLessonTopic)
 		}
-		if points := detectListValue(lower, text, []string{
+		if points := sanitizeStructuredList(detectListValue(lower, text, []string{
 			"knowledge points", "knowledge point", "cover", "include", "focus on",
-			"知识点", "重点内容", "包括", "围绕", "讲",
-		}); len(points) > 0 {
+			"知识点", "重点内容", "包括", "围绕",
+		}), false); len(points) > 0 {
 			signals.KnowledgePoints = mergeStringLists(signals.KnowledgePoints, points)
 			signals.Provenance[model.TaskSlotKnowledgePoints] = model.SlotProvenanceExplicit
 			elems.KnowledgePoints = mergeStringLists(elems.KnowledgePoints, points)
@@ -66,10 +67,10 @@ func extractRequirementDialogue(userID string, messages []model.ConversationTurn
 			elems.TeachingGoals = mergeStringLists(elems.TeachingGoals, goals)
 			collected = append(collected, model.TaskSlotTeachingGoals)
 		}
-		if difficulties := detectListValue(lower, text, []string{
+		if difficulties := sanitizeStructuredList(detectListValue(lower, text, []string{
 			"difficult", "difficulty", "key difficulty", "challenging",
-			"重难点", "难点", "重点", "学生容易错", "易错点",
-		}); len(difficulties) > 0 {
+			"重难点", "难点", "学生容易错", "易错点",
+		}), true); len(difficulties) > 0 {
 			signals.KeyDifficulties = mergeStringLists(signals.KeyDifficulties, difficulties)
 			signals.Provenance[model.TaskSlotKeyDifficulties] = model.SlotProvenanceExplicit
 			elems.KeyDifficulties = mergeStringLists(elems.KeyDifficulties, difficulties)
@@ -248,11 +249,28 @@ func detectTopic(text string) string {
 func detectListValue(lower, text string, markers []string) []string {
 	for _, marker := range markers {
 		if idx := strings.Index(lower, marker); idx >= 0 {
-			value := trimSentence(text[idx+len(marker):])
+			value := trimSentence(limitByClauseBoundary(text[idx+len(marker):]))
+			value = strings.TrimSpace(strings.TrimPrefix(value, ":"))
+			value = strings.TrimSpace(strings.TrimPrefix(value, "是"))
+			value = strings.TrimSpace(strings.TrimPrefix(value, "为"))
+			value = trimPrefixFold(value, "include")
+			value = trimPrefixFold(value, "includes")
+			value = strings.TrimSpace(strings.TrimPrefix(value, "包括"))
 			return splitList(value)
 		}
 	}
 	return nil
+}
+
+func trimPrefixFold(text, prefix string) string {
+	text = strings.TrimSpace(text)
+	if len(text) < len(prefix) {
+		return text
+	}
+	if strings.EqualFold(text[:len(prefix)], prefix) {
+		return strings.TrimSpace(text[len(prefix):])
+	}
+	return text
 }
 
 func detectAudience(lower, text string) string {
@@ -270,9 +288,27 @@ func detectDuration(text string) string {
 }
 
 func detectOutputStyle(lower, text string) string {
-	for _, marker := range []string{"style", "minimalist", "minimal", "academic", "tech style", "presentation style", "风格", "简洁", "科技感", "学术风", "蓝色", "深蓝"} {
+	styleMarkers := []string{"style", "minimalist", "minimal", "academic", "tech style", "presentation style", "风格", "简洁", "科技感", "学术风", "蓝色", "深蓝"}
+	styleClause := ""
+	for _, clause := range splitClauses(text) {
+		cleanClause := compactClause(clause)
+		lowerClause := strings.ToLower(cleanClause)
+		if !hasAnyCue(lowerClause, styleMarkers...) {
+			continue
+		}
+		if containsSequencingCue(lowerClause) {
+			continue
+		}
+		if styleClause == "" || utf8.RuneCountInString(cleanClause) < utf8.RuneCountInString(styleClause) {
+			styleClause = cleanClause
+		}
+	}
+	if styleClause != "" {
+		return styleClause
+	}
+	for _, marker := range styleMarkers {
 		if strings.Contains(lower, marker) {
-			return trimSentence(text)
+			return trimSentence(limitByClauseBoundary(text))
 		}
 	}
 	return ""
@@ -322,6 +358,80 @@ func splitList(value string) []string {
 		return []string{strings.TrimSpace(value)}
 	}
 	return dedupeStrings(out)
+}
+
+func sanitizeStructuredList(items []string, isDifficulty bool) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = compactClause(item)
+		if item == "" {
+			continue
+		}
+		lower := strings.ToLower(item)
+		if containsSequencingCue(lower) {
+			continue
+		}
+		if hasAnyCue(lower, "teaching logic", "讲解顺序", "流程", "reference usage", "参考资料", "教材", "history:") {
+			continue
+		}
+		if hasAnyCue(lower, "风格", "style", "配色", "版式") {
+			continue
+		}
+		if utf8.RuneCountInString(item) > 22 && strings.Contains(item, "，") {
+			continue
+		}
+		if isDifficulty && strings.HasPrefix(item, "讲") {
+			trimmed := strings.TrimSpace(strings.TrimPrefix(item, "讲"))
+			if trimmed != "" && !containsSequencingCue(strings.ToLower(trimmed)) {
+				item = trimmed
+			}
+		}
+		out = append(out, item)
+	}
+	return dedupeStrings(out)
+}
+
+func splitClauses(text string) []string {
+	parts := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';' || r == '，' || r == '；' || r == '.' || r == '。' || r == '!' || r == '！' || r == '?' || r == '？'
+	})
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = compactClause(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func compactClause(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func containsSequencingCue(lower string) bool {
+	return hasAnyCue(lower,
+		"first ", " then ", "finally", "next ", "after that", "sequence", "流程", "先", "然后", "再", "最后", "接着")
+}
+
+func limitByClauseBoundary(text string) string {
+	for _, marker := range []string{
+		"。", ".", "；", ";", "|",
+		"面向", "时长", "duration", "audience", "for ", "这节课", "这次",
+		"先", "然后", "最后", "first ", " then ", "finally",
+	} {
+		if idx := strings.Index(strings.ToLower(text), strings.ToLower(marker)); idx > 0 {
+			return strings.TrimSpace(text[:idx])
+		}
+	}
+	return strings.TrimSpace(text)
 }
 
 func mergeStringLists(existing, incoming []string) []string {
