@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,15 @@ type FeedbackService struct {
 	refFusion     *RefFusionService
 	timeoutTickMu sync.Mutex
 	newAgent      func(cfg toolcalling.LLMConfig) agentInterface
+	llmCfg        LLMClientConfig // 用于页面代码生成的 LLM 配置
+
+	// 内容多样性服务：用于处理 generate_animation / generate_game intent
+	contentDiversityService *ContentDiversityService
+}
+
+// AttachLLMConfig sets the LLM configuration for page code generation (insert operations).
+func (s *FeedbackService) AttachLLMConfig(cfg LLMClientConfig) {
+	s.llmCfg = cfg
 }
 
 func NewFeedbackService(
@@ -104,6 +114,11 @@ func (s *FeedbackService) AttachRenderer(r *renderer.Renderer) {
 
 func (s *FeedbackService) AttachRefFusionService(r *RefFusionService) {
 	s.refFusion = r
+}
+
+// AttachContentDiversityService sets the ContentDiversityService for handling generate_animation/generate_game intents.
+func (s *FeedbackService) AttachContentDiversityService(cds *ContentDiversityService) {
+	s.contentDiversityService = cds
 }
 
 func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest) (model.FeedbackResponse, error) {
@@ -152,9 +167,9 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			"task_id":    req.TaskID,
 			"page_id":    req.ViewingPageID,
 			"priority":   "high",
-			"context_id": suspend.ContextID,
+			"context_id":  suspend.ContextID,
+			"event_type": "conflict_question",
 			"tts_text":   suspend.Question,
-			"msg_type":   "conflict_question",
 		})
 		return model.FeedbackResponse{AcceptedIntents: len(req.Intents), Queued: true}, nil
 	} else if resolveConflict {
@@ -163,8 +178,9 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 
 	// 4. 处理其他意图
 	acceptedCount := 0
+	var contentDiversityResults []model.ContentDiversityResult
 
-	for _, intent := range req.Intents {
+	for idx, intent := range req.Intents {
 		action := strings.ToLower(strings.TrimSpace(intent.ActionType))
 		targetID := strings.TrimSpace(intent.TargetPageID)
 
@@ -185,17 +201,16 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			// === 反馈阶段重融合：把参考资料再次拉入并重新融合 ===
 			fbReq := model.FeedbackRequest{
 				TaskID:           req.TaskID,
-				ViewingPageID:     pageID,
-				BaseTimestamp:     req.BaseTimestamp,
-				RawText:           intent.Instruction,
-				ReplyToContextID:  "",
+				ViewingPageID:    pageID,
+				BaseTimestamp:    req.BaseTimestamp,
+				RawText:          intent.Instruction,
+				ReplyToContextID: "",
 				Intents:          []model.Intent{{ActionType: "modify", TargetPageID: pageID, Instruction: intent.Instruction}},
-				ReferenceFiles:    req.ReferenceFiles,
+				ReferenceFiles:   req.ReferenceFiles,
 			}
 			if s.refFusion != nil && len(req.ReferenceFiles) > 0 {
 				fusionResult, fusionErr := s.refFusion.FuseForFeedback(ctx, req.ReferenceFiles, intent.Instruction, pageID)
 				if fusionErr == nil && fusionResult != nil {
-					// 将融合结果序列化后注入 FeedbackRequest
 					fbReq.RefFusionResult = &model.FusionResultPayload{
 						ExtractedText: s.serializeFusionResult(fusionResult),
 						StyleGuide:    s.serializeStyleGuide(&fusionResult.StyleGuide),
@@ -295,10 +310,78 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			if err := s.handleReorder(ctx, req.TaskID, intent.Instruction); err == nil {
 				acceptedCount++
 			}
+
+		case "generate_animation", "generate_game":
+			// 内容多样性生成 intent：触发 ContentDiversityService
+			if s.contentDiversityService == nil {
+				log.Printf("[feedback] content_diversity_service not attached, skip intent: %s", action)
+				continue
+			}
+			divReq := model.ContentDiversityRequest{
+				TaskID:    req.TaskID,
+				Topic:     coalesceStr(intent.Instruction, req.Topic, ""),
+				Subject:   req.Subject,
+				KBSummary: req.KBSummary,
+			}
+			if action == "generate_animation" {
+				divReq.Type = "animation"
+				if intent.AnimationStyle != "" {
+					divReq.AnimationStyle = intent.AnimationStyle
+				} else {
+					divReq.AnimationStyle = "all"
+				}
+			} else {
+				divReq.Type = "game"
+				if intent.GameType != "" && intent.GameType != "random" {
+					divReq.GameType = intent.GameType
+				} else {
+					divReq.GameType = "quiz"
+				}
+			}
+			// 同步触发生成（返回 result_id 供 Voice Agent 追踪）
+			divResp, divErr := s.contentDiversityService.Generate(ctx, divReq)
+			if divErr != nil {
+				log.Printf("[feedback] content_diversity generation failed: task_id=%s err=%v", req.TaskID, divErr)
+				contentDiversityResults = append(contentDiversityResults, model.ContentDiversityResult{
+					IntentIndex: idx,
+					ActionType:  action,
+					Status:      "failed",
+					Error:       divErr.Error(),
+				})
+				continue
+			}
+			// 通知 Voice Agent 生成已开始
+			actionLabel := "动画创意"
+			if action == "generate_game" {
+				actionLabel = "互动小游戏"
+			}
+			ttsText := fmt.Sprintf("正在为您生成%s，请稍候", actionLabel)
+			_ = s.notify.SendPPTMessage(ctx, map[string]any{
+				"task_id":    req.TaskID,
+				"page_id":    req.ViewingPageID,
+				"priority":   "normal",
+				"event_type": "content_diversity_started",
+				"result_id":  divResp.ResultID,
+				"tts_text":   ttsText,
+			})
+			acceptedCount++
+			// 在返回结果中填充占位结构，告知 Voice Agent result_id 对应哪个动画/游戏
+			contentDiversityResults = append(contentDiversityResults, model.ContentDiversityResult{
+				IntentIndex: idx,
+				ActionType:  action,
+				ResultID:    divResp.ResultID,
+				Status:      "generating",
+			})
+			log.Printf("[feedback] content_diversity started: task_id=%s result_id=%s type=%s",
+				req.TaskID, divResp.ResultID, action)
 		}
 	}
 
-	return model.FeedbackResponse{AcceptedIntents: acceptedCount, Queued: false}, nil
+	return model.FeedbackResponse{
+		AcceptedIntents:           acceptedCount,
+		Queued:                    false,
+		ContentDiversityResults:   contentDiversityResults,
+	}, nil
 }
 
 // applyMergeResult applies LLM merge result to a page: update code, render, save URL.
@@ -320,9 +403,9 @@ func (s *FeedbackService) applyMergeResult(ctx context.Context, taskID, pageID s
 			"task_id":    taskID,
 			"page_id":    pageID,
 			"priority":   "high",
-			"context_id": contextID,
+			"context_id":  contextID,
+			"event_type": "conflict_question",
 			"tts_text":   mergeResult.QuestionForUser,
-			"msg_type":   "conflict_question",
 		})
 		return nil
 	}
@@ -407,17 +490,19 @@ add_textbox(slide, "页面内容在这里", 0.5, 1.5, 9, 1, font_size=20, color=
 // agentForPageGen returns the agent used for new-page code generation.
 // Production returns real *toolcalling.Agent; tests can inject a mock.
 func (s *FeedbackService) agentForPageGen() agentInterface {
+	cfg := s.llmCfg
+	// 如果未配置 BaseURL，默认使用 moonshot
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		cfg.BaseURL = "https://api.moonshot.cn/v1"
+	}
+	if strings.TrimSpace(cfg.Model) == "" {
+		cfg.Model = "kimi-k2.5"
+	}
 	return s.newAgent(toolcalling.LLMConfig{
-		APIKey:  llmConfigFromEnv(),
-		BaseURL: "https://api.moonshot.cn/v1",
-		Model:   "kimi-k2.5",
+		APIKey:  cfg.APIKey,
+		BaseURL: cfg.BaseURL,
+		Model:   cfg.Model,
 	})
-}
-
-func llmConfigFromEnv() string {
-	// 从环境变量读取 LLM API Key
-	// 这里简化处理，由外部传入
-	return ""
 }
 
 // handleReorder handles page reordering instruction like "page_xxx→2" or "把page_abc移到第1页".
@@ -556,9 +641,9 @@ func (s *FeedbackService) ProcessTimeoutTick(ctx context.Context) error {
 				"task_id":    item.TaskID,
 				"page_id":    item.PageID,
 				"priority":   "high",
-				"context_id": item.ContextID,
+				"context_id":  item.ContextID,
+				"event_type": "conflict_question",
 				"tts_text":   item.Question,
-				"msg_type":   "conflict_question",
 			})
 			continue
 		}
@@ -570,8 +655,8 @@ func (s *FeedbackService) ProcessTimeoutTick(ctx context.Context) error {
 			"page_id":  item.PageID,
 			"priority": "high",
 			"context_id": item.ContextID,
+			"event_type": "conflict_timeout",
 			"tts_text": fmt.Sprintf("页面 %s 的冲突问题超时未回复，已自动跳过", item.PageID),
-			"msg_type": "conflict_timeout",
 		})
 		// 标记页面状态为 failed
 		_ = s.pptRepo.UpdatePageStatus(item.TaskID, item.PageID, "failed", "冲突问题超时未回复，已自动跳过")
@@ -747,4 +832,14 @@ func (s *FeedbackService) GeneratePages(ctx context.Context, req model.BatchGene
 		TaskID:  taskID,
 		Results: results,
 	}, nil
+}
+
+// coalesceStr returns the first non-empty string, or "" if none.
+func coalesceStr(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

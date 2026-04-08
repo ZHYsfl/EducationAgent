@@ -22,16 +22,6 @@ func NewRouter(
 		v1.POST("/ppt/feedback", authMiddleware.RequireInternalKey(), feedbackHandler.Feedback)
 		v1.GET("/canvas/status", authMiddleware.RequireInternalKey(), pptHandler.CanvasStatus)
 		v1.POST("/canvas/vad-event", authMiddleware.RequireInternalKey(), pptHandler.VADEvent)
-
-		// 4b) Word教案生成
-		v1.POST("/teaching_plan/generate", authMiddleware.RequireInternalKey(), teachingPlanHandler.Generate)
-		v1.GET("/teaching_plan/status/:plan_id", authMiddleware.RequireInternalKey(), teachingPlanHandler.Status)
-
-		// 4c) 内容生成多样性 - 动画创意 & 互动小游戏
-		v1.POST("/content_diversity/generate", authMiddleware.RequireInternalKey(), contentDiversityHandler.Generate)
-		v1.GET("/content_diversity/status/:result_id", authMiddleware.RequireInternalKey(), contentDiversityHandler.Status)
-		v1.POST("/content_diversity/export", authMiddleware.RequireInternalKey(), contentDiversityHandler.Export)
-		v1.POST("/content_diversity/integrate", authMiddleware.RequireInternalKey(), contentDiversityHandler.Integrate)
 	}
 
 	internal := r.Group("/internal")
@@ -41,6 +31,14 @@ func NewRouter(
 		internal.POST("/ppt/export", authMiddleware.RequireInternalKey(), exportHandler.Create)
 		internal.GET("/ppt/export/:export_id", authMiddleware.RequireInternalKey(), exportHandler.Get)
 		internal.GET("/ppt/page/:page_id/render", authMiddleware.RequireInternalKey(), pptHandler.PageRender)
+		// 教案生成路由
+		internal.POST("/ppt/teaching_plan", authMiddleware.RequireInternalKey(), teachingPlanHandler.Generate)
+		internal.GET("/ppt/teaching_plan/:plan_id", authMiddleware.RequireInternalKey(), teachingPlanHandler.Status)
+		// 内容多样性路由（动画/游戏）
+		internal.POST("/ppt/content_diversity", authMiddleware.RequireInternalKey(), contentDiversityHandler.Generate)
+		internal.GET("/ppt/content_diversity/:result_id", authMiddleware.RequireInternalKey(), contentDiversityHandler.Status)
+		internal.POST("/ppt/content_diversity/export", authMiddleware.RequireInternalKey(), contentDiversityHandler.Export)
+		internal.POST("/ppt/integrate", authMiddleware.RequireInternalKey(), contentDiversityHandler.Integrate)
 	}
 
 	// Health check (no auth required)

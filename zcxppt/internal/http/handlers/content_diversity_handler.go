@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"log"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -55,17 +57,17 @@ func (h *ContentDiversityHandler) Status(c *gin.Context) {
 }
 
 // Export exports animation or game content in the specified format.
+// This is an asynchronous operation: the service returns immediately and notifies via callback.
 func (h *ContentDiversityHandler) Export(c *gin.Context) {
 	var req model.ExportContentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		contract.Error(c, contract.CodeInvalidParam, "invalid request body")
 		return
 	}
-	if strings.TrimSpace(req.TaskID) == "" ||
-		strings.TrimSpace(req.ResultID) == "" ||
+	if strings.TrimSpace(req.ResultID) == "" ||
 		strings.TrimSpace(req.ContentType) == "" ||
 		strings.TrimSpace(req.Format) == "" {
-		contract.Error(c, contract.CodeInvalidParam, "task_id, result_id, content_type, and format are required")
+		contract.Error(c, contract.CodeInvalidParam, "result_id, content_type, and format are required")
 		return
 	}
 
@@ -81,20 +83,48 @@ func (h *ContentDiversityHandler) Export(c *gin.Context) {
 		return
 	}
 
-	var resp model.ExportContentResponse
-	var err error
-
-	if contentType == "animation" {
-		resp, err = h.contentDiversityService.ExportAnimation(c.Request.Context(), req.ResultID, req.TaskID, format)
-	} else {
-		resp, err = h.contentDiversityService.ExportGame(c.Request.Context(), req.ResultID, req.TaskID, format)
-	}
-
-	if err != nil {
-		contract.Error(c, contract.CodeInternalError, err.Error())
+	// gif/mp4 需要异步执行（耗时较长），html5 可同步
+	if format == "html5" {
+		var resp model.ExportContentResponse
+		var err error
+		if contentType == "animation" {
+			resp, err = h.contentDiversityService.ExportAnimation(c.Request.Context(), req.ResultID, "", format)
+		} else {
+			resp, err = h.contentDiversityService.ExportGame(c.Request.Context(), req.ResultID, "", format)
+		}
+		if err != nil {
+			contract.Error(c, contract.CodeInternalError, err.Error())
+			return
+		}
+		contract.Success(c, resp, "export completed")
 		return
 	}
-	contract.Success(c, resp, "success")
+
+	// gif/mp4：异步执行，立即返回，后台通知
+	go func() {
+		var resp model.ExportContentResponse
+		var err error
+		if contentType == "animation" {
+			resp, err = h.contentDiversityService.ExportAnimation(context.Background(), req.ResultID, "", format)
+		} else {
+			resp, err = h.contentDiversityService.ExportGame(context.Background(), req.ResultID, "", format)
+		}
+		if err != nil {
+			log.Printf("[content_diversity_export] failed: result_id=%s content_type=%s format=%s err=%v",
+				req.ResultID, contentType, format, err)
+			return
+		}
+		log.Printf("[content_diversity_export] completed: result_id=%s content_type=%s format=%s url=%s",
+			req.ResultID, contentType, format, resp.DownloadURL)
+	}()
+
+	contract.Success(c, gin.H{
+		"result_id":   req.ResultID,
+		"content_type": contentType,
+		"format":       format,
+		"status":       "generating",
+		"message":      "export is processing asynchronously, result will be notified via callback",
+	}, "export started")
 }
 
 // Integrate embeds animation/game into PPT page code.

@@ -127,6 +127,11 @@ func main() {
 		llmRuntime,
 		notifyService,
 	)
+	feedbackService.AttachLLMConfig(service.LLMClientConfig{
+		APIKey:  cfg.LLMAPIKey,
+		Model:   cfg.LLMModel,
+		BaseURL: cfg.LLMBaseURL,
+	})
 	if pptRenderer != nil {
 		feedbackService.AttachRenderer(pptRenderer)
 	}
@@ -174,16 +179,23 @@ func main() {
 		ossClient,
 	)
 
+	// 联动：Init 时自动生成教案和内容多样性（解耦并发）
+	pptService.AttachTeachingPlanService(teachingPlanService)
+	pptService.AttachContentDiversityService(contentDiversityService)
+	pptService.AttachNotifier(notifyService)
+	pptService.AttachFeedbackService(feedbackService)
+
+	// 注入 contentDiversityService 到 feedbackService（用于处理 generate_animation/generate_game intent）
+	feedbackService.AttachContentDiversityService(contentDiversityService)
+	// 注入 NotifyService 到 ContentDiversityService（生成完成后回调 Voice Agent）
+	contentDiversityService.AttachNotifier(notifyService)
+
 	pptHandler := handlers.NewPPTHandler(pptService)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackService, intentParser)
 	exportHandler := handlers.NewExportHandler(exportService)
 	teachingPlanHandler := handlers.NewTeachingPlanHandler(teachingPlanService)
 	contentDiversityHandler := handlers.NewContentDiversityHandler(contentDiversityService)
 	authMW := middleware.NewAuthMiddleware(cfg.JWTSecret, cfg.InternalKey)
-
-	// 联动：Init 时自动生成教案和内容多样性（解耦并发）
-	pptService.AttachTeachingPlanService(teachingPlanService)
-	pptService.AttachContentDiversityService(contentDiversityService)
 
 	r := http.NewRouter(pptHandler, feedbackHandler, exportHandler, teachingPlanHandler, contentDiversityHandler, authMW)
 

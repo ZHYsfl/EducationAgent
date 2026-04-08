@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"memory_service/internal/contract"
@@ -16,15 +17,24 @@ type MemoryService struct {
 	memRepo     *repository.MemoryRepository
 	workingRepo WorkingMemoryStore
 	extractor   extractor.Extractor
+	dispatcher  AsyncDispatcher
+	voiceClient VoiceAgentClient
+	archiver    ArchiveIndexer
 }
 
 type WorkingMemoryStore interface {
-	Save(ctx context.Context, wm model.WorkingMemory) error
-	Get(ctx context.Context, sessionID string) (*model.WorkingMemory, error)
+	Save(ctx context.Context, wm model.WorkingMemoryRecord) error
+	Get(ctx context.Context, sessionID string) (*model.WorkingMemoryRecord, error)
 }
 
 func NewMemoryService(authRepo *repository.AuthRepository, memRepo *repository.MemoryRepository, workingRepo WorkingMemoryStore, ex extractor.Extractor) *MemoryService {
-	return &MemoryService{authRepo: authRepo, memRepo: memRepo, workingRepo: workingRepo, extractor: ex}
+	return &MemoryService{
+		authRepo:    authRepo,
+		memRepo:     memRepo,
+		workingRepo: workingRepo,
+		extractor:   ex,
+		archiver:    NoopArchiveIndexer{},
+	}
 }
 
 type MemoryExtractRequest struct {
@@ -44,6 +54,12 @@ type MemoryRecallRequest struct {
 	SessionID string `json:"session_id"`
 	Query     string `json:"query"`
 	TopK      int    `json:"top_k"`
+}
+
+type MemoryContextPushRequest struct {
+	UserID    string                   `json:"user_id"`
+	SessionID string                   `json:"session_id"`
+	Messages  []model.ConversationTurn `json:"messages"`
 }
 
 type MemoryRecallResponse struct {
@@ -82,22 +98,122 @@ type SaveWorkingMemoryRequest struct {
 	RecentTopics        []string               `json:"recent_topics"`
 }
 
+func (s *MemoryService) SetAsyncDispatcher(dispatcher AsyncDispatcher) {
+	s.dispatcher = dispatcher
+}
+
+func (s *MemoryService) SetVoiceAgentClient(client VoiceAgentClient) {
+	s.voiceClient = client
+}
+
+func (s *MemoryService) SetArchiveIndexer(archiver ArchiveIndexer) {
+	if archiver == nil {
+		s.archiver = NoopArchiveIndexer{}
+		return
+	}
+	s.archiver = archiver
+}
+
+func (s *MemoryService) AcceptRecall(ctx context.Context, requestID string, req MemoryRecallRequest) error {
+	if err := validateCanonicalRecallRequest(req); err != nil {
+		return err
+	}
+	if s.dispatcher == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	return s.dispatcher.DispatchRecall(ctx, RecallJob{
+		RequestID: strings.TrimSpace(requestID),
+		UserID:    strings.TrimSpace(req.UserID),
+		SessionID: strings.TrimSpace(req.SessionID),
+		Query:     strings.TrimSpace(req.Query),
+		TopK:      req.TopK,
+	})
+}
+
+func (s *MemoryService) ProcessRecall(ctx context.Context, job RecallJob) error {
+	resp, err := s.RecallSync(ctx, MemoryRecallRequest{
+		UserID:    job.UserID,
+		SessionID: job.SessionID,
+		Query:     job.Query,
+		TopK:      job.TopK,
+	})
+	if err != nil {
+		return err
+	}
+	if s.voiceClient == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	// task_id=session_id is a transport-compatibility mapping for the current
+	// Voice Agent callback contract, not a domain equivalence.
+	return s.voiceClient.SendPPTMessage(ctx, VoicePPTMessageRequest{
+		TaskID:    strings.TrimSpace(job.SessionID),
+		SessionID: strings.TrimSpace(job.SessionID),
+		RequestID: strings.TrimSpace(job.RequestID),
+		EventType: "get_memory",
+		Summary:   FormatRecallCallbackSummary(resp),
+	})
+}
+
+func (s *MemoryService) AcceptContextPush(ctx context.Context, requestID string, req MemoryContextPushRequest) error {
+	if err := validateContextPushRequest(req); err != nil {
+		return err
+	}
+	if s.dispatcher == nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	return s.dispatcher.DispatchContextPush(ctx, ContextPushJob{
+		RequestID: strings.TrimSpace(requestID),
+		UserID:    strings.TrimSpace(req.UserID),
+		SessionID: strings.TrimSpace(req.SessionID),
+		Messages:  append([]model.ConversationTurn(nil), req.Messages...),
+	})
+}
+
+func (s *MemoryService) ProcessContextPush(ctx context.Context, job ContextPushJob) error {
+	_, err := s.Extract(ctx, MemoryExtractRequest{
+		UserID:    job.UserID,
+		SessionID: job.SessionID,
+		Messages:  append([]model.ConversationTurn(nil), job.Messages...),
+	})
+	if err != nil {
+		return err
+	}
+	if s.archiver == nil {
+		return nil
+	}
+	if err := s.archiver.ArchiveConversation(ctx, ArchiveConversationRequest{
+		UserID:    strings.TrimSpace(job.UserID),
+		SessionID: strings.TrimSpace(job.SessionID),
+		Messages:  append([]model.ConversationTurn(nil), job.Messages...),
+	}); err != nil {
+		log.Printf("component=memory_service route_class=canonical operation=context_push_archive user_id=%s session_id=%s request_id=%s error=%v", job.UserID, job.SessionID, job.RequestID, err)
+		return err
+	}
+	return nil
+}
+
 func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (MemoryExtractResponse, error) {
-	if strings.TrimSpace(req.UserID) == "" || len(req.Messages) == 0 {
-		return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	if err := validateExtractRequest(req); err != nil {
+		return MemoryExtractResponse{}, err
+	}
+	sessionID := strings.TrimSpace(req.SessionID)
+	if sessionID != "" {
+		if err := s.ensureSessionOwnership(ctx, sessionID, req.UserID); err != nil {
+			return MemoryExtractResponse{}, err
+		}
 	}
 	res, err := s.extractor.Extract(req.UserID, req.SessionID, req.Messages)
 	if err != nil {
 		return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
-	sessionID := strings.TrimSpace(req.SessionID)
 	var sourceSessionID *string
 	if sessionID != "" {
 		sourceSessionID = &sessionID
 	}
-	storedFacts := make([]model.MemoryEntry, 0, len(res.Facts))
-	storedPrefs := make([]model.MemoryEntry, 0, len(res.Preferences))
-	for _, f := range res.Facts {
+	durableFacts, durablePrefs := classifyDurableWrites(req.Messages, res.Facts, res.Preferences)
+	storedFacts := make([]model.MemoryEntry, 0, len(durableFacts))
+	storedPrefs := make([]model.MemoryEntry, 0, len(durablePrefs))
+	for _, f := range durableFacts {
 		f.UserID = req.UserID
 		f.Category = "fact"
 		f.SourceSessionID = sourceSessionID
@@ -110,7 +226,7 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 		}
 		storedFacts = append(storedFacts, stored)
 	}
-	for _, p := range res.Preferences {
+	for _, p := range durablePrefs {
 		p.UserID = req.UserID
 		p.Category = "preference"
 		p.SourceSessionID = sourceSessionID
@@ -123,6 +239,32 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 		}
 		storedPrefs = append(storedPrefs, stored)
 	}
+	signals := mergeTaskSignals(signalsFromTeachingElements(res.TeachingElements(), model.SlotProvenanceDerived), res.TaskStateSignals())
+	nowMs := util.NowMilli()
+	summaryText := buildWorkingSummary(model.WorkingTaskState{
+		LessonTopic:            signals.LessonTopic,
+		KnowledgePoints:        signals.KnowledgePoints,
+		TeachingGoals:          signals.TeachingGoals,
+		KeyDifficulties:        signals.KeyDifficulties,
+		TargetAudience:         signals.TargetAudience,
+		Duration:               signals.Duration,
+		OutputStyle:            signals.OutputStyle,
+		TeachingLogic:          signals.TeachingLogic,
+		Constraints:            signals.Constraints,
+		ReferenceMaterialUsage: signals.ReferenceMaterialUsage,
+	}, res.ConversationSummary)
+	if sessionID != "" {
+		var existing *model.WorkingMemoryRecord
+		existing, err = s.workingRepo.Get(ctx, sessionID)
+		if err != nil && err != repository.ErrNotFound {
+			return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+		}
+		record := mergeWorkingMemoryRecord(existing, sessionID, req.UserID, signals, res.ConversationSummary, nil, nowMs)
+		summaryText = projectWorkingMemoryRecord(record).ConversationSummary
+		if err := s.workingRepo.Save(ctx, record); err != nil {
+			return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+		}
+	}
 	summaryContext := "general"
 	if sessionID != "" {
 		summaryContext = "session:" + sessionID
@@ -131,7 +273,7 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 		UserID:          req.UserID,
 		Category:        "summary",
 		Key:             "conversation_summary",
-		Value:           res.ConversationSummary,
+		Value:           summaryText,
 		Context:         summaryContext,
 		Confidence:      1.0,
 		Source:          "inferred",
@@ -141,49 +283,40 @@ func (s *MemoryService) Extract(ctx context.Context, req MemoryExtractRequest) (
 		return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
 
-	if sessionID != "" {
-		wm := model.WorkingMemory{
-			SessionID:           sessionID,
-			UserID:              req.UserID,
-			ConversationSummary: res.ConversationSummary,
-			ExtractedElements:   res.TeachingElements(),
-			UpdatedAt:           util.NowMilli(),
-		}
-		existing, err := s.workingRepo.Get(ctx, sessionID)
-		if err == nil {
-			wm.ExtractedElements = mergeTeachingElements(existing.ExtractedElements, wm.ExtractedElements)
-			wm.RecentTopics = existing.RecentTopics
-		}
-		if err := s.workingRepo.Save(ctx, wm); err != nil {
-			return MemoryExtractResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
-		}
-	}
-
-	return MemoryExtractResponse{ExtractedFacts: storedFacts, ExtractedPreferences: storedPrefs, ConversationSummary: res.ConversationSummary}, nil
+	return MemoryExtractResponse{ExtractedFacts: storedFacts, ExtractedPreferences: storedPrefs, ConversationSummary: summaryText}, nil
 }
 
 func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error) {
-	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.Query) == "" {
-		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	return s.RecallSync(ctx, req)
+}
+
+func (s *MemoryService) RecallSync(ctx context.Context, req MemoryRecallRequest) (MemoryRecallResponse, error) {
+	if err := validateRecallRequest(req); err != nil {
+		return MemoryRecallResponse{}, err
 	}
 	topK := req.TopK
 	if topK <= 0 {
-		topK = 10
+		topK = 5
 	}
+	userID := strings.TrimSpace(req.UserID)
 	sessionID := strings.TrimSpace(req.SessionID)
-	facts, err := s.memRepo.ListMemoryByUserAndCategory(req.UserID, "fact")
+	facts, err := s.memRepo.ListMemoryByUserAndCategory(userID, "fact")
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
-	prefs, err := s.memRepo.ListMemoryByUserAndCategory(req.UserID, "preference")
+	prefs, err := s.memRepo.ListMemoryByUserAndCategory(userID, "preference")
 	if err != nil {
 		return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
 	var wm *model.WorkingMemory
 	if sessionID != "" {
+		if err := s.ensureSessionOwnership(ctx, sessionID, req.UserID); err != nil {
+			return MemoryRecallResponse{}, err
+		}
 		v, err := s.workingRepo.Get(ctx, sessionID)
 		if err == nil {
-			wm = v
+			projected := projectWorkingMemoryRecord(*v)
+			wm = &projected
 		}
 		if err != nil && err != repository.ErrNotFound {
 			return MemoryRecallResponse{}, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
@@ -215,7 +348,7 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 	budget := buildBudget(topK, hints, len(factCandidates), len(prefCandidates))
 	selectedFacts, selectedPrefs := selectWithBudget(factCandidates, prefCandidates, budget)
 
-	profile, err := s.GetProfile(req.UserID)
+	profile, err := s.GetProfile(userID)
 	if err != nil {
 		return MemoryRecallResponse{}, err
 	}
@@ -226,6 +359,42 @@ func (s *MemoryService) Recall(ctx context.Context, req MemoryRecallRequest) (Me
 		WorkingMemory:  wm,
 		ProfileSummary: profileSummary,
 	}, nil
+}
+
+func validateExtractRequest(req MemoryExtractRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || len(req.Messages) == 0 {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateRecallRequest(req MemoryRecallRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.Query) == "" {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateCanonicalRecallRequest(req MemoryRecallRequest) *ServiceError {
+	if err := validateRecallRequest(req); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.SessionID) == "" {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	return nil
+}
+
+func validateContextPushRequest(req MemoryContextPushRequest) *ServiceError {
+	if strings.TrimSpace(req.UserID) == "" || strings.TrimSpace(req.SessionID) == "" || len(req.Messages) == 0 {
+		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+	}
+	for _, msg := range req.Messages {
+		if strings.TrimSpace(msg.Role) == "" || strings.TrimSpace(msg.Content) == "" {
+			return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
+		}
+	}
+	return nil
 }
 
 func (s *MemoryService) GetProfile(userID string) (UserProfile, error) {
@@ -313,8 +482,19 @@ func (s *MemoryService) SaveWorkingMemory(ctx context.Context, req SaveWorkingMe
 	if strings.TrimSpace(req.SessionID) == "" || strings.TrimSpace(req.UserID) == "" {
 		return &ServiceError{Code: contract.CodeBadRequest, Message: "missing required field"}
 	}
-	wm := model.WorkingMemory{SessionID: strings.TrimSpace(req.SessionID), UserID: strings.TrimSpace(req.UserID), ConversationSummary: req.ConversationSummary, ExtractedElements: req.ExtractedElements, RecentTopics: req.RecentTopics, UpdatedAt: util.NowMilli()}
-	if err := s.workingRepo.Save(ctx, wm); err != nil {
+	sessionID := strings.TrimSpace(req.SessionID)
+	userID := strings.TrimSpace(req.UserID)
+	if err := s.ensureSessionOwnership(ctx, sessionID, userID); err != nil {
+		return err
+	}
+	var existing *model.WorkingMemoryRecord
+	existing, err := s.workingRepo.Get(ctx, sessionID)
+	if err != nil && err != repository.ErrNotFound {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	signals := signalsFromTeachingElements(req.ExtractedElements, model.SlotProvenanceDerived)
+	record := mergeWorkingMemoryRecord(existing, sessionID, userID, signals, req.ConversationSummary, req.RecentTopics, util.NowMilli())
+	if err := s.workingRepo.Save(ctx, record); err != nil {
 		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
 	return nil
@@ -331,7 +511,37 @@ func (s *MemoryService) GetWorkingMemory(ctx context.Context, sessionID string) 
 	if err != nil {
 		return nil, &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
 	}
-	return wm, nil
+	projected := projectWorkingMemoryRecord(*wm)
+	return &projected, nil
+}
+
+func (s *MemoryService) ensureSessionOwnership(ctx context.Context, sessionID, userID string) *ServiceError {
+	sessionID = strings.TrimSpace(sessionID)
+	userID = strings.TrimSpace(userID)
+	if sessionID == "" || userID == "" {
+		return nil
+	}
+	record, err := s.workingRepo.Get(ctx, sessionID)
+	if err == nil {
+		if strings.TrimSpace(record.UserID) != "" && strings.TrimSpace(record.UserID) != userID {
+			return &ServiceError{Code: contract.CodeInvalidCredentials, Message: "invalid credentials"}
+		}
+		return nil
+	}
+	if err != repository.ErrNotFound {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	session, err := s.authRepo.GetSessionByID(sessionID)
+	if err == repository.ErrNotFound {
+		return nil
+	}
+	if err != nil {
+		return &ServiceError{Code: contract.CodeInternalError, Message: "internal error"}
+	}
+	if strings.TrimSpace(session.UserID) != "" && strings.TrimSpace(session.UserID) != userID {
+		return &ServiceError{Code: contract.CodeInvalidCredentials, Message: "invalid credentials"}
+	}
+	return nil
 }
 
 func mergeTeachingElements(existing, incoming model.TeachingElements) model.TeachingElements {

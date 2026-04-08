@@ -19,7 +19,14 @@ const protocolInstructions = `
 3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。
 4. 工具结果上下文统一以 <tool>...</tool> 注入。
 5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。
-6. 当前支持工具: kb_query, web_search, update_requirements, require_confirm, ppt_init, ppt_mod, get_memory。
+6. 当前支持工具：
+   - kb_query: 查询知识库，参数 query（查询内容）
+   - web_search: 网络搜索，参数 query（搜索关键词）
+   - get_memory: 召回记忆，参数 query（查询内容）
+   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里
+   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数
+   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）
+   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）
 7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。`
 
 // buildSystemPrompt assembles the full system prompt.
@@ -258,40 +265,40 @@ func (p *Pipeline) applyRequirementsUpdate(jsonData string) {
 func buildRequirementsSummary(r *TaskRequirements) string {
 	var sb strings.Builder
 	if r.Topic != "" {
-		fmt.Fprintf(&sb, "主题: %s\n", r.Topic)
+		fmt.Fprintf(&sb, "topic: %s\n", r.Topic)
 	}
 	if r.Description != "" {
-		fmt.Fprintf(&sb, "描述: %s\n", r.Description)
+		fmt.Fprintf(&sb, "description: %s\n", r.Description)
 	}
 	if r.TargetAudience != "" {
-		fmt.Fprintf(&sb, "受众: %s\n", r.TargetAudience)
+		fmt.Fprintf(&sb, "audience: %s\n", r.TargetAudience)
 	}
 	if r.TotalPages > 0 {
-		fmt.Fprintf(&sb, "页数: %d\n", r.TotalPages)
+		fmt.Fprintf(&sb, "total_pages: %d\n", r.TotalPages)
 	}
 	if r.Duration != "" {
-		fmt.Fprintf(&sb, "时长: %s\n", r.Duration)
+		fmt.Fprintf(&sb, "duration: %s\n", r.Duration)
 	}
 	if r.GlobalStyle != "" {
-		fmt.Fprintf(&sb, "风格: %s\n", r.GlobalStyle)
+		fmt.Fprintf(&sb, "global_style: %s\n", r.GlobalStyle)
 	}
 	if len(r.KnowledgePoints) > 0 {
-		fmt.Fprintf(&sb, "知识点: %s\n", strings.Join(r.KnowledgePoints, "、"))
+		fmt.Fprintf(&sb, "knowledge_points: %s\n", strings.Join(r.KnowledgePoints, "、"))
 	}
 	if len(r.TeachingGoals) > 0 {
-		fmt.Fprintf(&sb, "教学目标: %s\n", strings.Join(r.TeachingGoals, "、"))
+		fmt.Fprintf(&sb, "teaching_goals: %s\n", strings.Join(r.TeachingGoals, "、"))
 	}
 	if r.TeachingLogic != "" {
-		fmt.Fprintf(&sb, "教学逻辑: %s\n", r.TeachingLogic)
+		fmt.Fprintf(&sb, "teaching_logic: %s\n", r.TeachingLogic)
 	}
 	if len(r.KeyDifficulties) > 0 {
-		fmt.Fprintf(&sb, "重点难点: %s\n", strings.Join(r.KeyDifficulties, "、"))
+		fmt.Fprintf(&sb, "key_difficulties: %s\n", strings.Join(r.KeyDifficulties, "、"))
 	}
 	if r.InteractionDesign != "" {
-		fmt.Fprintf(&sb, "互动设计: %s\n", r.InteractionDesign)
+		fmt.Fprintf(&sb, "interaction_design: %s\n", r.InteractionDesign)
 	}
 	if len(r.OutputFormats) > 0 {
-		fmt.Fprintf(&sb, "输出格式: %s\n", strings.Join(r.OutputFormats, "、"))
+		fmt.Fprintf(&sb, "output_formats: %s\n", strings.Join(r.OutputFormats, "、"))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
