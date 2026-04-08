@@ -1,3 +1,7 @@
+// 数据集说明：user_distance 是“用户原话指针”，表示 raw_text 对应的是当前 @{...} 之前倒数第几条 user 消息。
+// 不打断时通常是 1；如果中间又插入了新的 user 话，而当前修改意图对应更早那句原话，则是 2、3……
+// 这样模型可以把 @{ppt_mod|raw_text:...|user_distance:x} 理解成“把当前修改意图挂到倒数第 x 次用户说话上”。
+
 // ==================== I. 用户未发言但工具结果到达后主动播报 ====================
 
 // I1 示例1：单工具结果到达后主动播报（kb_query）
@@ -73,11 +77,14 @@
 
 // ==================== J. ppt_mod 一句话多意图 ====================
 
+// 规则：一句话里有多个修改意图时，每个 @{ppt_mod} 只承接一个意图片段。
+// raw_text 不要重复整句，而是拆成和该意图最贴近的用户原话片段；如果后面的片段依赖前文，可以保留必要上下文，但不要把所有意图都塞进同一个 raw_text。
+
 // J1 示例1：一句话两个意图
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_401, topic=\"高中地理区域分析\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"把第4页地图放大，再把标题改成深蓝色"},
-  {"role":"assistant", "content":"#{一句话两个独立修改意图，分别调用ppt_mod，distance均为1} 好的，这两个修改我都提交 @{ppt_mod|raw_text:把第4页地图放大，再把标题改成深蓝色|user_distance:1} @{ppt_mod|raw_text:把第4页地图放大，再把标题改成深蓝色|user_distance:1}"},
+  {"role":"assistant", "content":"#{一句话两个独立修改意图，分别调用ppt_mod，distance均为1} 好的，这两个修改我都提交；它们都对应当前这句用户原话，所以 user_distance 都是 1。@{ppt_mod|raw_text:把第4页地图放大|user_distance:1} @{ppt_mod|raw_text:再把标题改成深蓝色|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"两个修改请求都已发送，稍后会体现在页面上。"}
@@ -87,7 +94,7 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_402, topic=\"高考英语阅读技巧\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"第一页加个课程目标框，最后一页把二维码换成学校官网"},
-  {"role":"assistant", "content":"#{两个意图拆成两次ppt_mod调用} 明白，我分别提交 @{ppt_mod|raw_text:第一页加个课程目标框，最后一页把二维码换成学校官网|user_distance:1} @{ppt_mod|raw_text:第一页加个课程目标框，最后一页把二维码换成学校官网|user_distance:1}"},
+  {"role":"assistant", "content":"#{两个意图拆成两次ppt_mod调用} 明白，我分别提交 @{ppt_mod|raw_text:第一页加个课程目标框|user_distance:1} @{ppt_mod|raw_text:最后一页把二维码换成学校官网|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"已提交“目标框”和“二维码替换”两个修改。"}
@@ -97,7 +104,7 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_403, topic=\"有机化学基础\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"第2页背景换白色，结构式图片换清晰版，再补一页课堂小测"},
-  {"role":"assistant", "content":"#{三个独立意图，发3个ppt_mod，raw_text均为原话整句} 好的，三个调整都提交 @{ppt_mod|raw_text:第2页背景换白色，结构式图片换清晰版，再补一页课堂小测|user_distance:1} @{ppt_mod|raw_text:第2页背景换白色，结构式图片换清晰版，再补一页课堂小测|user_distance:1} @{ppt_mod|raw_text:第2页背景换白色，结构式图片换清晰版，再补一页课堂小测|user_distance:1}"},
+  {"role":"assistant", "content":"#{三个独立意图，发3个ppt_mod，raw_text按意图分别拆分} 好的，三个调整都提交 @{ppt_mod|raw_text:第2页背景换白色|user_distance:1} @{ppt_mod|raw_text:结构式图片换清晰版|user_distance:1} @{ppt_mod|raw_text:再补一页课堂小测|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
@@ -108,7 +115,7 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_404, topic=\"Python函数与循环\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"把代码字体调大，给while循环加动画，最后再加一页练习题答案"},
-  {"role":"assistant", "content":"#{三意图拆分，严格多次ppt_mod} 收到，我分三条提交 @{ppt_mod|raw_text:把代码字体调大，给while循环加动画，最后再加一页练习题答案|user_distance:1} @{ppt_mod|raw_text:把代码字体调大，给while循环加动画，最后再加一页练习题答案|user_distance:1} @{ppt_mod|raw_text:把代码字体调大，给while循环加动画，最后再加一页练习题答案|user_distance:1}"},
+  {"role":"assistant", "content":"#{三意图拆分，严格多次ppt_mod} 收到，我分三条提交 @{ppt_mod|raw_text:把代码字体调大|user_distance:1} @{ppt_mod|raw_text:给while循环加动画|user_distance:1} @{ppt_mod|raw_text:最后再加一页练习题答案|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
@@ -119,7 +126,7 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_405, topic=\"中国近代史\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"把辛亥革命那页标题放大，顺便删掉最后一页鸣谢"},
-  {"role":"assistant", "content":"#{两意图分别提交} 好的，我分别处理 @{ppt_mod|raw_text:把辛亥革命那页标题放大，顺便删掉最后一页鸣谢|user_distance:1} @{ppt_mod|raw_text:把辛亥革命那页标题放大，顺便删掉最后一页鸣谢|user_distance:1}"},
+  {"role":"assistant", "content":"#{两意图分别提交} 好的，我分别处理 @{ppt_mod|raw_text:把辛亥革命那页标题放大|user_distance:1} @{ppt_mod|raw_text:删掉最后一页鸣谢|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:发送反馈失败</tool>"},
   {"role":"assistant", "content":"#{一个成功一个失败，需要分别告知} 标题放大请求已发送，但“删除鸣谢页”这条提交失败了，我可以再帮你重试。"}
@@ -129,7 +136,7 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_406, topic=\"机器学习入门\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"第6页加ROC曲线图，下一页把公式字号变大"},
-  {"role":"assistant", "content":"#{两意图对应两条ppt_mod} 收到，我分别提交 @{ppt_mod|raw_text:第6页加ROC曲线图，下一页把公式字号变大|user_distance:1} @{ppt_mod|raw_text:第6页加ROC曲线图，下一页把公式字号变大|user_distance:1}"},
+  {"role":"assistant", "content":"#{两意图对应两条ppt_mod} 收到，我分别提交 @{ppt_mod|raw_text:第6页加ROC曲线图|user_distance:1} @{ppt_mod|raw_text:下一页把公式字号变大|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:发送反馈失败</tool>"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"#{部分失败场景，准确反馈} 已成功发送“公式字号变大”的修改，“新增ROC曲线图”发送失败，建议我现在重发一次。"}
@@ -144,7 +151,7 @@
   {"role":"user", "content":"现在进度到哪了"},
   {"role":"assistant", "content":"#{有单冲突，需自然带出} 主体内容已经接近完成，不过有一处要你确认：第3页受力方向和第5页解析不一致，你希望以哪一页为准？"},
   {"role":"user", "content":"以第5页例题解析为准"},
-  {"role":"assistant", "content":"#{用户已明确冲突答案，回传ppt_mod} 好的 @{ppt_mod|raw_text:以第5页例题解析为准|user_distance:1}"},
+  {"role":"assistant", "content":"#{用户已明确冲突答案，回传ppt_mod} 好的，这句回复对应最近一条 user，所以 user_distance=1。@{ppt_mod|raw_text:以第5页例题解析为准|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"已收到，我会按第5页解析统一相关页面。"}
 }
@@ -194,11 +201,11 @@
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_505, topic=\"高三生物遗传\"(当前任务)\n\n[待解决冲突问题]\n- context_id=ctx_505, task_id=task_505\n  question=第5页基因型示例与第8页习题答案不匹配\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"先把封面副标题改成“高考冲刺版”"},
-  {"role":"assistant", "content":"#{先处理用户当前请求，再顺带提Layer3冲突} 好的 @{ppt_mod|raw_text:先把封面副标题改成“高考冲刺版”|user_distance:1} 另外有个冲突要你确认：第5页示例和第8页答案不匹配，你希望按哪一页修正？"},
+  {"role":"assistant", "content":"#{先处理用户当前请求，再顺带提Layer3冲突} 好的，这里的修改意图对应当前这句用户原话，所以 user_distance=1。@{ppt_mod|raw_text:先把封面副标题改成“高考冲刺版”|user_distance:1} 另外有个冲突要你确认：第5页示例和第8页答案不匹配，你希望按哪一页修正？"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"封面副标题已提交修改，等你确认遗传题那处冲突。"},
   {"role":"user", "content":"按第8页答案改第5页"},
-  {"role":"assistant", "content":"#{用户给出冲突决议，回传ppt_mod} @{ppt_mod|raw_text:按第8页答案改第5页|user_distance:1}"},
+  {"role":"assistant", "content":"#{用户给出冲突决议，回传ppt_mod} 这句回复本身就是当前最新的 user，所以 user_distance=1。@{ppt_mod|raw_text:按第8页答案改第5页|user_distance:1}"},
   {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
   {"role":"assistant", "content":"已提交，会把第5页示例和第8页答案保持一致。"}
 }
