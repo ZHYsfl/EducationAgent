@@ -23,18 +23,37 @@ type PPTRepository interface {
 	InsertPageBefore(taskID, beforePageID string, newPage model.PageRenderResponse) error
 	DeletePage(taskID, pageID string) error
 	GetTaskIDByPageID(pageID string) (string, error)
+
+	// ── 三路合并快照相关 ────────────────────────────────────────────────────
+
+	// SavePageSnapshot 保存页面快照，返回快照 ID（即时间戳）
+	SavePageSnapshot(taskID, pageID string, pyCode string, version int) (int64, error)
+	// GetPageSnapshotByTs 获取指定时间戳之前的最新快照（用于按 BaseTimestamp 获取基线版本）
+	GetPageSnapshotByTs(taskID, pageID string, ts int64) (model.PageSnapshot, error)
+	// GetLatestSnapshot 获取指定页面的最新快照
+	GetLatestSnapshot(taskID, pageID string) (model.PageSnapshot, error)
+	// GetPageBaseCode 获取页面的初始 BaseCode（首次渲染成功的代码快照）
+	GetPageBaseCode(taskID, pageID string) (string, error)
+	// SetPageBaseCode 手动设置页面的初始 BaseCode（仅当尚未设置时才写入）
+	SetPageBaseCode(taskID, pageID string, baseCode string) error
 }
 
 type InMemoryPPTRepository struct {
 	mu       sync.RWMutex
 	canvases map[string]model.CanvasStatusResponse
 	pages    map[string]map[string]model.PageRenderResponse
+	// 快照存储：taskID → pageID → 按时间戳升序的快照切片
+	snapshots map[string]map[string][]model.PageSnapshot
+	// 初始基线快照：taskID → pageID → 首次渲染成功的代码
+	baseCodes map[string]map[string]string
 }
 
 func NewInMemoryPPTRepository() *InMemoryPPTRepository {
 	return &InMemoryPPTRepository{
-		canvases: make(map[string]model.CanvasStatusResponse),
-		pages:    make(map[string]map[string]model.PageRenderResponse),
+		canvases:  make(map[string]model.CanvasStatusResponse),
+		pages:     make(map[string]map[string]model.PageRenderResponse),
+		snapshots: make(map[string]map[string][]model.PageSnapshot),
+		baseCodes: make(map[string]map[string]string),
 	}
 }
 
@@ -145,6 +164,30 @@ func (r *InMemoryPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL
 	if !ok {
 		return model.PageRenderResponse{}, ErrPageNotFound
 	}
+
+	// ── 三路合并：首次成功渲染时固化 BaseCode ─────────────────────────────
+	// 仅当 BaseCode 尚未设置（初始生成阶段）时才写入
+	if page.BaseCode == "" && pyCode != "" {
+		page.BaseCode = pyCode
+		if _, ok := r.baseCodes[taskID]; !ok {
+			r.baseCodes[taskID] = make(map[string]string)
+		}
+		r.baseCodes[taskID][pageID] = pyCode
+		// 同时保存一份快照
+		now := time.Now().UnixMilli()
+		snap := model.PageSnapshot{
+			PageID:    pageID,
+			TaskID:    taskID,
+			PyCode:    pyCode,
+			Timestamp: now,
+			Version:   page.Version + 1,
+		}
+		if _, ok := r.snapshots[taskID]; !ok {
+			r.snapshots[taskID] = make(map[string][]model.PageSnapshot)
+		}
+		r.snapshots[taskID][pageID] = append(r.snapshots[taskID][pageID], snap)
+	}
+
 	page.PyCode = pyCode
 	if renderURL != "" {
 		page.RenderURL = renderURL
@@ -283,6 +326,78 @@ func (r *InMemoryPPTRepository) DeletePage(taskID, pageID string) error {
 	canvas.PagesInfo = newPagesInfo
 	r.canvases[taskID] = canvas
 	delete(r.pages[taskID], pageID)
+	return nil
+}
+
+func (r *InMemoryPPTRepository) SavePageSnapshot(taskID, pageID string, pyCode string, version int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().UnixMilli()
+	snap := model.PageSnapshot{
+		PageID:    pageID,
+		TaskID:    taskID,
+		PyCode:    pyCode,
+		Timestamp: now,
+		Version:   version,
+	}
+	if _, ok := r.snapshots[taskID]; !ok {
+		r.snapshots[taskID] = make(map[string][]model.PageSnapshot)
+	}
+	r.snapshots[taskID][pageID] = append(r.snapshots[taskID][pageID], snap)
+	return now, nil
+}
+
+func (r *InMemoryPPTRepository) GetPageSnapshotByTs(taskID, pageID string, ts int64) (model.PageSnapshot, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	snaps, ok := r.snapshots[taskID][pageID]
+	if !ok || len(snaps) == 0 {
+		return model.PageSnapshot{}, errors.New("no snapshot found for page")
+	}
+	// 找到 ts 之前最近的一次快照
+	var found model.PageSnapshot
+	for _, s := range snaps {
+		if s.Timestamp <= ts {
+			found = s
+		} else {
+			break
+		}
+	}
+	if found.PageID == "" {
+		return model.PageSnapshot{}, errors.New("no snapshot before specified timestamp")
+	}
+	return found, nil
+}
+
+func (r *InMemoryPPTRepository) GetLatestSnapshot(taskID, pageID string) (model.PageSnapshot, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	snaps, ok := r.snapshots[taskID][pageID]
+	if !ok || len(snaps) == 0 {
+		return model.PageSnapshot{}, errors.New("no snapshot found for page")
+	}
+	return snaps[len(snaps)-1], nil
+}
+
+func (r *InMemoryPPTRepository) GetPageBaseCode(taskID, pageID string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if code, ok := r.baseCodes[taskID][pageID]; ok {
+		return code, nil
+	}
+	return "", errors.New("base code not found for page")
+}
+
+func (r *InMemoryPPTRepository) SetPageBaseCode(taskID, pageID string, baseCode string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.baseCodes[taskID]; !ok {
+		r.baseCodes[taskID] = make(map[string]string)
+	}
+	// 仅当尚未设置时才写入
+	if _, exists := r.baseCodes[taskID][pageID]; !exists {
+		r.baseCodes[taskID][pageID] = baseCode
+	}
 	return nil
 }
 

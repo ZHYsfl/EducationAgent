@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -148,6 +150,18 @@ func (r *RedisPPTRepository) UpdatePageCode(taskID, pageID, pyCode, renderURL st
 	if err != nil {
 		return model.PageRenderResponse{}, err
 	}
+
+	// ── 三路合并：首次成功渲染时固化 BaseCode 并保存快照 ─────────────────
+	if page.BaseCode == "" && pyCode != "" {
+		page.BaseCode = pyCode
+		if err := r.SetPageBaseCode(taskID, pageID, pyCode); err != nil {
+			log.Printf("[redis] SetPageBaseCode failed: %v", err)
+		}
+		if _, err := r.SavePageSnapshot(taskID, pageID, pyCode, page.Version+1); err != nil {
+			log.Printf("[redis] SavePageSnapshot failed: %v", err)
+		}
+	}
+
 	page.PyCode = pyCode
 	if renderURL != "" {
 		page.RenderURL = renderURL
@@ -325,6 +339,126 @@ func (r *RedisPPTRepository) GetTaskIDByPageID(pageID string) (string, error) {
 	}
 	_ = iter.Err()
 	return "", ErrPageNotFound
+}
+
+// ── 三路合并快照相关 ────────────────────────────────────────────────────────
+
+func (r *RedisPPTRepository) pageSnapshotIndexKey(taskID, pageID string) string {
+	return fmt.Sprintf("snapshot:idx:%s:%s", taskID, pageID)
+}
+
+func (r *RedisPPTRepository) pageSnapshotDataKey(taskID, pageID string, ts int64) string {
+	return fmt.Sprintf("snapshot:data:%s:%s:%d", taskID, pageID, ts)
+}
+
+func (r *RedisPPTRepository) pageBaseCodeKey(taskID, pageID string) string {
+	return fmt.Sprintf("page:basecode:%s:%s", taskID, pageID)
+}
+
+func (r *RedisPPTRepository) SavePageSnapshot(taskID, pageID string, pyCode string, version int) (int64, error) {
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+	key := r.pageSnapshotDataKey(taskID, pageID, now)
+	snap := model.PageSnapshot{
+		PageID:    pageID,
+		TaskID:    taskID,
+		PyCode:    pyCode,
+		Timestamp: now,
+		Version:   version,
+	}
+	b, err := json.Marshal(snap)
+	if err != nil {
+		return 0, err
+	}
+	if err := r.client.Set(ctx, key, b, 24*time.Hour).Err(); err != nil {
+		return 0, err
+	}
+	// 将时间戳追加到有序集合（按时间戳排序）
+	idxKey := r.pageSnapshotIndexKey(taskID, pageID)
+	if err := r.client.ZAdd(ctx, idxKey, redis.Z{Score: float64(now), Member: now}).Err(); err != nil {
+		return 0, err
+	}
+	return now, nil
+}
+
+func (r *RedisPPTRepository) GetPageSnapshotByTs(taskID, pageID string, ts int64) (model.PageSnapshot, error) {
+	ctx := context.Background()
+	idxKey := r.pageSnapshotIndexKey(taskID, pageID)
+	// 获取 ts 之前最近的时间戳
+	results, err := r.client.ZRangeByScore(ctx, idxKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   fmt.Sprintf("%d", ts),
+		Count: 1,
+	}).Result()
+	if err != nil {
+		return model.PageSnapshot{}, err
+	}
+	if len(results) == 0 {
+		return model.PageSnapshot{}, errors.New("no snapshot before specified timestamp")
+	}
+	var snapTs int64
+	fmt.Sscanf(results[0], "%d", &snapTs)
+	dataKey := r.pageSnapshotDataKey(taskID, pageID, snapTs)
+	b, err := r.client.Get(ctx, dataKey).Result()
+	if err != nil {
+		return model.PageSnapshot{}, err
+	}
+	var snap model.PageSnapshot
+	if err := json.Unmarshal([]byte(b), &snap); err != nil {
+		return model.PageSnapshot{}, err
+	}
+	return snap, nil
+}
+
+func (r *RedisPPTRepository) GetLatestSnapshot(taskID, pageID string) (model.PageSnapshot, error) {
+	ctx := context.Background()
+	idxKey := r.pageSnapshotIndexKey(taskID, pageID)
+	results, err := r.client.ZRange(ctx, idxKey, -1, -1).Result()
+	if err != nil {
+		return model.PageSnapshot{}, err
+	}
+	if len(results) == 0 {
+		return model.PageSnapshot{}, errors.New("no snapshot found for page")
+	}
+	var snapTs int64
+	fmt.Sscanf(results[0], "%d", &snapTs)
+	dataKey := r.pageSnapshotDataKey(taskID, pageID, snapTs)
+	b, err := r.client.Get(ctx, dataKey).Result()
+	if err != nil {
+		return model.PageSnapshot{}, err
+	}
+	var snap model.PageSnapshot
+	if err := json.Unmarshal([]byte(b), &snap); err != nil {
+		return model.PageSnapshot{}, err
+	}
+	return snap, nil
+}
+
+func (r *RedisPPTRepository) GetPageBaseCode(taskID, pageID string) (string, error) {
+	ctx := context.Background()
+	key := r.pageBaseCodeKey(taskID, pageID)
+	val, err := r.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", errors.New("base code not found for page")
+	}
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+func (r *RedisPPTRepository) SetPageBaseCode(taskID, pageID string, baseCode string) error {
+	ctx := context.Background()
+	key := r.pageBaseCodeKey(taskID, pageID)
+	// 仅当不存在时才写入
+	ok, err := r.client.Exists(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if ok == 0 {
+		return r.client.Set(ctx, key, baseCode, 0).Err()
+	}
+	return nil
 }
 
 func (r *RedisPPTRepository) setCanvas(ctx context.Context, canvas model.CanvasStatusResponse) error {

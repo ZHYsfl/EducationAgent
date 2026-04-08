@@ -65,6 +65,18 @@ type PageRenderResponse struct {
 	Version   int    `json:"version"`
 	UpdatedAt int64  `json:"updated_at"`
 	ErrorMsg  string `json:"error_msg,omitempty"`
+	// BaseCode 是该页面的初始生成版本（快照），用于三路合并的基准线。
+	// 仅在首次成功渲染完成后设置，之后不再变化。
+	BaseCode string `json:"base_code,omitempty"`
+}
+
+// PageSnapshot 是页面的历史快照，用于三路合并时获取基线版本。
+type PageSnapshot struct {
+	PageID    string `json:"page_id"`
+	TaskID    string `json:"task_id"`
+	PyCode    string `json:"py_code"`
+	Timestamp int64  `json:"timestamp"` // 快照时间戳（毫秒）
+	Version   int    `json:"version"`
 }
 
 type VADEventRequest struct {
