@@ -32,6 +32,7 @@ type ContentDiversityService struct {
 	llmCfg        LLMClientConfig
 	renderConfig  RenderServiceConfig
 	ossClient     *oss.Client
+	notify        Notifier
 }
 
 type contentDiversityJob struct {
@@ -80,6 +81,11 @@ func (s *ContentDiversityService) Generate(ctx context.Context, req model.Conten
 		ResultID: resultID,
 		Status:   "generating",
 	}, nil
+}
+
+// AttachNotifier sets the Notifier for sending completion callbacks to Voice Agent.
+func (s *ContentDiversityService) AttachNotifier(n Notifier) {
+	s.notify = n
 }
 
 func (s *ContentDiversityService) runGeneration(resultID string, req model.ContentDiversityRequest) {
@@ -139,6 +145,36 @@ func (s *ContentDiversityService) runGeneration(resultID string, req model.Conte
 		}
 	}
 	s.resultRepoMu.Unlock()
+
+	// 生成完成或失败后，通知 Voice Agent
+	if s.notify != nil {
+		eventType := "content_diversity_completed"
+		ttsText := "动画和游戏已生成完成"
+		if contentType == "animation" {
+			ttsText = "动画创意已生成完成"
+		} else if contentType == "game" {
+			ttsText = "互动小游戏已生成完成"
+		}
+		if status == "failed" {
+			eventType = "content_diversity_failed"
+			ttsText = fmt.Sprintf("动画或游戏生成失败：%s", errMsg)
+		}
+		notifyPayload := map[string]any{
+			"task_id":    req.TaskID,
+			"result_id":  resultID,
+			"event_type": eventType,
+			"status":     status,
+			"tts_text":   ttsText,
+		}
+		if status == "completed" {
+			notifyPayload["animations"] = animations
+			notifyPayload["games"] = games
+		}
+		if errMsg != "" {
+			notifyPayload["error"] = errMsg
+		}
+		_ = s.notify.SendPPTMessage(ctx, notifyPayload)
+	}
 }
 
 // generateAnimations generates 动画创意 HTML5 content using LLM.
