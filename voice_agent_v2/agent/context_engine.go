@@ -19,7 +19,14 @@ const protocolInstructions = `
 3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。
 4. 工具结果上下文统一以 <tool>...</tool> 注入。
 5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。
-6. 当前支持工具: kb_query, web_search, update_requirements, require_confirm, ppt_init, ppt_mod, get_memory。
+6. 当前支持工具：
+   - kb_query: 查询知识库，参数 query（查询内容）
+   - web_search: 网络搜索，参数 query（搜索关键词）
+   - get_memory: 召回记忆，参数 query（查询内容）
+   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里
+   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数
+   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）
+   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）
 7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。`
 
 // buildSystemPrompt assembles the full system prompt.
