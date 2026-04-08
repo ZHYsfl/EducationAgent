@@ -119,11 +119,11 @@ func (p *Pipeline) OnVADEnd() {
 }
 
 // OnInterrupt is called when the user starts speaking mid-response.
-// Waits up to 3s for any open @{...} action to close, then saves interrupted history.
+// Waits up to 2s for any open @{...} action to close, then saves interrupted history.
 func (p *Pipeline) OnInterrupt() {
 	p.cancelThinkStream()
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		p.tokensMu.Lock()
 		raw := p.rawTokens.String()
 		p.tokensMu.Unlock()
