@@ -1,0 +1,493 @@
+{
+  "description": "Voice Agent工具调用数据集 - B/C/D三大类（每小类2条，短/中/长对话调用不同Layer）",
+  "version": "3.0",
+  "layer_rules": {
+    "short_dialogue": "Layer1(缺失字段多，已收集少) + Layer5",
+    "medium_dialogue": "Layer1(缺失字段减少) + Layer5",
+    "long_dialogue": "Layer1(缺失字段少/已收集多) + Layer2(任务列表) + Layer5"
+  }
+}
+
+// ==================== B. 打断流 case ====================
+// Layer规则：信息收集阶段，使用 Layer1(含缺失列表+已收集) + Layer5
+
+// B1: 自然语言输出中途被打断（@{} 之前）
+
+// 示例1: 短对话（~350字符），2轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查一下光合作用"},
+  {"role":"assistant", "content":"#{用户要查光合作用，暂停收集流程} 好的 @{kb_query|query:光合作用}</interrupted>"},
+  {"role":"user", "content":"不用了"},
+  {"role":"assistant", "content":"#{用户打断，放弃查询} 好的，不查了。那我们继续，PPT主题是什么？"}
+}
+
+// 示例2: 短对话（~200字符），1轮 - Layer1(缺失较多) + Layer5，打断恢复
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, total_pages, duration, global_style, knowledge_points, teaching_goals, teaching_logic, key_difficulties, interaction_design, output_formats\n\n已收集的信息：\n- topic: 高中物理力学\n- audience: 高二学生\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"教学时长是2节课"},
+  {"role":"assistant", "content":"#{用户说了duration，更新字段，继续追问缺失项} 好的 @{update_requirements|duration:2节课} 那大概需要做几页PPT？</interrupted>"}
+}
+
+// 示例3: 长对话（~1800字符），6轮 - Layer1 + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, total_pages, global_style, interaction_design, output_formats\n\n已收集的信息：\n- topic: 初中英语语法\n- audience: 初三学生\n- key_difficulties: 虚拟语气用法\n- teaching_goals: 掌握虚拟语气\n- knowledge_points: 虚拟语气、定语从句\n- teaching_logic: 先讲规则再举例再练习\n- duration: 2节课\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"先确认一下课程描述吧"},
+  {"role":"assistant", "content":"#{用户要确认description} 课程描述是讲解中考英语重点语法，包括虚拟语气和定语从句两大模块 @{update_requirements|description:讲解中考英语重点语法}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的。但是我想先查一下虚拟语气的标准定义</interrupted>"},
+  {"role":"user", "content":"顺便把定语从句也查一下"},
+  {"role":"assistant", "content":"#{用户要查定义，暂停当前流程} 好的 @{kb_query|query:英语虚拟语气标准定义} @{kb_query|query:定语从句定义}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"}
+}
+
+// B2: @{} 完整输出后立刻被打断
+
+// 示例1: 短对话（~400字符），2轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查一下细胞分裂的定义"},
+  {"role":"assistant", "content":"#{用户要查细胞分裂，暂停收集} 好的 @{kb_query|query:细胞分裂定义} 正在查</interrupted>"},
+  {"role":"user", "content":"先不管这个了，继续说PPT"},
+  {"role":"assistant", "content":"#{工具已发出，响应新指令} 好的，PPT还需要确认哪些信息？"}
+}
+
+// 示例2: 长对话（~1500字符），5轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, knowledge_points, output_formats\n\n已收集的信息：\n- topic: 2024年高考数学复习\n- description: 高考数学重点知识梳理\n- audience: 高三学生\n- total_pages: 30\n- duration: 3节课\n- teaching_goals: 掌握高考数学核心知识点\n- teaching_logic: 按模块逐一突破\n- key_difficulties: 综合题解题思路\n- interaction_design: 课堂练习和答疑\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我搜索一下2024年高考数学大纲变化"},
+  {"role":"assistant", "content":"#{用户要搜高考大纲} 好的 @{web_search|query:2024年高考数学大纲变化} 正在搜索</interrupted>"},
+  {"role":"user", "content":"算了不查了，先确认PPT需求"},
+  {"role":"assistant", "content":"#{工具已发出，响应新指令} 好的，PPT需求需要确认什么？"},
+  {"role":"system", "content":"<tool>web_search:2024年高考数学大纲主要变化：加强核心素养考查，增加开放性试题...</tool>"},
+  {"role":"assistant", "content":"#{收到搜索结果} 顺便说一下，搜索结果也回来了：2024年高考大纲加强了核心素养考查。"},
+  {"role":"user", "content":"那挺好，继续收集信息吧"}
+}
+
+// B3: @{} 输出到一半超2s被硬截断
+
+// 示例1: 短对话（~250字符），2轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查一下英语语法虚拟语气"},
+  {"role":"assistant", "content":"#{用户要查虚拟语气} 好的，我查 @{kb_query|query:英语虚拟语气}</interrupted>"},
+  {"role":"user", "content":"不用查了"},
+  {"role":"assistant", "content":"#{用户打断，放弃查询} 好的，不查了。那我们继续"}
+}
+
+// 示例2: 中对话（~1100字符），4轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 初中英语语法\n- audience: 初三学生\n- total_pages: 15\n- description: 讲解中考英语重点语法\n- knowledge_points: 虚拟语气、倒装句\n- teaching_goals: 掌握虚拟语气用法\n- teaching_logic: 先讲规则再举例再练习\n- key_difficulties: 虚拟语气与陈述语气的区分\n- duration: 1节课\n- interaction_design: 课堂练习\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"风格简约，互动加问答，输出格式PDF"},
+  {"role":"assistant", "content":"#{用户说了global_style/interaction_design/output_formats} 好的 @{update_requirements|global_style:简约|interaction_design:问答|output_formats:PDF}</interrupted>"},
+  {"role":"user", "content":"先停一下，课时改成2节课"},
+  {"role":"assistant", "content":"#{用户打断，暂停更新} 好的，时长改成2节课 @{update_requirements|duration:2节课}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已更新。"}
+}
+
+// B3b: @{} 闭合后被打断，工具已发出但后续自然语言被截断
+
+// 示例1: 短对话（~500字符），3轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查唐朝历史年表"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:唐朝历史年表} 正在查</interrupted>"},
+  {"role":"user", "content":"顺便查宋朝年表"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:宋朝历史年表}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"}
+}
+
+// 示例2: 长对话（~2200字符），7轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：output_formats\n\n已收集的信息：\n- topic: 中国近代史\n- description: 讲解中国近代重要历史事件\n- audience: 高中生\n- total_pages: 25\n- duration: 2节课\n- global_style: 历史文献风格\n- knowledge_points: 辛亥革命、五四运动\n- teaching_goals: 了解近代史重要事件\n- teaching_logic: 按时间顺序讲解\n- key_difficulties: 历史事件因果关系\n- interaction_design: 课堂讨论\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查辛亥革命的意义，顺便搜历史资料"},
+  {"role":"assistant", "content":"#{用户要查辛亥革命} 好的 @{kb_query|query:辛亥革命意义} @{web_search|query:辛亥革命历史资料} 同时查询中</interrupted>"},
+  {"role":"user", "content":"顺便把五四运动也查一下"},
+  {"role":"assistant", "content":"#{两个工具已发出，再追加五四运动} 好的 @{kb_query|query:五四运动}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"三个查询都已发送。"},
+  {"role":"system", "content":"<tool>kb_query:辛亥革命意义：推翻封建帝制，建立共和国...</tool>"},
+  {"role":"assistant", "content":"#{收到第一个结果} 辛亥革命检索到了：推翻封建帝制，建立共和国。还有几个在等待。"},
+  {"role":"system", "content":"<tool>web_search:辛亥革命历史纪录片推荐...</tool>"},
+  {"role":"system", "content":"<tool>kb_query:五四运动：1919年反帝反封建的爱国运动...</tool>"},
+  {"role":"assistant", "content":"#{所有结果到齐} 查询完成！辛亥革命和五四运动的意义都已检索到。"}
+}
+
+// B4: 异步工具结果隔多轮才回来
+
+// 示例1: 中对话（~1200字符），5轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, global_style, output_formats\n\n已收集的信息：\n- topic: 高中数学几何\n- audience: 高二学生\n- total_pages: 20\n- knowledge_points: 勾股定理、相似三角形\n- teaching_goals: 掌握几何证明方法\n- teaching_logic: 从定理到证明\n- key_difficulties: 辅助线添加\n- duration: 1节课\n- interaction_design: 课堂练习\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查勾股定理的证明"},
+  {"role":"assistant", "content":"#{用户要查勾股定理} 好的 @{kb_query|query:勾股定理证明}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在检索中，你还有其他问题吗？"},
+  {"role":"user", "content":"PPT受众改成高一学生"},
+  {"role":"assistant", "content":"#{用户更新audience} 好的 @{update_requirements|audience:高一学生}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"受众已更新。"},
+  {"role":"system", "content":"<tool>kb_query:勾股定理证明方法：面积法、向量法、射影定理...</tool>"},
+  {"role":"assistant", "content":"#{收到之前kb_query结果} 关于勾股定理证明，主要有面积法、向量法、射影定理等方法。"}
+}
+
+// 示例2: 长对话（~2800字符），9轮 - Layer1 + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, interaction_design, output_formats\n\n已收集的信息：\n- topic: 高中数学导数\n- audience: 高三学生\n- knowledge_points: 导数定义、求导法则、导数应用\n- teaching_goals: 掌握导数基本概念\n- teaching_logic: 从定义到计算再到应用\n- key_difficulties: 极限的理解\n- total_pages: 20\n- duration: 45分钟\n- global_style: 简约白色\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查一下导数的标准定义"},
+  {"role":"assistant", "content":"#{用户要查导数定义} 好的 @{kb_query|query:导数标准定义}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在检索中。"},
+  {"role":"user", "content":"大概做20页左右"},
+  {"role":"assistant", "content":"#{用户给了total_pages} 好的 @{update_requirements|total_pages:20}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的，页数已记录。"},
+  {"role":"user", "content":"时长45分钟"},
+  {"role":"assistant", "content":"#{用户给duration} @{update_requirements|duration:45分钟}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。"},
+  {"role":"user", "content":"风格简约白色吧"},
+  {"role":"assistant", "content":"#{用户给global_style} @{update_requirements|global_style:简约白色}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已更新风格。"},
+  {"role":"system", "content":"<tool>kb_query:导数定义：函数在某点的瞬时变化率，lim(Δx→0)[f(x+Δx)-f(x)]/Δx</tool>"},
+  {"role":"assistant", "content":"#{收到之前kb_query结果} 导数的标准定义是：函数在某点的瞬时变化率，数学表达式为 lim(Δx→0)[f(x+Δx)-f(x)]/Δx。"}
+}
+
+
+// ==================== C. 并发/交错 case ====================
+
+// C1: 连续两个 @{}@{} 结果先后到达
+
+// 示例1: 短对话（~600字符），4轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"帮我查AI定义和搜索相关资料"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:人工智能定义} @{web_search|query:人工智能相关资料}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都已发送。"},
+  {"role":"system", "content":"<tool>kb_query:人工智能是研究模拟人类智能的技术科学...</tool>"},
+  {"role":"assistant", "content":"#{收到第一个结果} 知识库检索到人工智能定义：研究模拟人类智能的技术科学。网络搜索还在等待。"},
+  {"role":"system", "content":"<tool>web_search:人工智能相关资料：机器学习、深度学习，自然语言处理...</tool>"},
+  {"role":"assistant", "content":"#{收到第二个结果} 网络搜索结果也到了：包括机器学习、深度学习、自然语言处理等技术。"}
+}
+
+// 示例2: 长对话（~1800字符），6轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 高中物理力学\n- audience: 高二学生\n- total_pages: 25\n- description: 系统讲解力学基本概念和应用\n- knowledge_points: 牛顿三定律、力学综合应用\n- teaching_goals: 掌握力学基本原理\n- teaching_logic: 从概念到公式再到应用\n- key_difficulties: 力学综合题分析\n- duration: 2节课\n- interaction_design: 课堂练习和小组讨论\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"user", "content":"顺便帮我查一下牛顿的生平事迹"},
+  {"role":"assistant", "content":"#{用户要查牛顿生平} 好的 @{kb_query|query:牛顿生平事迹}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在检索。"},
+  {"role":"user", "content":"再查一下力学在生活中的应用例子"},
+  {"role":"assistant", "content":"#{用户要查力学应用} 好的 @{kb_query|query:力学在生活中的应用例子}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"},
+  {"role":"system", "content":"<tool>kb_query:牛顿生平：艾萨克·牛顿，英国数学家、物理学家，1643年生，提出牛顿三定律...</tool>"},
+  {"role":"assistant", "content":"#{收到第一个结果} 牛顿生平检索到了：艾萨克·牛顿，英国数学家、物理学家，提出牛顿三定律。力学应用的还在等待。"}
+}
+
+// C2: 连续两个 @{}@{} 结果同时到达
+
+// 示例1: 短对话（~700字符），3轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查一下相对论基本概念和搜索科普视频"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:相对论基本概念} @{web_search|query:相对论科普视频}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"正在同时查询。"},
+  {"role":"system", "content":"<tool>kb_query:相对论包括狭义相对论和广义相对论...</tool>"},
+  {"role":"system", "content":"<tool>web_search:相对论科普视频推荐...</tool>"},
+  {"role":"assistant", "content":"#{两个结果同时到} 查询完成！相对论包括狭义相对论和广义相对论，同时找到了一些科普视频资源。"}
+}
+
+// 示例2: 长对话（~2000字符），7轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 大学计算机基础\n- audience: 大一新生\n- total_pages: 30\n- description: 计算机基础知识普及\n- knowledge_points: 计算机组成、操作系统、网络基础\n- teaching_goals: 了解计算机基本原理\n- teaching_logic: 从硬件到软件层层深入\n- key_difficulties: 操作系统工作原理\n- duration: 3节课\n- interaction_design: 动手实践环节\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的，我来查一下。"},
+  {"role":"user", "content":"帮我查一下计算机组成原理和搜索相关图解"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:计算机组成原理} @{web_search|query:计算机组成图解资料}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"},
+  {"role":"user", "content":"顺便查一下操作系统的发展历史"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:操作系统发展历史}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时进行中。"},
+  {"role":"system", "content":"<tool>kb_query:计算机组成原理：包括运算器、控制器、存储器、输入输出设备...</tool>"},
+  {"role":"system", "content":"<tool>web_search:计算机组成图解资料：多个可视化教学资源...</tool>"},
+  {"role":"system", "content":"<tool>kb_query:操作系统发展历史：从DOS到Windows、Linux...</tool>"},
+  {"role":"assistant", "content":"#{三个结果同时到} 查询全部完成！计算机组成原理、图解资料、操作系统发展历史都已检索到。"}
+}
+
+// C3: 连续两个 @{}@{} 第一个失败第二个成功
+
+// 示例1: 短对话（~500字符），3轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查这个术语和搜索英文翻译"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:某专业术语} @{web_search|query:某专业术语英文翻译}"},
+  {"role":"system", "content":"<tool>kb_query:查询失败</tool>"},
+  {"role":"system", "content":"<tool>web_search:该术语英文为Professional Terminology...</tool>"},
+  {"role":"assistant", "content":"#{kb_query失败，web_search成功} 知识库没找到，但搜索到英文是Professional Terminology。"}
+}
+
+// 示例2: 长对话（~1400字符），5轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, global_style, output_formats\n\n已收集的信息：\n- topic: 商务PPT模板\n- audience: 职场人士\n- total_pages: 15\n- knowledge_points: 封面设计、内容排版\n- teaching_goals: 掌握商务PPT制作技巧\n- teaching_logic: 从设计原则到实际应用\n- key_difficulties: 配色方案选择\n- duration: 1节课\n- interaction_design: 案例分析\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查一下之前做PPT的风格，再查类似主题的模板"},
+  {"role":"assistant", "content":"#{用户要查记忆和模板} 好的 @{get_memory|query:之前PPT风格} @{kb_query|query:PPT模板推荐}"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"},
+  {"role":"system", "content":"<tool>get_memory:记忆召回失败</tool>"},
+  {"role":"assistant", "content":"#{第一个失败了} 抱歉，没能召回之前的记忆。还在等待模板检索。"},
+  {"role":"system", "content":"<tool>kb_query:适合商务类PPT模板：简约专业风、蓝色商务风...</tool>"},
+  {"role":"assistant", "content":"#{检索成功} 检索到了商务类模板推荐：简约专业风、蓝色商务风等。"}
+}
+
+// C4a: 3个工具同时调用，结果同时到
+
+// 示例1: 中对话（~1100字符），4轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查量子力学概念、搜科普资料、查之前有没有做过类似PPT"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:量子力学基本概念} @{web_search|query:量子力学科普资料} @{get_memory|query:量子力学PPT}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时进行中。"},
+  {"role":"system", "content":"<tool>kb_query:量子力学：研究微观粒子运动规律的物理学分支...</tool>"},
+  {"role":"system", "content":"<tool>web_search:量子力学资料：薛定谔方程、不确定性原理...</tool>"},
+  {"role":"system", "content":"<tool>get_memory:之前做过波的干涉PPT...</tool>"},
+  {"role":"assistant", "content":"#{三个结果同时到} 查询完成！量子力学基本概念、网络资源、之前相关PPT都已获取。"}
+}
+
+// 示例2: 长对话（~2400字符），8轮 - Layer1 + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 高中化学有机化学\n- audience: 高二学生\n- total_pages: 20\n- description: 系统讲解有机化学基础\n- knowledge_points: 烷烃、烯烃、炔烃、芳香烃\n- teaching_goals: 掌握有机化学基本概念\n- teaching_logic: 从结构到性质到反应\n- key_difficulties: 反应机理的理解\n- duration: 2节课\n- interaction_design: 分子模型搭建\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的，我来看看。"},
+  {"role":"user", "content":"帮我同时查烷烃的通性、烯烃的通性和查一下化学史"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:烷烃通性} @{kb_query|query:烯烃通性} @{get_memory|query:化学PPT}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时发送。"},
+  {"role":"user", "content":"顺便搜一下有机化学的动画资源"},
+  {"role":"assistant", "content":"好的 @{web_search|query:有机化学动画资源}"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"四个查询都在进行中。"}
+}
+
+// C4b: 3个工具同时调用，结果分批到（先1后2）
+
+// 示例1: 中对话（~1400字符），5轮 - Layer1(缺失较多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查辛亥革命意义、搜纪录片、查历史PPT"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:辛亥革命意义} @{web_search|query:辛亥革命纪录片} @{get_memory|query:历史PPT}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时进行中。"},
+  {"role":"system", "content":"<tool>kb_query:辛亥革命意义：推翻封建帝制，建立共和国...</tool>"},
+  {"role":"assistant", "content":"#{收到第一个结果} 辛亥革命检索到：推翻封建帝制，建立共和国。还有两个在等待。"},
+  {"role":"system", "content":"<tool>web_search:辛亥革命纪录片推荐：《走向共和》...</tool>"},
+  {"role":"system", "content":"<tool>get_memory:之前做过五四运动PPT...</tool>"},
+  {"role":"assistant", "content":"#{后两个结果到了} 全部查询完成！纪录片推荐和之前的五四运动PPT记忆都已获取。"}
+}
+
+// 示例2: 长对话（~3000字符），10轮 - Layer1 + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 大学中国古代文学\n- audience: 中文系大一学生\n- total_pages: 35\n- description: 系统讲解中国古代文学发展脉络\n- knowledge_points: 先秦诸子、两汉辞赋、魏晋南北朝诗歌、唐诗宋词\n- teaching_goals: 了解中国文学发展历程\n- teaching_logic: 按朝代顺序讲解\n- key_difficulties: 各朝代文学特色对比\n- duration: 4节课\n- interaction_design: 诗词朗诵和文学讨论\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的，我来查一下。"},
+  {"role":"user", "content":"帮我查唐诗特点、宋词特点、元曲特点，再搜一下相关朗诵音频"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:唐诗特点} @{kb_query|query:宋词特点} @{kb_query|query:元曲特点} @{web_search|query:古诗词朗诵音频}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"四个查询同时发送。"},
+  {"role":"user", "content":"顺便查一下我之前有没有做过文学主题的PPT"},
+  {"role":"assistant", "content":"好的 @{get_memory|query:文学PPT}"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"五个查询同时进行中。"},
+  {"role":"system", "content":"<tool>kb_query:唐诗特点：题材广泛、意境深远、韵律工整</tool>"},
+{"role":"assistant", "content":"#{收到第一个结果} 唐诗特点检索到了：题材广泛、意境深远、韵律工整。还有三个在等待。"},
+{"role":"system", "content":"<tool>web_search:古诗词朗诵音频推荐：喜马拉雅《唐诗三百首》朗诵、网易云诗词专辑</tool>"},
+{"role":"assistant", "content":"#{收到第二个结果} 古诗词朗诵音频资源找到了。还有两个在等待。"},
+{"role":"system", "content":"<tool>get_memory:找到1条记忆：曾为中文系制作过《中国古代诗歌专题》PPT（25页），涵盖先秦至唐代诗歌发展</tool>"},
+{"role":"assistant", "content":"#{收到第三个结果} 找到之前做过的中国古代诗歌专题PPT，共25页，涵盖先秦至唐代。还有一个在等待。"},
+{"role":"system", "content":"<tool>kb_query:宋词特点：词牌格式多样、分为豪放与婉约两派、音韵优美</tool>"},
+{"role":"system", "content":"<tool>kb_query:元曲特点：口语化表达、戏剧性强、题材贴近生活</tool>"},
+{"role":"assistant", "content":"#{后两个结果同时到} 全部查询完成！宋词特点（词牌格式、豪放婉约两派）、元曲特点（口语化、戏剧性强）都已检索到。建议参考之前PPT的结构来组织这次的内容。"}
+}
+
+// C4c: 3个工具同时调用，结果逐个到
+
+// 示例1: 中对话（~1300字符），5轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, global_style, output_formats\n\n已收集的信息：\n- topic: 青少年心理健康\n- audience: 高中生家长\n- total_pages: 20\n- knowledge_points: 青春期心理特征、亲子沟通技巧\n- teaching_goals: 帮助家长理解青春期孩子\n- teaching_logic: 从问题到解决方案\n- key_difficulties: 有效沟通方法\n- duration: 2节课\n- interaction_design: 案例分享\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"查青春期心理特征、青少年教育方法、查教育类PPT"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:青春期心理特征} @{kb_query|query:青少年教育方法} @{get_memory|query:教育PPT}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时发送。"},
+  {"role":"system", "content":"<tool>kb_query:青春期心理特征：自我意识增强、情绪波动大...</tool>"},
+  {"role":"assistant", "content":"#{收到第一个} 青春期心理特征：自我意识增强、情绪波动大、渴望独立。还有两个在等待。"},
+  {"role":"system", "content":"<tool>kb_query:青少年教育方法：尊重沟通、正面引导...</tool>"},
+  {"role":"assistant", "content":"#{收到第二个} 青少年教育方法：尊重沟通、正面引导、建立信任。"},
+  {"role":"system", "content":"<tool>get_memory:之前做过家庭教育专题PPT...</tool>"},
+  {"role":"assistant", "content":"#{全部到齐} 查询完成！青春期心理特征、教育方法、之前的家庭教育PPT都已获取。"}
+}
+
+// 示例2: 长对话（~3200字符），9轮 - Layer1 + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：global_style, output_formats\n\n已收集的信息：\n- topic: 高中地理区域地理\n- audience: 高二学生\n- total_pages: 40\n- description: 中国地理分区讲解\n- knowledge_points: 华东地区、华北地区、华南地区、西北地区地理特征\n- teaching_goals: 掌握中国各区域地理特征\n- teaching_logic: 从自然到人文综合分析\n- key_difficulties: 区域差异对比分析\n- duration: 4节课\n- interaction_design: 地图识读和案例分析\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的，我来查一下。"},
+  {"role":"user", "content":"帮我查华东地理特征、华北地理特征、华南地理特征"},
+  {"role":"assistant", "content":"好的 @{kb_query|query:华东地区地理特征} @{kb_query|query:华北地区地理特征} @{kb_query|query:华南地区地理特征}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"三个查询同时发送。"},
+  {"role":"user", "content":"顺便搜一下各区域的地图图片"},
+  {"role":"assistant", "content":"好的 @{web_search|query:中国区域地理地图图片}"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"四个查询同时进行中。"},
+  {"role":"user", "content":"查一下我之前有没有做过地理PPT"},
+  {"role":"assistant", "content":"好的 @{get_memory|query:地理PPT}"},
+  {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
+  {"role":"assistant", "content":"五个查询都在进行中。"}
+}
+
+
+// ==================== D. update_requirements 专项 ====================
+// 核心规则：用户说了什么字段就填什么，不补不猜
+
+// D1: 单字段
+
+// 示例1: 短对话（~350字符），2轮 - Layer1(缺失多，已收集少) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, audience, total_pages, duration, global_style, knowledge_points, teaching_goals, teaching_logic, key_difficulties, interaction_design, output_formats\n\n已收集的信息：\n- topic: Python编程入门\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"我想做Python编程入门PPT"},
+  {"role":"assistant", "content":"好的 @{update_requirements|topic:Python编程入门}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"主题已记录。请问是给什么人群看的？大概几页？"}
+}
+
+// 示例2: 中对话（~800字符），4轮 - Layer1(缺失减少) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"给小学生看的"},
+  {"role":"assistant", "content":"#{用户只说audience} 好的 @{update_requirements|audience:小学生}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录受众。请问PPT主题是什么？"},
+  {"role":"user", "content":"科普类的吧"},
+  {"role":"assistant", "content":"#{用户说科普类，作为topic} 好的 @{update_requirements|topic:科普知识}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。还有什么其他信息需要补充吗？"}
+}
+
+// D2: 多字段（2-5个）
+
+// 示例1: 短对话（~400字符），2轮 - Layer1(缺失多) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"主题是化学元素周期表，受众是初三学生，20页"},
+  {"role":"assistant", "content":"#{用户说了topic/audience/total_pages三个字段，但topic/audience/total_pages之前已有，应该只填新说的字段} 好的 @{update_requirements|topic:化学元素周期表|audience:初三学生|total_pages:20}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录主题、受众和页数。还有什么信息需要补充吗？"}
+}
+
+// 示例2: 长对话（~1100字符），5轮 - Layer1(缺失减少) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, total_pages, duration, global_style, knowledge_points, teaching_goals, teaching_logic, key_difficulties, interaction_design, output_formats\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"知识点是分数加法、减法、乘法和除法"},
+  {"role":"assistant", "content":"#{用户说了knowledge_points} 好的 @{update_requirements|knowledge_points:分数加法、分数减法、分数乘法、分数除法}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录知识点。教学目标是什么？"},
+  {"role":"user", "content":"目标是让学生掌握分数四则运算"},
+  {"role":"assistant", "content":"#{用户说teaching_goals} @{update_requirements|teaching_goals:掌握分数四则运算}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。还需要了解课程描述、重难点等内容。"}
+}
+
+// 示例3: 长对话（~2200字符），8轮 - Layer1(缺失少) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, duration, global_style, key_difficulties, interaction_design, output_formats\n\n已收集的信息：\n- topic: 大学计算机组成原理\n- audience: 计算机专业大一学生\n- total_pages: 30\n- knowledge_points: 计算机组成、指令系统、存储器、CPU结构\n- teaching_goals: 理解计算机硬件基本原理\n- teaching_logic: 从底层到高层逐步展开\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"教学时长是3节课"},
+  {"role":"assistant", "content":"#{用户说duration} 好的 @{update_requirements|duration:3节课}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。课程描述是什么？"},
+  {"role":"user", "content":"系统讲解计算机硬件组成和工作原理"},
+  {"role":"assistant", "content":"#{用户说description} @{update_requirements|description:系统讲解计算机硬件组成和工作原理}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的。风格有什么偏好吗？"},
+  {"role":"user", "content":"简约学术风"},
+  {"role":"assistant", "content":"#{用户说global_style} @{update_requirements|global_style:简约学术风}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。还有重难点、互动设计和输出格式需要补充。"}
+}
+
+// D3: 全字段（12个）
+
+// 示例1: 短对话（~600字符），2轮 - Layer1(缺失多) + Layer5，字段一次说完
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"做Python编程入门PPT，受众是零基础小白，15页左右，一节课讲完，彩色活泼风格，知识点变量、数据类型、控制语句、函数，目标是零基础入门Python，逻辑先讲基础再深入，重难点是函数和循环的理解，互动加实操练习，输出格式PPTX"},
+  {"role":"assistant", "content":"好的 @{update_requirements|topic:Python编程入门|description:零基础入门Python编程|audience:零基础小白|total_pages:15|duration:1节课|global_style:彩色活泼|knowledge_points:变量、数据类型、控制语句、函数|teaching_goals:零基础入门Python|teaching_logic:先讲基础再深入|key_difficulties:函数和循环的理解|interaction_design:实操练习|output_formats:PPTX}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的 @{require_confirm}"}
+}
+
+// 示例2: 中对话（~1400字符），5轮 - Layer1(部分已收集) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, global_style, key_difficulties, output_formats\n\n已收集的信息：\n- topic: 大学英语四六级阅读技巧\n- audience: 大学生\n- total_pages: 25\n- duration: 3节课\n- knowledge_points: 快速阅读技巧、精读技巧、答题策略\n- teaching_goals: 提高阅读速度和准确率\n- teaching_logic: 从技巧讲解到实战练习\n- interaction_design: 课堂练习\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"主题是高中生物细胞结构，受众高一学生，25页，2节课，简约白色风格，知识点细胞膜细胞核细胞器，教学目标掌握细胞基本结构功能，逻辑从整体到局部，重难点细胞器功能区分，互动加小组讨论，输出PPTX"},
+  {"role":"assistant", "content":"好的 @{update_requirements|description:系统讲解高中生物细胞的基本结构和功能|global_style:简约白色|knowledge_points:细胞膜、细胞核、细胞器|teaching_goals:掌握细胞的基本结构和功能|teaching_logic:从整体到局部逐层深入|key_difficulties:细胞器的功能和区分|interaction_design:小组讨论|output_formats:PPTX}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"所有信息已收集完毕。"},
+  {"role":"user", "content":"确认，开始做吧"},
+  {"role":"assistant", "content":"#{用户确认，发起require_confirm} 好的 @{require_confirm}"},
+  {"role":"system", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请在界面上确认需求信息。"}
+}
+
+// 示例3: 长对话（~3500字符），12轮 - Layer1(缺失少) + Layer2(任务列表) + Layer5
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：description, global_style, output_formats\n\n已收集的信息：\n- topic: 大学英语四六级阅读技巧\n- audience: 大学生\n- total_pages: 25\n- duration: 3节课\n- knowledge_points: 快速阅读技巧、精读技巧、答题策略\n- teaching_goals: 提高阅读速度和准确率\n- teaching_logic: 从技巧讲解到实战练习\n- key_difficulties: 长难句分析\n- interaction_design: 课堂练习\n\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。\n\n[动作协议]\n1. 思考使用 #{...}，例如 #{思考内容}。\n2. 工具调用使用 @{type|k:v|k:v}，例如 @{kb_query|query:导数定义}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：\n   - kb_query: 查询知识库，参数 query（查询内容）\n   - web_search: 网络搜索，参数 query（搜索关键词）\n   - get_memory: 召回记忆，参数 query（查询内容）\n   - update_requirements: 更新需求信息，参数为 topic/description/total_pages/audience/global_style/knowledge_points/teaching_goals/teaching_logic/key_difficulties/duration/interaction_design/output_formats 中用户本次明确提到的字段，只填用户说的，其余字段不出现在 @{} 里\n   - require_confirm: 请求用户确认需求信息（所有字段齐全后调用），无参数\n   - ppt_init: 创建PPT任务，无参数（从 session 状态读取已收集的12个字段，字段不全会返回缺少字段错误）\n   - ppt_mod: 反馈PPT修改意图，参数 raw_text（用户原话）、user_distance（该用户消息距离当前 @{} 的倒数位置，不打断时为1）\n7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
+  {"role":"user", "content":"我想做一个大学英语四六级阅读技巧的PPT"},
+  {"role":"assistant", "content":"#{用户说topic} 好的 @{update_requirements|topic:大学英语四六级阅读技巧}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录主题。请问是给什么人群看的？大概几页？"},
+  {"role":"user", "content":"大学生，大概25页"},
+  {"role":"assistant", "content":"#{用户说audience和total_pages} 好的 @{update_requirements|audience:大学生|total_pages:25}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的。教学时长是多少？"},
+  {"role":"user", "content":"3节课"},
+  {"role":"assistant", "content":"#{用户说duration} @{update_requirements|duration:3节课}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。知识点包括哪些？"},
+  {"role":"user", "content":"快速阅读技巧、精读技巧和答题策略"},
+  {"role":"assistant", "content":"#{用户说knowledge_points} @{update_requirements|knowledge_points:快速阅读技巧、精读技巧、答题策略}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"好的。教学目标是什么？"},
+  {"role":"user", "content":"提高阅读速度和准确率"},
+  {"role":"assistant", "content":"#{用户说teaching_goals} @{update_requirements|teaching_goals:提高阅读速度和准确率}"},
+  {"role":"system", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已记录。还有教学逻辑、重难点、风格、互动设计、输出格式等信息需要补充。"}
+}
