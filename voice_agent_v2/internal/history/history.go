@@ -13,7 +13,7 @@ type ConversationHistory struct {
 }
 
 type HistoryMessage struct {
-	Role    string // "user", "assistant"
+	Role    string // "user", "assistant", "tool"
 	Content string
 }
 
@@ -26,6 +26,12 @@ func NewConversationHistory(systemPrompt string) *ConversationHistory {
 func (h *ConversationHistory) AddUser(content string) {
 	h.mu.Lock()
 	h.messages = append(h.messages, HistoryMessage{Role: "user", Content: content})
+	h.mu.Unlock()
+}
+
+func (h *ConversationHistory) AddTool(content string) {
+	h.mu.Lock()
+	h.messages = append(h.messages, HistoryMessage{Role: "tool", Content: content})
 	h.mu.Unlock()
 }
 
@@ -91,6 +97,8 @@ func (h *ConversationHistory) messagesWithSystemLocked(system string) []openai.C
 			msgs = append(msgs, openai.UserMessage(m.Content))
 		case "assistant":
 			msgs = append(msgs, openai.AssistantMessage(m.Content))
+		case "tool":
+			msgs = append(msgs, openai.UserMessage("<tool>"+m.Content+"</tool>"))
 		}
 	}
 	return msgs
@@ -102,6 +110,7 @@ func (h *ConversationHistory) ToOpenAIWithDraftAndThought(draftUserText, previou
 }
 
 // ToOpenAIWithThoughtAndPrompt builds the final reply request after the user turn is finalized.
+// previousThought is injected as an assistant prefill so the model continues from the draft.
 func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt string) []openai.ChatCompletionMessageParamUnion {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -110,10 +119,11 @@ func (h *ConversationHistory) ToOpenAIWithThoughtAndPrompt(previousThought, syst
 	if systemPrompt != "" {
 		prompt = systemPrompt
 	}
+	msgs := h.messagesWithSystemLocked(prompt)
 	if previousThought != "" {
-		prompt += previousThought
+		msgs = append(msgs, openai.AssistantMessage(previousThought))
 	}
-	return h.messagesWithSystemLocked(prompt)
+	return msgs
 }
 
 // ToOpenAIWithDraftThoughtAndPrompt builds draft-thinking messages without mutating

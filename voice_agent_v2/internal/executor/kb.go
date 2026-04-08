@@ -21,13 +21,10 @@ func (e *Executor) executeKBQuery(ctx context.Context, params map[string]string,
 		ScoreThreshold: 0.5,
 	}
 
-	// 异步调用：立即返回，不等待结果
-	// KB服务会异步处理并通过回调返回结果
 	_, err := e.clients.QueryKB(ctx, req)
 	if err != nil {
 		log.Printf("[executor] kb_query error: %v", err)
-		return fmt.Sprintf("KB query failed: %v", err)
+		return fmt.Sprintf("kb_query失败: %v", err)
 	}
-
-	return "KB query accepted. Retrieving related knowledge..."
+	return "kb_query已发送，等待检索结果"
 }
