@@ -231,7 +231,7 @@ func rankCandidates(cands []ScoredCandidate) []ScoredCandidate {
 
 func buildBudget(topK int, hints IntentHints, factN int, prefN int) BudgetPlan {
 	if topK <= 0 {
-		topK = 10
+		topK = 5
 	}
 	factsTarget := (topK + 1) / 2
 	prefsTarget := topK - factsTarget

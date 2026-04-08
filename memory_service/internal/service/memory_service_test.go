@@ -702,8 +702,8 @@ func TestRecallTopKDefaultStillAppliesWhenNonPositive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recall: %v", err)
 	}
-	if len(resp.Facts)+len(resp.Preferences) > 10 {
-		t.Fatalf("top_k default should keep compactness budget at 10 when request top_k<=0")
+	if len(resp.Facts)+len(resp.Preferences) > 5 {
+		t.Fatalf("top_k default should keep compactness budget at 5 when request top_k<=0")
 	}
 }
 
@@ -761,7 +761,7 @@ func TestProcessRecallSendsCallbackWithTransportCompatibilityMapping(t *testing.
 	if got.TaskID != "sess_callback" || got.SessionID != "sess_callback" {
 		t.Fatalf("expected task/session transport mapping, got %#v", got)
 	}
-	if got.RequestID != "req_123" || got.MsgType != "kb_result" {
+	if got.RequestID != "req_123" || got.EventType != "get_memory" {
 		t.Fatalf("unexpected callback metadata: %#v", got)
 	}
 	if strings.TrimSpace(got.Summary) == "" {

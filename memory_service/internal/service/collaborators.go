@@ -30,8 +30,7 @@ type VoicePPTMessageRequest struct {
 	TaskID    string
 	SessionID string
 	RequestID string
-	MsgType   string
-	Priority  string
+	EventType string
 	Summary   string
 }
 

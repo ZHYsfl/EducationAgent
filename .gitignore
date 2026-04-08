@@ -234,5 +234,7 @@ PLAN.md
 
 models/
 
+voice_agent_v2/.gocache
+
 .claude/
 .vscode/

@@ -100,7 +100,8 @@ For smoke tests, `.env.smoke.example` is the supported template.
 
 - `POST /api/v1/memory/recall` now returns only an accepted response and dispatches async processing.
 - Async recall reuses deterministic synchronous recall logic internally, then callbacks Voice Agent via `POST /api/v1/voice/ppt_message`.
-- The callback uses a compact, prompt-ready summary rather than serializing the old sync recall payload.
+- The canonical callback payload uses `task_id`, `session_id`, `event_type = "get_memory"`, `summary`, and optional `request_id`.
+- The callback summary is compact and prompt-ready rather than serializing the old sync recall payload.
 - `task_id = session_id` in the callback is a transport compatibility mapping for the current Voice Agent contract, not a memory-domain identity rule.
 - `/api/internal/memory/recall/sync` exists only for smoke testing, deterministic verification, and callback generation support. It is not a future integration target.
 
@@ -114,5 +115,5 @@ For smoke tests, `.env.smoke.example` is the supported template.
 ## Internal recall behavior notes
 
 - Recall ranking remains deterministic and service-layer owned.
-- `top_k` is treated as a compactness budget across facts + preferences.
+- `top_k` is treated as a compactness budget across facts + preferences (default `5` when omitted or non-positive).
 - Working memory remains the primary session-state carrier; `profile_summary` stays durable-first with only a minimal session addon for clear continuation/current-task queries.
