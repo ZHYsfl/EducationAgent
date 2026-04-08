@@ -29,8 +29,7 @@ func (e *Executor) executeGetMemory(ctx context.Context, params map[string]strin
 	_, err := e.clients.RecallMemory(ctx, req)
 	if err != nil {
 		log.Printf("[executor] get_memory error: %v", err)
-		return fmt.Sprintf("Memory recall request failed: %v", err)
+		return fmt.Sprintf("get_memory失败: %v", err)
 	}
-
-	return "Memory recall accepted. Waiting for memory callback..."
+	return "get_memory已发送，等待记忆召回结果"
 }

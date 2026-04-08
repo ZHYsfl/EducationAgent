@@ -39,10 +39,14 @@ type PPTService struct {
 	llmConfig      LLMClientConfig
 	renderer       *renderer.Renderer
 	refFusion      *RefFusionService
+	notify         Notifier
 
 	// 联动服务：在 Init 时自动生成教案和内容多样性
 	teachingPlanService     *TeachingPlanService
 	contentDiversityService *ContentDiversityService
+
+	// feedbackService 用于在 HandleVADEvent resolve 悬挂后处理 pending 反馈
+	feedbackService *FeedbackService
 }
 
 func NewPPTService(taskRepo repository.TaskRepository, pptRepo repository.PPTRepository, feedbackRepo repository.FeedbackRepository) *PPTService {
@@ -70,6 +74,16 @@ func (s *PPTService) AttachTeachingPlanService(ts *TeachingPlanService) {
 // AttachContentDiversityService sets the ContentDiversityService for auto-generation on Init.
 func (s *PPTService) AttachContentDiversityService(cds *ContentDiversityService) {
 	s.contentDiversityService = cds
+}
+
+// AttachFeedbackService sets the FeedbackService for handling pending feedback on VAD resolve.
+func (s *PPTService) AttachFeedbackService(fb *FeedbackService) {
+	s.feedbackService = fb
+}
+
+// AttachNotifier sets the Notifier for sending status notifications to Voice Agent.
+func (s *PPTService) AttachNotifier(n Notifier) {
+	s.notify = n
 }
 
 func (s *PPTService) ConfigureInitGenerator(kbBaseURL string, llmCfg LLMClientConfig) {
@@ -128,10 +142,21 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 	}()
 
 	ctx := context.Background()
-	kbSummary, err := s.queryKBParse(ctx, req)
-	if err != nil {
-		_, _ = s.taskRepo.UpdateStatus(taskID, "failed", 0)
-		return
+	kbSummary, kbErr := s.queryKBParse(ctx, req)
+	if kbErr != nil {
+		// KB 查询失败不阻断主流程，fallback 为空字符串，继续生成
+		log.Printf("kb query failed (fallback): task_id=%s err=%v, continuing without KB summary", taskID, kbErr)
+		kbSummary = ""
+		// 通知 Voice Agent：KB 查询失败，但继续生成
+		if s.notify != nil {
+			_ = s.notify.SendPPTMessage(ctx, map[string]any{
+				"task_id":    taskID,
+				"event_type": "ppt_status",
+				"status":     "generating",
+				"progress":   5,
+				"tts_text":   "知识库查询未成功，将基于您提供的信息生成课件",
+			})
+		}
 	}
 
 	var fusionResult *FusionResult
@@ -139,7 +164,9 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 		var fuseErr error
 		fusionResult, fuseErr = s.refFusion.Fuse(ctx, req, 0, req.Topic)
 		if fuseErr != nil {
-			log.Printf("ref fusion failed (ignored): task_id=%s err=%v", taskID, fuseErr)
+			log.Printf("ref fusion failed (ignored): task_id=%s err=%v, continuing with KB content only", taskID, fuseErr)
+			// 即使融合失败，也构造空结果以保证 prompt 结构完整（LLM 仍使用 KB 内容和教学要素生成）
+			fusionResult = &FusionResult{}
 		}
 	}
 
@@ -602,6 +629,31 @@ func (s *PPTService) HandleVADEvent(req model.VADEventRequest) error {
 	if suspended {
 		if err := s.feedback.ResolveSuspend(taskID, pageID); err != nil {
 			return err
+		}
+		ctx := context.Background()
+		// 用户开始说话了，悬挂的冲突页面被 resolve，通知 Voice Agent 重新推送冲突问题
+		if s.notify != nil {
+			_ = s.notify.SendPPTMessage(ctx, map[string]any{
+				"task_id":    taskID,
+				"page_id":    pageID,
+				"priority":   "high",
+				"event_type": "vad_resolved",
+				"tts_text":   "好的，请说",
+			})
+		}
+		// 处理因悬挂而排入队列的 pending 反馈
+		if pending, ok, _ := s.feedback.DequeuePending(taskID, pageID); ok {
+			if s.feedbackService != nil {
+				fbReq := model.FeedbackRequest{
+					TaskID:         pending.TaskID,
+					ViewingPageID:  pending.PageID,
+					BaseTimestamp:  pending.BaseTimestamp,
+					RawText:        pending.RawText,
+					Intents:        pending.Intents,
+					ReferenceFiles: pending.ReferenceFiles,
+				}
+				_, _ = s.feedbackService.Handle(ctx, fbReq)
+			}
 		}
 	}
 	return nil

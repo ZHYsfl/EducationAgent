@@ -48,28 +48,17 @@ type Pipeline struct {
 
 	// O/T/A channels
 	userInputCh chan string // ASR partial → thinkLoop
-	tokenCh     chan string // thinkLoop → outputLoop
-	sentenceCh  chan string // outputLoop → ttsWorker
 
 	// raw token buffer for interrupt preservation
 	rawTokens strings.Builder
 	tokensMu  sync.Mutex
 
-	// speculative think draft (consumed by startProcessing)
-	thinkDraft   strings.Builder
-	thinkDraftMu sync.Mutex
-
 	// think stream cancellation
 	thinkCancel   context.CancelFunc
 	thinkCancelMu sync.Mutex
 
-	// think action guard (suppresses new think starts after action detected)
-	thinkGuardUntil time.Time
-	thinkGuardMu    sync.RWMutex
-
-	// context queues
-	contextQueue      chan ContextMessage // normal priority tool results
-	highPriorityQueue chan ContextMessage // conflict questions, system notifies
+	// context queue
+	contextQueue chan ContextMessage
 
 	// overflow buffer for messages that couldn't be queued
 	pendingContexts []ContextMessage
@@ -95,8 +84,7 @@ func NewPipeline(session *Session, config *Config, clients ExternalServices) *Pi
 		smallLLM:          toolcalling.NewAgent(toolcalling.LLMConfig{APIKey: config.SmallLLMAPIKey, Model: config.SmallLLMModel, BaseURL: config.SmallLLMBaseURL}),
 		history:           history.NewConversationHistory(config.SystemPrompt),
 		adaptive:          adaptive.NewAdaptiveController(sizes),
-		contextQueue:      make(chan ContextMessage, 64),
-		highPriorityQueue: make(chan ContextMessage, 16),
+		contextQueue: make(chan ContextMessage, 64),
 		parser:            protocol.NewParser(),
 		audioBuf:          audio.NewAudioBuffer(),
 	}
@@ -131,11 +119,11 @@ func (p *Pipeline) OnVADEnd() {
 }
 
 // OnInterrupt is called when the user starts speaking mid-response.
-// Waits up to 3s for any open @{...} action to close, then saves interrupted history.
+// Waits up to 2s for any open @{...} action to close, then saves interrupted history.
 func (p *Pipeline) OnInterrupt() {
 	p.cancelThinkStream()
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		p.tokensMu.Lock()
 		raw := p.rawTokens.String()
 		p.tokensMu.Unlock()

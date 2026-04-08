@@ -13,12 +13,14 @@ import (
 // Called after VAD end (final ASR text) or direct text input.
 func (p *Pipeline) startProcessing(ctx context.Context, userText string) {
 	p.session.SetState(StateProcessing)
-	p.history.AddUser(userText)
-	p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
+	if userText != "" {
+		p.history.AddUser(userText)
+		p.session.SendJSON(WSMessage{Type: "transcript", Text: userText})
+	}
 
-	systemPrompt := p.buildSystemPrompt(true)
-	previousThought := p.consumeThinkDraft()
-	messages := p.history.ToOpenAIWithThoughtAndPrompt(previousThought, systemPrompt)
+	p.flushToolResults()
+	systemPrompt := p.buildSystemPrompt()
+	messages := p.history.ToOpenAIWithThoughtAndPrompt("", systemPrompt)
 
 	log.Printf("[pipeline] processing: %s", truncate(userText, 80))
 

@@ -36,7 +36,15 @@ func (h *FeedbackHandler) Feedback(c *gin.Context) {
 
 	// 如果 Voice Agent 没有传 Intents，则由 PPT Agent 自己解析 RawText
 	if len(req.Intents) == 0 && h.intentParser != nil {
-		intents, err := h.intentParser.Parse(c.Request.Context(), req.TaskID, req.ViewingPageID, req.RawText)
+		intents, err := h.intentParser.ParseWithContext(
+			c.Request.Context(),
+			req.TaskID,
+			req.ViewingPageID,
+			req.RawText,
+			req.Topic,
+			req.Subject,
+			req.KBSummary,
+		)
 		if err != nil {
 			contract.Error(c, contract.CodeInternalError, "intent parse failed: "+err.Error())
 			return
@@ -93,7 +101,15 @@ func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
 
 	// 如果没有传 Intents，从 RawText 解析
 	if len(req.Intents) == 0 && h.intentParser != nil {
-		intents, err := h.intentParser.Parse(c.Request.Context(), req.TaskID, "", req.RawText)
+		intents, err := h.intentParser.ParseWithContext(
+			c.Request.Context(),
+			req.TaskID,
+			"",
+			req.RawText,
+			"",
+			"",
+			"",
+		)
 		if err != nil {
 			contract.Error(c, contract.CodeInternalError, "intent parse failed: "+err.Error())
 			return
@@ -121,7 +137,8 @@ func (h *FeedbackHandler) GeneratePages(c *gin.Context) {
 func isValidActionType(actionType string) bool {
 	actionType = strings.TrimSpace(strings.ToLower(actionType))
 	switch actionType {
-	case "modify", "insert_before", "insert_after", "delete", "global_modify", "reorder", "resolve_conflict":
+	case "modify", "insert_before", "insert_after", "delete", "global_modify", "reorder", "resolve_conflict",
+		"generate_animation", "generate_game":
 		return true
 	default:
 		return false

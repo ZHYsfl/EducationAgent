@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,9 +23,7 @@ const protocolInstructions = `
 7. 遇到冲突问题时，基于用户原话直接通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。`
 
 // buildSystemPrompt assembles the full system prompt.
-// includeQueue=true drains and injects pending tool results (used in startProcessing).
-// includeQueue=false skips queue drain (used in think warmup).
-func (p *Pipeline) buildSystemPrompt(includeQueue bool) string {
+func (p *Pipeline) buildSystemPrompt() string {
 	var sb strings.Builder
 
 	// Layer 1: base or requirements collection
@@ -87,14 +84,7 @@ func (p *Pipeline) buildSystemPrompt(includeQueue bool) string {
 			fmt.Fprintf(&sb, "- context_id=%s, task_id=%s\n  question=%s\n", cid, pq.TaskID, pq.QuestionText)
 		}
 		if len(questions) > 1 {
-			sb.WriteString("多问题并存时，请在自然语言中明确任务或页面，系统会自动匹配对应冲突。\n")
-		}
-	}
-
-	// Layer 4: tool results
-	if includeQueue {
-		if toolCtx := p.drainToolResults(); toolCtx != "" {
-			sb.WriteString(toolCtx)
+			sb.WriteString("存在多个冲突问题时，通过自然语言明确指向哪个任务或页面，系统会自动匹配对应冲突。\n")
 		}
 	}
 
@@ -103,8 +93,8 @@ func (p *Pipeline) buildSystemPrompt(includeQueue bool) string {
 	return sb.String()
 }
 
-// drainToolResults drains pendingContexts + contextQueue and formats as <tool> blocks.
-func (p *Pipeline) drainToolResults() string {
+// flushToolResults drains pendingContexts + contextQueue into conversation history as tool messages.
+func (p *Pipeline) flushToolResults() {
 	p.pendingMu.Lock()
 	msgs := append([]ContextMessage{}, p.pendingContexts...)
 	p.pendingContexts = nil
@@ -118,12 +108,6 @@ func (p *Pipeline) drainToolResults() string {
 		}
 	}
 done:
-	if len(msgs) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("\n\n[tool_context|工具结果]\n")
 	for _, m := range msgs {
 		content := strings.TrimSpace(m.Content)
 		if content == "" {
@@ -133,16 +117,24 @@ done:
 		if eventType == "" {
 			eventType = "event"
 		}
-		fmt.Fprintf(&sb, "<tool>%s:%s</tool>\n", eventType, content)
+		p.history.AddTool(eventType + ":" + content)
 	}
-	return sb.String()
 }
 
 // EnqueueContext routes context messages into immediate handlers or queues.
 func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 	if msg.EventType == "update_requirements" {
 		p.applyRequirementsUpdate(msg.Content)
-		return
+		msg.Content = "需求信息已更新"
+	}
+
+	if msg.EventType == "conflict_question" {
+		contextID := msg.Metadata["context_id"]
+		taskID := msg.Metadata["task_id"]
+		pageID := msg.Metadata["page_id"]
+		if contextID != "" {
+			p.session.AddPendingQuestion(contextID, taskID, pageID, 0, msg.Content)
+		}
 	}
 
 	if msg.EventType == "task_list_update" {
@@ -160,18 +152,10 @@ func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 		return
 	}
 
-	if msg.Priority == "high" {
-		select {
-		case p.highPriorityQueue <- msg:
-		default:
-			log.Printf("[ctx] high priority queue full, dropping")
-		}
-	} else {
-		select {
-		case p.contextQueue <- msg:
-		default:
-			log.Printf("[ctx] context queue full, dropping")
-		}
+	select {
+	case p.contextQueue <- msg:
+	default:
+		log.Printf("[ctx] context queue full, dropping")
 	}
 
 	if p.session.CompareAndSetState(StateIdle, StateProcessing) {
@@ -179,93 +163,11 @@ func (p *Pipeline) EnqueueContext(msg ContextMessage) {
 		sCtx := p.sessionCtx
 		p.sessionCtxMu.RUnlock()
 		if sCtx != nil && sCtx.Err() == nil {
-			go p.startProcessing(sCtx, fmt.Sprintf("新工具结果（%s）", msg.EventType))
+			go p.startProcessing(sCtx, "")
 		} else {
 			p.session.SetState(StateIdle)
 		}
 	}
-}
-
-// highPriorityListener handles conflict/system high-priority events.
-func (p *Pipeline) highPriorityListener(ctx context.Context) {
-	for {
-		select {
-		case msg := <-p.highPriorityQueue:
-			p.handleHighPriorityMsg(ctx, msg)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (p *Pipeline) handleHighPriorityMsg(ctx context.Context, msg ContextMessage) {
-	switch msg.EventType {
-	case "conflict_question":
-		p.session.SendJSON(WSMessage{
-			Type:      "conflict_ask",
-			TaskID:    msg.Metadata["task_id"],
-			PageID:    msg.Metadata["page_id"],
-			ContextID: msg.Metadata["context_id"],
-			Question:  msg.Content,
-		})
-		p.speakText(ctx, msg.Content)
-
-		baseTS := int64(0)
-		if ts, err := strconv.ParseInt(msg.Metadata["base_timestamp"], 10, 64); err == nil {
-			baseTS = ts
-		}
-		p.session.AddPendingQuestion(
-			msg.Metadata["context_id"],
-			msg.Metadata["task_id"],
-			msg.Metadata["page_id"],
-			baseTS,
-			msg.Content,
-		)
-
-		if ctx.Err() != nil {
-			retries := 0
-			fmt.Sscanf(msg.Metadata["_retries"], "%d", &retries)
-			retries++
-			if retries > 2 {
-				log.Printf("[high-priority] conflict_question demoted after %d retries", retries)
-				p.pendingMu.Lock()
-				p.pendingContexts = append(p.pendingContexts, msg)
-				p.pendingMu.Unlock()
-				return
-			}
-			if msg.Metadata == nil {
-				msg.Metadata = make(map[string]string)
-			}
-			msg.Metadata["_retries"] = fmt.Sprintf("%d", retries)
-			select {
-			case p.highPriorityQueue <- msg:
-			default:
-				p.pendingMu.Lock()
-				p.pendingContexts = append(p.pendingContexts, msg)
-				p.pendingMu.Unlock()
-			}
-		}
-
-	case "system_notify":
-		p.speakText(ctx, msg.Content)
-		if ctx.Err() != nil {
-			log.Printf("[high-priority] system_notify interrupted, skipping")
-		}
-
-	default:
-		p.pendingMu.Lock()
-		p.pendingContexts = append(p.pendingContexts, msg)
-		p.pendingMu.Unlock()
-	}
-}
-
-func (p *Pipeline) speakText(ctx context.Context, text string) {
-	p.session.SetState(StateSpeaking)
-	ch := make(chan string, 1)
-	ch <- text
-	close(ch)
-	p.ttsWorker(ctx, ch)
-	p.session.SetState(StateIdle)
 }
 
 func (p *Pipeline) applyRequirementsUpdate(jsonData string) {
@@ -356,44 +258,43 @@ func (p *Pipeline) applyRequirementsUpdate(jsonData string) {
 func buildRequirementsSummary(r *TaskRequirements) string {
 	var sb strings.Builder
 	if r.Topic != "" {
-		fmt.Fprintf(&sb, "主题: %s\n", r.Topic)
+		fmt.Fprintf(&sb, "topic: %s\n", r.Topic)
 	}
 	if r.Description != "" {
-		fmt.Fprintf(&sb, "描述: %s\n", r.Description)
+		fmt.Fprintf(&sb, "description: %s\n", r.Description)
 	}
 	if r.TargetAudience != "" {
-		fmt.Fprintf(&sb, "受众: %s\n", r.TargetAudience)
+		fmt.Fprintf(&sb, "audience: %s\n", r.TargetAudience)
 	}
 	if r.TotalPages > 0 {
-		fmt.Fprintf(&sb, "页数: %d\n", r.TotalPages)
+		fmt.Fprintf(&sb, "total_pages: %d\n", r.TotalPages)
 	}
 	if r.Duration != "" {
-		fmt.Fprintf(&sb, "时长: %s\n", r.Duration)
+		fmt.Fprintf(&sb, "duration: %s\n", r.Duration)
 	}
 	if r.GlobalStyle != "" {
-		fmt.Fprintf(&sb, "风格: %s\n", r.GlobalStyle)
+		fmt.Fprintf(&sb, "global_style: %s\n", r.GlobalStyle)
 	}
 	if len(r.KnowledgePoints) > 0 {
-		fmt.Fprintf(&sb, "知识点: %s\n", strings.Join(r.KnowledgePoints, "、"))
+		fmt.Fprintf(&sb, "knowledge_points: %s\n", strings.Join(r.KnowledgePoints, "、"))
 	}
 	if len(r.TeachingGoals) > 0 {
-		fmt.Fprintf(&sb, "教学目标: %s\n", strings.Join(r.TeachingGoals, "、"))
+		fmt.Fprintf(&sb, "teaching_goals: %s\n", strings.Join(r.TeachingGoals, "、"))
 	}
 	if r.TeachingLogic != "" {
-		fmt.Fprintf(&sb, "教学逻辑: %s\n", r.TeachingLogic)
+		fmt.Fprintf(&sb, "teaching_logic: %s\n", r.TeachingLogic)
 	}
 	if len(r.KeyDifficulties) > 0 {
-		fmt.Fprintf(&sb, "重点难点: %s\n", strings.Join(r.KeyDifficulties, "、"))
+		fmt.Fprintf(&sb, "key_difficulties: %s\n", strings.Join(r.KeyDifficulties, "、"))
 	}
 	if r.InteractionDesign != "" {
-		fmt.Fprintf(&sb, "互动设计: %s\n", r.InteractionDesign)
+		fmt.Fprintf(&sb, "interaction_design: %s\n", r.InteractionDesign)
 	}
 	if len(r.OutputFormats) > 0 {
-		fmt.Fprintf(&sb, "输出格式: %s\n", strings.Join(r.OutputFormats, "、"))
+		fmt.Fprintf(&sb, "output_formats: %s\n", strings.Join(r.OutputFormats, "、"))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
-
 
 func parseStringSlice(v any) []string {
 	switch t := v.(type) {
