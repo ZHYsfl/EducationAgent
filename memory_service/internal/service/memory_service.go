@@ -149,8 +149,7 @@ func (s *MemoryService) ProcessRecall(ctx context.Context, job RecallJob) error 
 		TaskID:    strings.TrimSpace(job.SessionID),
 		SessionID: strings.TrimSpace(job.SessionID),
 		RequestID: strings.TrimSpace(job.RequestID),
-		MsgType:   "kb_result",
-		Priority:  "normal",
+		EventType: "get_memory",
 		Summary:   FormatRecallCallbackSummary(resp),
 	})
 }
@@ -297,7 +296,7 @@ func (s *MemoryService) RecallSync(ctx context.Context, req MemoryRecallRequest)
 	}
 	topK := req.TopK
 	if topK <= 0 {
-		topK = 10
+		topK = 5
 	}
 	userID := strings.TrimSpace(req.UserID)
 	sessionID := strings.TrimSpace(req.SessionID)

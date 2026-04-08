@@ -45,8 +45,7 @@ type callbackEnvelope struct {
 	TaskID    string `json:"task_id"`
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id,omitempty"`
-	MsgType   string `json:"msg_type,omitempty"`
-	Priority  string `json:"priority,omitempty"`
+	EventType string `json:"event_type,omitempty"`
 	Summary   string `json:"summary,omitempty"`
 }
 
@@ -58,8 +57,7 @@ func (c *Client) SendPPTMessage(ctx context.Context, req service.VoicePPTMessage
 		TaskID:    req.TaskID,
 		SessionID: req.SessionID,
 		RequestID: req.RequestID,
-		MsgType:   req.MsgType,
-		Priority:  req.Priority,
+		EventType: req.EventType,
 		Summary:   req.Summary,
 	}
 	body, err := json.Marshal(payload)
