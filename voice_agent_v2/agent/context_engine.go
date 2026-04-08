@@ -258,40 +258,40 @@ func (p *Pipeline) applyRequirementsUpdate(jsonData string) {
 func buildRequirementsSummary(r *TaskRequirements) string {
 	var sb strings.Builder
 	if r.Topic != "" {
-		fmt.Fprintf(&sb, "主题: %s\n", r.Topic)
+		fmt.Fprintf(&sb, "topic: %s\n", r.Topic)
 	}
 	if r.Description != "" {
-		fmt.Fprintf(&sb, "描述: %s\n", r.Description)
+		fmt.Fprintf(&sb, "description: %s\n", r.Description)
 	}
 	if r.TargetAudience != "" {
-		fmt.Fprintf(&sb, "受众: %s\n", r.TargetAudience)
+		fmt.Fprintf(&sb, "audience: %s\n", r.TargetAudience)
 	}
 	if r.TotalPages > 0 {
-		fmt.Fprintf(&sb, "页数: %d\n", r.TotalPages)
+		fmt.Fprintf(&sb, "total_pages: %d\n", r.TotalPages)
 	}
 	if r.Duration != "" {
-		fmt.Fprintf(&sb, "时长: %s\n", r.Duration)
+		fmt.Fprintf(&sb, "duration: %s\n", r.Duration)
 	}
 	if r.GlobalStyle != "" {
-		fmt.Fprintf(&sb, "风格: %s\n", r.GlobalStyle)
+		fmt.Fprintf(&sb, "global_style: %s\n", r.GlobalStyle)
 	}
 	if len(r.KnowledgePoints) > 0 {
-		fmt.Fprintf(&sb, "知识点: %s\n", strings.Join(r.KnowledgePoints, "、"))
+		fmt.Fprintf(&sb, "knowledge_points: %s\n", strings.Join(r.KnowledgePoints, "、"))
 	}
 	if len(r.TeachingGoals) > 0 {
-		fmt.Fprintf(&sb, "教学目标: %s\n", strings.Join(r.TeachingGoals, "、"))
+		fmt.Fprintf(&sb, "teaching_goals: %s\n", strings.Join(r.TeachingGoals, "、"))
 	}
 	if r.TeachingLogic != "" {
-		fmt.Fprintf(&sb, "教学逻辑: %s\n", r.TeachingLogic)
+		fmt.Fprintf(&sb, "teaching_logic: %s\n", r.TeachingLogic)
 	}
 	if len(r.KeyDifficulties) > 0 {
-		fmt.Fprintf(&sb, "重点难点: %s\n", strings.Join(r.KeyDifficulties, "、"))
+		fmt.Fprintf(&sb, "key_difficulties: %s\n", strings.Join(r.KeyDifficulties, "、"))
 	}
 	if r.InteractionDesign != "" {
-		fmt.Fprintf(&sb, "互动设计: %s\n", r.InteractionDesign)
+		fmt.Fprintf(&sb, "interaction_design: %s\n", r.InteractionDesign)
 	}
 	if len(r.OutputFormats) > 0 {
-		fmt.Fprintf(&sb, "输出格式: %s\n", strings.Join(r.OutputFormats, "、"))
+		fmt.Fprintf(&sb, "output_formats: %s\n", strings.Join(r.OutputFormats, "、"))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
