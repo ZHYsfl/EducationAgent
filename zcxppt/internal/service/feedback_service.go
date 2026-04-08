@@ -80,12 +80,23 @@ type FeedbackService struct {
 	notify        Notifier
 	renderer      *renderer.Renderer
 	refFusion     *RefFusionService
+	mergeService  *MergeService // 三路合并服务
 	timeoutTickMu sync.Mutex
 	newAgent      func(cfg toolcalling.LLMConfig) agentInterface
 	llmCfg        LLMClientConfig // 用于页面代码生成的 LLM 配置
 
 	// 内容多样性服务：用于处理 generate_animation / generate_game intent
 	contentDiversityService *ContentDiversityService
+}
+
+// AttachMergeService 注入三路合并服务，并将其注入到 LLM Runtime。
+func (s *FeedbackService) AttachMergeService(ms *MergeService) {
+	s.mergeService = ms
+	if ms != nil && s.llmRuntime != nil {
+		if rt, ok := s.llmRuntime.(*llm.ToolCallingRuntime); ok {
+			rt.InjectMergeService(ms)
+		}
+	}
 }
 
 // AttachLLMConfig sets the LLM configuration for page code generation (insert operations).
@@ -141,6 +152,45 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			if strings.TrimSpace(req.ReplyToContextID) != suspend.ContextID {
 				return model.FeedbackResponse{}, ErrContextNotMatched
 			}
+			// ── 三路冲突解决：根据用户选择执行合并 ───────────────────────────
+			// 用户选择存储在 Intent.Instruction 中（格式："keep_current" / "keep_incoming" / "keep_base"）
+			userChoice := s.extractUserChoice(req.Intents)
+			if userChoice != "" && s.mergeService != nil {
+				// 使用 MergeService 根据用户选择解析合并结果
+				in := model.ThreeWayMergeInput{
+					BaseCode:     suspend.BaseCode,
+					CurrentCode:  suspend.CurrentCode,
+					IncomingCode: suspend.IncomingCode,
+					PageID:       req.ViewingPageID,
+				}
+				resolved := s.mergeService.ResolveUserChoice(userChoice, in)
+				if resolved.MergeStatus == "auto_resolved" && resolved.MergedPyCode != "" {
+					currentPage, _ := s.pptRepo.GetPageRender(req.TaskID, req.ViewingPageID)
+					_, _ = s.pptRepo.UpdatePageCode(req.TaskID, req.ViewingPageID, resolved.MergedPyCode, currentPage.RenderURL)
+					// 触发重新渲染
+					if s.renderer != nil {
+						go func() {
+							renderCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+							defer cancel()
+							result, _ := s.renderer.Render(renderCtx, renderer.RenderRequest{
+								PageIndex: 0,
+								PageTitle: req.ViewingPageID,
+								PyCode:    resolved.MergedPyCode,
+								RenderConfig: renderer.RenderConfig{
+									WidthInches:  10,
+									HeightInches: 7.5,
+									BgColor:      "FFFFFF",
+									FontName:     "Microsoft YaHei",
+								},
+							})
+							if result.Success {
+								_, _ = s.pptRepo.UpdatePageCode(req.TaskID, req.ViewingPageID, resolved.MergedPyCode, result.RenderURL)
+							}
+						}()
+					}
+				}
+			}
+
 			_ = s.feedbackRepo.ResolveSuspend(req.TaskID, req.ViewingPageID)
 			if pending, ok, _ := s.feedbackRepo.DequeuePending(req.TaskID, req.ViewingPageID); ok {
 				_, _ = s.Handle(ctx, model.FeedbackRequest{
@@ -186,7 +236,7 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 
 		switch action {
 		case "modify":
-			// 修改指定页面：复用上方已取出的 current（仅调用一次 LLM）
+			// 修改指定页面
 			pageID := targetID
 			if pageID == "" {
 				pageID = req.ViewingPageID
@@ -198,7 +248,15 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				}
 			}
 
-			// === 反馈阶段重融合：把参考资料再次拉入并重新融合 ===
+			// ── 三路合并：获取基线快照 ──────────────────────────────────────
+			// 优先使用 BaseTimestamp 获取时间点快照，否则使用初始 BaseCode
+			baseCode, snapshotErr := s.getBaseCodeForFeedback(req.TaskID, pageID, req.BaseTimestamp, current.BaseCode)
+			if snapshotErr != nil {
+				log.Printf("[feedback] get base code failed for page %s: %v", pageID, snapshotErr)
+				baseCode = current.BaseCode
+			}
+
+			// 反馈阶段重融合：把参考资料再次拉入并重新融合
 			fbReq := model.FeedbackRequest{
 				TaskID:           req.TaskID,
 				ViewingPageID:    pageID,
@@ -213,13 +271,14 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				if fusionErr == nil && fusionResult != nil {
 					fbReq.RefFusionResult = &model.FusionResultPayload{
 						ExtractedText: s.serializeFusionResult(fusionResult),
-						StyleGuide:    s.serializeStyleGuide(&fusionResult.StyleGuide),
-						TopicHints:    fusionResult.TopicHints,
+						StyleGuide:   s.serializeStyleGuide(&fusionResult.StyleGuide),
+						TopicHints:   fusionResult.TopicHints,
 					}
 				}
 			}
 
-			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
+			// ── 三路合并：传入 baseCode ──────────────────────────────────────
+			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current, baseCode)
 			if err != nil {
 				continue
 			}
@@ -290,6 +349,7 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				if err != nil {
 					continue
 				}
+				baseCode, _ := s.getBaseCodeForFeedback(req.TaskID, pageID, req.BaseTimestamp, current.BaseCode)
 				fbReq := model.FeedbackRequest{
 					TaskID:           req.TaskID,
 					ViewingPageID:    pageID,
@@ -298,7 +358,7 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 					ReplyToContextID: "",
 					Intents:          []model.Intent{{ActionType: "modify", TargetPageID: pageID, Instruction: intent.Instruction}},
 				}
-				mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
+				mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current, baseCode)
 				if err != nil {
 					continue
 				}
@@ -385,28 +445,42 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 }
 
 // applyMergeResult applies LLM merge result to a page: update code, render, save URL.
+// 当 MergeStatus 为 ask_human 时，会将三路冲突信息写入 SuspendState。
 func (s *FeedbackService) applyMergeResult(ctx context.Context, taskID, pageID string, mergeResult model.MergeResult) error {
 	if mergeResult.MergeStatus == "ask_human" {
 		contextID := "ctx_" + uuid.NewString()
 		suspend := model.SuspendState{
-			TaskID:     taskID,
-			PageID:     pageID,
-			ContextID:  contextID,
-			Question:   mergeResult.QuestionForUser,
-			RetryCount: 0,
-			CreatedAt:  time.Now().UnixMilli(),
-			ExpiresAt:  time.Now().Add(45 * time.Second).UnixMilli(),
-			Resolved:   false,
+			TaskID:       taskID,
+			PageID:       pageID,
+			ContextID:    contextID,
+			Question:     mergeResult.QuestionForUser,
+			RetryCount:   0,
+			CreatedAt:    time.Now().UnixMilli(),
+			ExpiresAt:    time.Now().Add(45 * time.Second).UnixMilli(),
+			Resolved:     false,
+			BaseCode:     mergeResult.BaseCode,
+			CurrentCode:  mergeResult.CurrentCode,
+			IncomingCode: mergeResult.IncomingCode,
+			ConflictDesc: mergeResult.ConflictDesc,
+			ConflictOpts: mergeResult.ConflictOpts,
 		}
 		_ = s.feedbackRepo.SetSuspend(suspend)
-		_ = s.notify.SendPPTMessage(ctx, map[string]any{
+		notifyPayload := map[string]any{
 			"task_id":    taskID,
 			"page_id":    pageID,
 			"priority":   "high",
 			"context_id":  contextID,
 			"event_type": "conflict_question",
 			"tts_text":   mergeResult.QuestionForUser,
-		})
+		}
+		// 将三路冲突选项传递给 Voice Agent
+		if len(mergeResult.ConflictOpts) > 0 {
+			notifyPayload["conflict_opts"] = mergeResult.ConflictOpts
+		}
+		if mergeResult.ConflictDesc != "" {
+			notifyPayload["conflict_desc"] = mergeResult.ConflictDesc
+		}
+		_ = s.notify.SendPPTMessage(ctx, notifyPayload)
 		return nil
 	}
 
@@ -738,6 +812,9 @@ func (s *FeedbackService) GeneratePages(ctx context.Context, req model.BatchGene
 				return
 			}
 
+			// 三路合并：获取基线代码
+			baseCode, _ := s.getBaseCodeForFeedback(taskID, pageID, req.BaseTimestamp, current.BaseCode)
+
 			perPageIntents := make([]model.Intent, len(req.Intents))
 			for j := range req.Intents {
 				perPageIntents[j] = req.Intents[j]
@@ -765,7 +842,7 @@ func (s *FeedbackService) GeneratePages(ctx context.Context, req model.BatchGene
 				}
 			}
 
-			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current)
+			mergeResult, err := s.llmRuntime.RunFeedbackLoop(ctx, fbReq, current, baseCode)
 			if err != nil {
 				mu.Lock()
 				results[i] = model.BatchGeneratePageResult{
@@ -839,6 +916,48 @@ func coalesceStr(vals ...string) string {
 	for _, v := range vals {
 		if v != "" {
 			return v
+		}
+	}
+	return ""
+}
+
+// getBaseCodeForFeedback 根据 BaseTimestamp 获取三路合并的基线版本。
+// 优先尝试从时间戳快照获取，如果失败则使用页面的初始 BaseCode。
+func (s *FeedbackService) getBaseCodeForFeedback(taskID, pageID string, baseTimestamp int64, currentBaseCode string) (string, error) {
+	// 策略：优先使用 BaseTimestamp 获取时间点快照
+	if baseTimestamp > 0 {
+		// 尝试通过快照获取基线版本
+		if snap, err := s.pptRepo.GetPageSnapshotByTs(taskID, pageID, baseTimestamp); err == nil && snap.PyCode != "" {
+			return snap.PyCode, nil
+		}
+	}
+	// 兜底：使用页面的初始 BaseCode（首次渲染成功时固化）
+	if currentBaseCode != "" {
+		return currentBaseCode, nil
+	}
+	// 最后尝试从 Repository 获取
+	baseCode, err := s.pptRepo.GetPageBaseCode(taskID, pageID)
+	if err == nil && baseCode != "" {
+		return baseCode, nil
+	}
+	return "", errors.New("no base code available for three-way merge")
+}
+
+// extractUserChoice 从 Intent 列表中提取用户对冲突的选择。
+// 返回格式："keep_current" / "keep_incoming" / "keep_base"。
+func (s *FeedbackService) extractUserChoice(intents []model.Intent) string {
+	for _, intent := range intents {
+		action := strings.TrimSpace(strings.ToLower(intent.ActionType))
+		instruction := strings.TrimSpace(strings.ToLower(intent.Instruction))
+		// 解析冲突选择
+		if action == "resolve_conflict" {
+			if instruction != "" {
+				return instruction
+			}
+		}
+		// 也支持直接通过 instruction 传递选择
+		if strings.HasPrefix(instruction, "keep_") {
+			return instruction
 		}
 	}
 	return ""

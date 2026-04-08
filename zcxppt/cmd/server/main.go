@@ -136,6 +136,9 @@ func main() {
 		feedbackService.AttachRenderer(pptRenderer)
 	}
 	feedbackService.AttachRefFusionService(refFusion)
+	// 注入三路合并服务
+	mergeService := service.NewMergeService()
+	feedbackService.AttachMergeService(mergeService)
 
 	// IntentParser: parses RawText -> []Intent when Voice Agent sends empty Intents
 	intentParser := service.NewIntentParser(pptRepo, service.LLMClientConfig{

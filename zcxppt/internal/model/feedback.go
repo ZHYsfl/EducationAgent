@@ -78,11 +78,32 @@ type SuspendState struct {
 	ExpiresAt   int64  `json:"expires_at"`
 	CreatedAt   int64  `json:"created_at"`
 	Resolved    bool   `json:"resolved"`
+	// 三路合并冲突信息
+	BaseCode     string `json:"base_code,omitempty"`
+	CurrentCode  string `json:"current_code,omitempty"`
+	IncomingCode string `json:"incoming_code,omitempty"`
+	ConflictDesc string `json:"conflict_desc,omitempty"`
+	ConflictOpts []string `json:"conflict_opts,omitempty"`
 }
 
 type MergeResult struct {
 	PageID          string `json:"page_id"`
-	MergeStatus     string `json:"merge_status"`
+	MergeStatus     string `json:"merge_status"` // "auto_resolved" | "ask_human"
 	MergedPyCode    string `json:"merged_pycode,omitempty"`
 	QuestionForUser string `json:"question_for_user,omitempty"`
+	// 三路合并信息：冲突时供挂起展示用
+	BaseCode       string   `json:"base_code,omitempty"`       // 基础版本
+	CurrentCode    string   `json:"current_code,omitempty"`    // 当前版本
+	IncomingCode   string   `json:"incoming_code,omitempty"`   // LLM 新生成的版本
+	ConflictDesc   string   `json:"conflict_desc,omitempty"`   // 冲突描述
+	ConflictOpts   []string `json:"conflict_opts,omitempty"`   // 供用户选择的选项
+}
+
+// ThreeWayMergeInput 是传递给三路合并算法的输入参数。
+type ThreeWayMergeInput struct {
+	BaseCode      string
+	CurrentCode   string
+	IncomingCode  string
+	BaseTimestamp int64
+	PageID        string
 }

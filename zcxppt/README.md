@@ -14,7 +14,8 @@
 | 能力           | 说明                                                                   |
 | ------------ | -------------------------------------------------------------------- |
 | **PPT 智能生成** | 基于用户输入的主题、描述、知识点，通过 LLM（Kimi k2.5）生成多页 python-pptx 代码，并自动渲染为 PPTX 文件 |
-| **实时反馈处理**   | 接收 Voice Agent 转发的用户语音反馈，通过意图解析路由到 6 种操作（修改/插入/删除/全局修改/重排/生成内容）      |
+| **实时反馈处理**   | 接收 Voice Agent 转发的用户语音反馈，通过意图解析路由到 6 种操作（修改/插入/删除/全局修改/重排/生成内容）；通过三路合并算法处理并发冲突       |
+| **三路合并**       | 每次反馈修改时获取基线快照，基于 base（基线）/ current（当前）/ incoming（新版本）三路进行 diff 合并，智能检测冲突类型并支持用户选择保留版本     |
 | **知识库融合**    | 调用 KB Service（RAG）获取知识摘要，作为 LLM 生成的内容背景                              |
 | **多格式参考融合**  | 支持上传 PDF/DOCX/PPTX/图片/视频参考文件，通过格式专用解析器提取文字和样式信息并注入 LLM               |
 | **教案自动生成**   | 基于 PPT 主题和教学要素，自动生成结构化 Word 教案（.docx）                                |
@@ -36,7 +37,8 @@ Voice Agent（语音交互前端）
     │       → 返回画布页面路由表和渲染状态
     │
     ├── POST /api/v1/ppt/feedback
-    │       → 意图解析（可选）→ 冲突检测/悬挂 → LLM 合并
+    │       → 意图解析 → 三路合并（base/current/incoming）
+    │       → diff 检测冲突 → 自动合并 / 悬挂提问
     │       → 渲染更新 → 通知 Voice Agent（TTS/下一步）
     │
     ├── POST /canvas/vad-event
@@ -105,7 +107,7 @@ Voice Agent（语音交互前端）
 2. **双仓储模式**：每个 Repository 同时提供内存实现（InMemory*）和 Redis 实现（Redis*），通过环境变量切换，开发/测试无需 Redis
 3. **并发安全**：所有内存存储均使用 `sync.RWMutex`；PPT 渲染使用信号量控制最大并发数（默认 8）
 4. **异步非阻塞**：LLM 生成、渲染、教案生成、内容多样性导出均为异步 goroutine，通过轮询接口或回调通知获取结果
-5. **悬挂-冲突机制**：当 LLM 无法自动合并时，通过悬挂状态暂停当前页面，等待用户明确回复（VAD 事件触发）
+5. **三路合并-冲突机制**：每次反馈修改时获取基线快照（BaseCode），通过 LLM 生成新版本（Incoming），与当前版本（Current）进行三路 diff 检测；无冲突自动合并，有冲突通过悬挂状态暂停，等待用户明确回复（VAD 事件或超时自动解除）
 
 ---
 
@@ -358,7 +360,7 @@ zcxppt/
 {
   "task_id": "string（必填）",
   "viewing_page_id": "string（必填）",
-  "base_timestamp": 1710000000000,
+  "base_timestamp": 1710000000000,  // 基线时间戳（毫秒）：用户开始本次反馈的时间，用于三路合并获取基线快照
   "raw_text": "把这一页的标题改成'函数的导数'",
   "reply_to_context_id": "ctx_xxx（仅 resolve_conflict 时必填）",
   "intents": [
@@ -411,6 +413,9 @@ zcxppt/
    │   → 若页面处于悬挂状态（suspended=true）：
    │       ├─ 若意图包含 resolve_conflict：
    │       │   ├─ 校验 reply_to_context_id == suspend.ContextID
+   │       │   ├─ **三路冲突解决**：根据 Intent.Instruction 提取用户选择（keep_current / keep_incoming / keep_base）
+   │       │   │   → MergeService.ResolveUserChoice() 返回最终合并代码
+   │       │   │   → UpdatePageCode + 触发重新渲染
    │       │   ├─ feedbackRepo.ResolveSuspend() → 解除悬挂
    │       │   ├─ 从待处理队列取出一个 pending → 递归 Handle()
    │       │   └─ 返回 {accepted: N, queued: false}
@@ -423,14 +428,21 @@ zcxppt/
    │
    ├─ modify：修改指定页面
    │   ├─ 获取目标页面 current PyCode
+   │   ├─ **三路合并基线获取**：优先按 BaseTimestamp 查时间点快照；兜底用 PageRenderResponse.BaseCode
    │   ├─ 参考文件重融合（RefFusionService.FuseForFeedback）
-   │   ├─ llmRuntime.RunFeedbackLoop(req, current)
-   │   │   → System: "你是PPT反馈合并编排器，结合参考资料进行融合"
-   │   │   → 注册 emit_merge_result 工具
-   │   │   → 期望 LLM 返回：{merge_status:"auto_resolved"/"ask_human", merged_pycode/question_for_user}
-   │   ├─ applyMergeResult():
-   │   │   ├─ ask_human → SetSuspend → 通知 Voice Agent 冲突问题
-   │   │   └─ auto_resolved → UpdatePageCode → 渲染 → 通知 Voice Agent
+   │   ├─ llmRuntime.RunFeedbackLoop(req, current, baseCode)
+   │   │   → System: "你是PPT反馈合并编排器..."
+   │   │   → User: 注入 base_code + current_code + intents
+   │   │   → LLM 生成 merged_pycode（Incoming）
+   │   │   → MergeService.ThreeWayMerge(base, current, incoming)
+   │   │       ├─ base == current → 采纳 incoming
+   │   │       ├─ current == incoming → 保持 current
+   │   │       ├─ incoming == base → 保持 current
+   │   │       ├─ diff(base→current) ∩ diff(base→incoming) = ∅ → 自动合并
+   │   │       └─ diff 重叠 → ask_human + 冲突分类 + 用户选项
+   │   └─ applyMergeResult():
+   │       ├─ ask_human → SetSuspend（三路代码写入 SuspendState）→ 通知 Voice Agent 冲突问题 + 选项
+   │       └─ auto_resolved → UpdatePageCode → 渲染 → 通知 Voice Agent
    │
    ├─ insert_before / insert_after：插入新页面
    │   ├─ generateNewPageCode() → LLM 生成新页 PyCode
@@ -442,7 +454,7 @@ zcxppt/
    │
    ├─ global_modify：全局修改所有页面
    │   ├─ 遍历 canvas.PageOrder
-   │   └─ 对每个页面执行 modify 逻辑
+   │   └─ 对每个页面执行 modify 逻辑（含三路基线获取）
    │
    ├─ reorder：页面重排
    │   ├─ 解析指令格式："page_abc→2" 或 "把page_abc移到第2页"
@@ -702,6 +714,13 @@ Canvas（pptRepo）
 
 Page（pptRepo 每 Task 一个独立 map）
   └─ TaskID / PageID / Status / RenderURL / PyCode / Version / UpdatedAt
+  └─ BaseCode: string                              // 初始生成快照（三路合并基准线）
+  └─ 快照存储（snapshots map）：
+      └─ taskID → pageID → []PageSnapshot（按时间戳升序）
+  └─ BaseCode 固化规则：首次 UpdatePageCode 且 BaseCode="" 时自动写入
+
+PageSnapshot（历史快照，用于按时间戳回溯基线）
+  └─ PageID / TaskID / PyCode / Timestamp / Version
 ```
 
 页面 PyCode 存储 LLM 生成的 python-pptx 代码文本，每次修改后版本号递增。
@@ -716,23 +735,29 @@ type Intent struct {
                         // global_modify/reorder/resolve_conflict/
                         // generate_animation/generate_game
     TargetPageID   string  // 目标页面 ID
-    Instruction    string  // 原始用户指令
+    Instruction    string  // 原始用户指令；resolve_conflict 时携带用户选择（keep_current/keep_incoming/keep_base）
     AnimationStyle string  // generate_animation 时使用
     GameType       string  // generate_game 时使用
     ResultID       string  // 内容多样性生成后填充
 }
 ```
 
-**SuspendState（悬挂状态）**：
+**SuspendState（悬挂状态，含三路冲突信息）**：
 
 ```go
 type SuspendState struct {
     TaskID/PageID/ContextID   // 唯一标识
     Question       string     // 向用户提出的冲突问题
-    RetryCount     int       // 重试次数（≥3 自动解除）
-    ExpiresAt      int64     // 过期时间戳（毫秒）
+    RetryCount     int        // 重试次数（≥3 自动解除）
+    ExpiresAt      int64      // 过期时间戳（毫秒）
     CreatedAt      int64
     Resolved       bool       // 是否已解决
+    // 三路合并冲突信息（冲突时携带）
+    BaseCode       string     // 基础版本
+    CurrentCode    string     // 当前版本
+    IncomingCode   string     // LLM 新生成版本
+    ConflictDesc   string     // 冲突类型描述
+    ConflictOpts   []string   // 供用户选择的选项
 }
 ```
 
@@ -779,11 +804,12 @@ type StyleGuide struct {
 **关键设计点**：
 
 - **悬挂优先策略**：无论收到何种意图，若页面处于悬挂状态，`resolve_conflict` 必须先被处理才能继续其他操作。
-- **冲突问题重发机制**：同一冲突问题最多重发 3 次（第 45 秒/第 90 秒/第 135 秒），3 次无回复后自动解除悬挂并继续。
+- **三路基线获取**：`getBaseCodeForFeedback` 优先按 `BaseTimestamp` 从时间点快照获取基线版本；无时间戳时使用 `PageRenderResponse.BaseCode`（首次渲染时固化）。
 - **参考资料重融合**：每次 `modify`/`global_modify` 都会重新调用 `RefFusionService.FuseForFeedback`，根据当前反馈指令重新抽取相关内容片段，而非仅使用 Init 阶段的结果。
-- **MergeResult 双状态**：
-  - `auto_resolved`：LLM 成功合并，立即渲染更新页面
-  - `ask_human`：LLM 遇到冲突（如同页并发修改），暂停等待用户明确选择，通过 TTS 询问用户
+- **MergeResult 三状态**：
+  - `auto_resolved`：三路合并成功，直接渲染更新页面
+  - `ask_human`：检测到 diff 冲突，悬挂并通知用户选择版本
+- **三路冲突解决**：`resolve_conflict` 时从 `Intent.Instruction` 提取用户选择（`keep_current`/`keep_incoming`/`keep_base`），调用 `MergeService.ResolveUserChoice` 执行最终合并。
 
 ### 6.3 IntentParser — 自然语言意图解析
 
@@ -829,20 +855,66 @@ LLM 必须精确调用一次此工具，参数：
 - `merged_pycode`：合并后的 Python 代码（`auto_resolved` 时必填）
 - `question_for_user`：冲突问题（TTS 播报给用户，`ask_human` 时必填）
 
-**参考上下文注入**：通过 `buildReferenceContext` 将参考文件摘要、样式指南、知识补充拼接为 prompt 文本段，LLM 在合并时参考这些内容。
+**参考上下文注入**：通过 `buildReferenceContext` 将参考文件摘要、样式指南，知识补充拼接为 prompt 文本段，LLM 在合并时参考这些内容。
 
-### 6.6 MergeService — 三路合并
+**三路合并集成**：`RunFeedbackLoop` 在获取 LLM 返回的 `merged_pycode` 后，将其作为 `incoming`，连同调用方传入的 `baseCode`（基线）和 `current.PyCode`（当前）一起传递给 `MergeService.ThreeWayMerge()` 执行真正的三路 diff 合并。若 `MergeService` 未注入，则使用内置的兜底三路合并（仅状态比较，无 diff 分析）。
 
-```go
-// base: 初始版本, current: 用户A修改版, incoming: 用户B修改版
-ThreeWayMerge(base, current, incoming):
-  - base == current → incoming 覆盖（无修改）
-  - current == incoming → 相同，无冲突
-  - 三者皆不同 → ask_human（需要用户选择）
-  - 其他 → current + incoming 拼接
+### 6.6 MergeService — 三路合并（base / current / incoming）
+
+**职责**：执行真正的三路 diff 合并，检测冲突类型，生成用户选择选项，支持用户选择解析。
+
+**三路定义**：
+
+| 名称 | 含义 | 来源 |
+|------|------|------|
+| **base（基线）** | 用户开始本次反馈时的页面快照 | 优先从时间戳快照获取；兜底用 BaseCode |
+| **current（当前）** | 用户当前正在查看的页面代码 | `pptRepo.GetPageRender()` |
+| **incoming（新版本）** | LLM 根据用户反馈指令生成的新代码 | `ToolRuntime.RunFeedbackLoop` 中 LLM 通过 `emit_merge_result` 返回 |
+
+**合并算法**：
+
+```
+输入: base, current, incoming
+
+Case 1: incoming == ""           → 直接返回 current
+Case 2: base == current          → 直接采纳 incoming（从未修改）
+Case 3: current == incoming      → 返回 current（LLM 无实际改动）
+Case 4: incoming == base         → 返回 current（被其他来源改了）
+Case 5: 三者均不同              → 进入 diff 冲突检测
+  ├─ diff(base→current) ∩ diff(base→incoming) = ∅  → 自动合并（安全）
+  └─ diff 有重叠               → ask_human + 冲突分类 + 用户选项
 ```
 
-（注：当前代码中 `applyMergeResult` 直接使用 LLM 的 `MergedPyCode`，未调用 MergeService 的三路合并逻辑，三路合并目前作为备用方案保留。）
+**LCS 行级 diff**：
+
+使用最长公共子序列（LCS）算法计算 `base→current` 和 `base→incoming` 的变更行号集合。通过 SHA256 哈希快速比较是否真的发生变化。
+
+**冲突分类**：
+
+| 冲突类型 | 检测条件 | 合并策略 |
+|---------|---------|---------|
+| `content_conflict` | 行数不变，文字内容修改 | 自动合并 / ask_human |
+| `structural_conflict` | 行数变化 >30%（结构性变更） | ask_human |
+| `mixed_conflict` | 混合变更（结构+内容） | ask_human |
+| `general_conflict` | 其他未知冲突 | ask_human |
+
+**自动合并策略**：当 diff 无重叠时，以 current 为基础，将 incoming 比 base 多出的行追加到 current 尾部。
+
+**用户选项**（`ask_human` 时生成）：
+
+```json
+{
+  "conflict_opts": [
+    "keep_current:{hash} 保留当前版本",
+    "keep_incoming:{hash} 采纳新版本",
+    "keep_base 恢复原始版本"
+  ]
+}
+```
+
+其中 `{hash}` 为该版本的 SHA256 前 8 位哈希，用于精确匹配。
+
+**ResolveUserChoice**：根据用户选择（`keep_current` / `keep_incoming` / `keep_base`）直接返回对应版本的代码。
 
 ### 6.7 NotifyService — Voice Agent 通知
 
@@ -892,16 +964,28 @@ ThreeWayMerge(base, current, incoming):
 type PPTRepository interface {
     InitCanvas(taskID string, totalPages int)        // 初始化 N 个空页面
     GetCanvasStatus(taskID string)                   // 获取页面顺序+状态
-    SetCurrentViewingPageID(taskID, pageID string)    // 更新当前浏览页
-    GetPageRender(taskID, pageID string)             // 获取单页代码+URL
-    UpdatePageCode(taskID, pageID, pyCode, url)      // 更新代码+URL（版本递增）
-    UpdatePageStatus(taskID, pageID, status, err)    // 更新状态（如 failed）
+    SetCurrentViewingPageID(taskID, pageID string)  // 更新当前浏览页
+    GetPageRender(taskID, pageID string)            // 获取单页代码+URL+BaseCode
+    UpdatePageCode(taskID, pageID, pyCode, url)     // 更新代码+URL（版本递增）；首次时固化 BaseCode
+    UpdatePageStatus(taskID, pageID, status, err)   // 更新状态（如 failed）
     InsertPageAfter(taskID, afterID string, newPage)  // 插入页面
     InsertPageBefore(taskID, beforeID string, newPage)
-    DeletePage(taskID, pageID string)                // 删除页面
-    GetTaskIDByPageID(pageID string)                  // 通过 pageID 反查 taskID
+    DeletePage(taskID, pageID string)               // 删除页面
+    GetTaskIDByPageID(pageID string)               // 通过 pageID 反查 taskID
+    // ── 三路合并快照相关 ───────────────────────
+    SavePageSnapshot(taskID, pageID, pyCode, version) // 保存快照，返回时间戳
+    GetPageSnapshotByTs(taskID, pageID string, ts int64) // 按时间戳获取最近快照
+    GetLatestSnapshot(taskID, pageID string)              // 获取最新快照
+    GetPageBaseCode(taskID, pageID string)               // 获取初始 BaseCode
+    SetPageBaseCode(taskID, pageID, baseCode string)   // 设置初始 BaseCode（仅当未设置时写入）
 }
 ```
+
+**快照存储策略**：
+
+- **BaseCode 固化**：首次 `UpdatePageCode`（Init 阶段渲染成功）时，若 `Page.BaseCode == ""` 则自动写入 `BaseCode = pyCode`。
+- **时间点快照**：`SavePageSnapshot` 在每次代码更新时调用（Init 阶段 + Feedback 修改阶段），存储完整 PyCode 和时间戳。
+- **基线获取优先级**：`BaseTimestamp > 0` 时按时间戳查找最近快照；否则使用 `PageRenderResponse.BaseCode`。
 
 ### 7.3 FeedbackRepository 核心接口
 

@@ -14,9 +14,10 @@ import (
 	"sync"
 	"time"
 
+	toolcalling "tool_calling_go"
+
 	"github.com/google/uuid"
 	openai "github.com/openai/openai-go/v3"
-	toolcalling "tool_calling_go"
 
 	"zcxppt/internal/infra/oss"
 	"zcxppt/internal/model"
@@ -30,7 +31,7 @@ var (
 
 // TeachingPlanService generates Word教案 (.docx) from LLM-generated structured content.
 type TeachingPlanService struct {
-	planRepo    map[string]*teachingPlanJob
+	planRepo     map[string]*teachingPlanJob
 	planRepoMu   sync.RWMutex
 	httpClient   *http.Client
 	llmCfg       LLMClientConfig
@@ -58,11 +59,11 @@ type teachingPlanJob struct {
 // NewTeachingPlanService creates a new TeachingPlanService.
 func NewTeachingPlanService(llmCfg LLMClientConfig, renderCfg RenderServiceConfig, ossClient *oss.Client) *TeachingPlanService {
 	return &TeachingPlanService{
-		planRepo:    make(map[string]*teachingPlanJob),
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
-		llmCfg:      llmCfg,
+		planRepo:     make(map[string]*teachingPlanJob),
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		llmCfg:       llmCfg,
 		renderConfig: renderCfg,
-		ossClient:   ossClient,
+		ossClient:    ossClient,
 	}
 }
 
@@ -507,7 +508,7 @@ func (s *TeachingPlanService) GetStatus(planID string) (model.TeachingPlanStatus
 		Status:      job.Status,
 		DownloadURL: job.DOCXURL,
 		PlanContent: job.PlanContent,
-		Error:      job.Error,
+		Error:       job.Error,
 	}, nil
 }
 
