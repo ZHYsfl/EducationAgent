@@ -1,6 +1,6 @@
-// ==================== I. Idle Trigger（无用户说话，仅tool结果触发） ====================
+// ==================== I. 用户未发言但工具结果到达后主动播报 ====================
 
-// I1 示例1：单工具结果触发idle（kb_query）
+// I1 示例1：单工具结果到达后主动播报（kb_query）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_301, topic=\"高中数学导数复习\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"帮我查一下拉格朗日中值定理"},
@@ -8,10 +8,10 @@
   {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
   {"role":"assistant", "content":"#{工具已发出，先做等待态回复} 正在检索，我拿到结果后马上告诉你。"},
   {"role":"user", "content":"<tool>kb_query:拉格朗日中值定理：若函数在[a,b]连续、在(a,b)可导，则存在c∈(a,b)使f'(c)=[f(b)-f(a)]/(b-a)</tool>"},
-  {"role":"assistant", "content":"#{idle触发，无新用户语音，主动播报工具结果} 查到了：拉格朗日中值定理是指，若函数在[a,b]连续且在(a,b)可导，则存在某个c使得 f'(c)=[f(b)-f(a)]/(b-a)。"}
+  {"role":"assistant", "content":"#{用户没继续说话，但工具结果到了，需要主动播报} 查到了：拉格朗日中值定理是指，若函数在[a,b]连续且在(a,b)可导，则存在某个c使得 f'(c)=[f(b)-f(a)]/(b-a)。"}
 }
 
-// I1 示例2：单工具结果触发idle（web_search）
+// I1 示例2：单工具结果到达后主动播报（web_search）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_302, topic=\"新能源科普\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"帮我搜一下2025年光伏行业数据"},
@@ -19,10 +19,10 @@
   {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
   {"role":"assistant", "content":"#{确认搜索进行中} 已在搜索，稍等我整理结论。"},
   {"role":"user", "content":"<tool>web_search:2025光伏趋势：装机继续增长，储能协同比例提升，分布式场景渗透加快...</tool>"},
-  {"role":"assistant", "content":"#{idle触发主动播报，不等待用户再开口} 搜索结果到了：2025年光伏装机继续增长，储能协同占比提升，分布式应用渗透更快。"}
+  {"role":"assistant", "content":"#{用户暂时没发言，搜索结果先到了，需要主动播报} 搜索结果到了：2025年光伏装机继续增长，储能协同占比提升，分布式应用渗透更快。"}
 }
 
-// I2 示例1：多工具结果触发idle，综合播报（kb_query + get_memory）
+// I2 示例1：多工具结果到达后综合主动播报（kb_query + get_memory）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_303, topic=\"初中英语语法总复习\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"帮我查虚拟语气定义，再看看我之前做过没有类似PPT"},
@@ -32,10 +32,10 @@
   {"role":"assistant", "content":"#{两个工具都在路上} 两个查询都在进行中。"},
   {"role":"user", "content":"<tool>kb_query:虚拟语气用于表达假设、愿望或与事实相反的情形...</tool>"},
   {"role":"user", "content":"<tool>get_memory:你之前做过一套“中考英语语法冲刺”PPT，包含虚拟语气章节...</tool>"},
-  {"role":"assistant", "content":"#{idle触发，综合两个tool结果} 查询完成：虚拟语气用于表达假设或非真实情形；另外你之前确实做过中考语法冲刺PPT，里面有虚拟语气章节。"}
+  {"role":"assistant", "content":"#{用户还没继续说话，但两个工具结果都到了，需要合并主动播报} 查询完成：虚拟语气用于表达假设或非真实情形；另外你之前确实做过中考语法冲刺PPT，里面有虚拟语气章节。"}
 }
 
-// I2 示例2：多工具结果触发idle，综合播报（kb_query + web_search）
+// I2 示例2：多工具结果到达后综合主动播报（kb_query + web_search）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_304, topic=\"中国古代文学导论\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"查一下唐诗风格特点，再搜几个朗诵素材"},
@@ -45,10 +45,10 @@
   {"role":"assistant", "content":"#{提示并行进行中} 正在同时查询。"},
   {"role":"user", "content":"<tool>kb_query:唐诗特点：格律严谨、意象丰富、语言凝练...</tool>"},
   {"role":"user", "content":"<tool>web_search:朗诵素材：唐诗三百首配乐朗诵、名家朗读合集...</tool>"},
-  {"role":"assistant", "content":"#{idle触发综合播报} 结果到了：唐诗整体风格格律严谨、意象丰富；朗诵素材方面有配乐朗诵和名家朗读合集可用。"}
+  {"role":"assistant", "content":"#{用户没新发言，两个结果已到，直接综合播报} 结果到了：唐诗整体风格格律严谨、意象丰富；朗诵素材方面有配乐朗诵和名家朗读合集可用。"}
 }
 
-// I3 示例1：idle触发时工具失败（web_search失败）
+// I3 示例1：用户未发言时工具失败（web_search失败）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_305, topic=\"大学操作系统导论\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"帮我搜操作系统发展时间线图"},
@@ -56,10 +56,10 @@
   {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
   {"role":"assistant", "content":"#{先告知等待} 正在搜索中。"},
   {"role":"user", "content":"<tool>web_search:搜索失败</tool>"},
-  {"role":"assistant", "content":"#{idle触发+失败结果，需要主动报错而非沉默} 搜索暂时失败了，我这边还没拿到时间线图。你可以给我一个更具体关键词，我马上再试。"}
+  {"role":"assistant", "content":"#{用户没继续说话，但失败结果到了，需要主动告知而不是沉默} 搜索暂时失败了，我这边还没拿到时间线图。你可以给我一个更具体关键词，我马上再试。"}
 }
 
-// I3 示例2：idle触发时工具失败（get_memory失败）
+// I3 示例2：用户未发言时工具失败（get_memory失败）
 {
   {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户完善和修改已创建的PPT任务。\n\n[任务列表]\n- task_id=task_306, topic=\"商务汇报表达训练\"(当前任务)\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 对用户可见的自然语言不要放在 #{...} 或 @{...} 里。\n4. 工具结果上下文统一以 <tool>...</tool> 注入。\n5. 若被打断，保留可恢复轨迹，后续由 </interrupted> 表示中断续写语义。\n6. 当前支持工具：kb_query/web_search/get_memory/update_requirements/require_confirm/ppt_init/ppt_mod。\n7. 冲突问题场景下，基于用户原话通过 @{ppt_mod|raw_text:用户原话|user_distance:int} 反馈。"},
   {"role":"user", "content":"查一下我之前做过的商务风封面模板"},
@@ -67,7 +67,7 @@
   {"role":"user", "content":"<tool>get_memory:已发送，等待记忆召回结果</tool>"},
   {"role":"assistant", "content":"#{告知处理中} 正在回忆历史模板。"},
   {"role":"user", "content":"<tool>get_memory:记忆召回失败</tool>"},
-  {"role":"assistant", "content":"#{idle触发失败处理} 这次没能召回到历史模板记录。你可以描述下你偏好的封面风格，我直接给你一版新的建议。"}
+  {"role":"assistant", "content":"#{用户还没说话，但失败结果先到了，需要主动反馈} 这次没能召回到历史模板记录。你可以描述下你偏好的封面风格，我直接给你一版新的建议。"}
 }
 
 
