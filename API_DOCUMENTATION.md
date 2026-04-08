@@ -1,4 +1,4 @@
-﻿# Voice Agent 接口文档
+# Voice Agent 接口文档
 
 本文档详细描述 Voice Agent 系统的所有接口，包括：
 
@@ -51,25 +51,32 @@ Voice Agent 作为客户端，需要调用以下外部服务的接口。
   "description": "string",       // 必填，详细描述（包含教学目标、知识点等结构化信息）
   "total_pages": 0,              // 必填，期望页数，整数，>0
   "audience": "string",          // 必填，目标受众
-  "global_style": "string",      // 必填，全局风格
+  "global_style": "string",       // 必填，全局风格
+  "subject": "string",           // 可选，学科，用于知识库检索
   "teaching_elements": {         // 必填，教学元素
     "knowledge_points": ["string"],      // 必填，知识点列表
     "teaching_goals": ["string"],        // 必填，教学目标列表
     "teaching_logic": "string",          // 必填，讲授逻辑
     "key_difficulties": ["string"],      // 必填，重点难点列表
     "duration": "string",                // 必填，课时长度，如 "45分钟"
-    "interaction_design": "string",      // 必填，互动设计
-    "output_formats": ["string"]         // 必填，输出格式列表，如 ["pptx", "pdf"]
+    "interaction_design": "string",       // 必填，互动设计
+    "output_formats": ["string"]          // 必填，输出格式列表，如 ["pptx", "pdf"]
   },
   "reference_files": [           // 可选，参考文件列表
     {
       "file_id": "string",       // 必填，文件ID
       "file_url": "string",      // 必填，文件URL
-      "file_type": "string",     // 必填，文件类型，如 "pdf", "docx", "image"
-      "instruction": "string"    // 必填，使用说明
+      "file_type": "string",     // 必填，文件类型，如 "pdf", "docx", "pptx", "image", "video"
+      "instruction": "string"     // 必填，使用说明，如"参照这个PDF第3页的格式"
     }
-  ]
+  ],
+  "auto_generate_teaching_plan": false,   // 可选，Init完成后自动触发Word教案生成，默认false
+  "auto_generate_content_diversity": false, // 可选，Init完成后自动触发动画/游戏生成，默认false
+  "content_diversity_type": "both",         // 可选，生成内容类型："animation" | "game" | "both"，默认"both"
+  "content_diversity_game_type": "quiz",    // 可选，小游戏类型："quiz" | "matching" | "ordering" | "fill_blank"，默认"quiz"
+  "content_diversity_animation_style": "all" // 可选，动画风格："slide_in" | "fade" | "zoom" | "draw" | "pulse" | "all"，默认"all"
 }
+```
 ```
 
 **响应格式**:
@@ -270,6 +277,314 @@ curl -X POST http://ppt-agent-url/api/v1/canvas/vad-event \
     "viewing_page_id": "page_005"
   }'
 ```
+
+---
+
+### 1.5 异步生成 Word 教案
+
+> **说明**：教案生成是异步操作。Init 时可通过 `auto_generate_teaching_plan=true` 自动触发，也可通过本接口手动触发。
+
+#### 1.5.1 创建教案生成任务
+
+**接口路径**: `POST /internal/ppt/teaching_plan`
+
+>**内部接口**：由 Voice Agent 或其他内部服务调用。
+
+**请求参数**:
+
+```json
+{
+  "task_id": "string",           // 必填，关联的PPT任务ID
+  "topic": "string",             // 必填，课程主题
+  "subject": "string",           // 可选，学科
+  "description": "string",       // 可选，详细描述
+  "audience": "string",          // 可选，目标受众
+  "duration": "string",           // 可选，课时长度
+  "teaching_elements": {         // 可选，教学元素（结构化输入）
+    "knowledge_points": ["string"],
+    "teaching_goals": ["string"],
+    "teaching_logic": "string",
+    "key_difficulties": ["string"],
+    "duration": "string",
+    "interaction_design": "string",
+    "output_formats": ["string"]
+  },
+  "style_guide": "string"        // 可选，参考样式指南
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "task_id": "string",
+    "plan_id": "string",
+    "status": "generating"
+  }
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X POST http://ppt-agent-url/internal/ppt/teaching_plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "topic": "高等数学-导数与微分",
+    "subject": "数学",
+    "description": "理解导数概念，掌握求导法则",
+    "audience": "大学一年级学生",
+    "duration": "45分钟"
+  }'
+```
+
+#### 1.5.2 查询教案生成状态
+
+**接口路径**: `GET /internal/ppt/teaching_plan/:plan_id`
+
+>**内部接口**：轮询教案生成状态。
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "plan_id": "string",
+    "status": "string",          // generating | completed | failed
+    "download_url": "string",     // 生成完成后提供 .docx 下载地址
+    "plan_content": "string",     // 纯文本预览
+    "error": "string"            // 失败时提供错误信息
+  }
+}
+```
+
+**使用示例**:
+
+```bash
+curl -X GET http://ppt-agent-url/internal/ppt/teaching_plan/plan_abc123
+```
+
+---
+
+### 1.6 异步生成动画创意与互动小游戏
+
+> **说明**：内容多样性生成是异步操作。Init 时可通过 `auto_generate_content_diversity=true` 自动触发，也可通过本接口手动触发。生成完成后通过 `POST /api/v1/voice/ppt_message`（`event_type: "content_diversity_completed"`）回调通知。
+
+#### 1.6.1 创建内容多样性生成任务
+
+**接口路径**: `POST /internal/ppt/content_diversity`
+
+>**内部接口**：由 Voice Agent 或其他内部服务调用。
+
+**请求参数**:
+
+```json
+{
+  "task_id": "string",           // 必填，关联的PPT任务ID
+  "page_id": "string",           // 可选，关联的页面ID
+  "topic": "string",             // 必填，知识点主题
+  "subject": "string",           // 可选，学科
+  "page_code": "string",         // 可选，相关PPT页面代码
+  "kb_summary": "string",        // 可选，知识库摘要
+  "type": "string",              // 可选，生成类型："animation" | "game" | "both"，默认"both"
+  "game_type": "string",         // 可选，小游戏类型："quiz" | "matching" | "ordering" | "fill_blank"，默认"quiz"
+  "animation_style": "string"     // 可选，动画风格："slide_in" | "fade" | "zoom" | "draw" | "pulse" | "all"，默认"all"
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "task_id": "string",
+    "result_id": "string",
+    "status": "generating"
+  }
+}
+```
+
+**回调示例**（生成完成后 Voice Agent 收到）:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "result_id": "div_abc123",
+    "event_type": "content_diversity_completed",
+    "status": "completed",
+    "tts_text": "动画和游戏已生成完成",
+    "animations": [
+      {
+        "animation_id": "anim_1",
+        "title": "导数概念动画",
+        "description": "用切线斜率演示导数定义",
+        "html_url": "https://..."
+      }
+    ],
+    "games": [
+      {
+        "game_id": "game_1",
+        "title": "导数选择题",
+        "game_type": "quiz",
+        "html_url": "https://..."
+      }
+    ]
+  }'
+```
+
+#### 1.6.2 查询内容多样性生成状态
+
+**接口路径**: `GET /internal/ppt/content_diversity/:result_id`
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "task_id": "string",
+    "result_id": "string",
+    "status": "string",         // generating | completed | failed
+    "animations": [],
+    "games": [],
+    "error": "string"
+  }
+}
+```
+
+#### 1.6.3 导出动画/游戏为指定格式
+
+**接口路径**: `POST /internal/ppt/content_diversity/export`
+
+>**说明**：`format=html5` 时同步返回；`format=gif` 或 `format=mp4` 时异步执行，完成后通过回调通知。
+
+**请求参数**:
+
+```json
+{
+  "result_id": "string",         // 必填，内容多样性生成结果ID
+  "content_type": "string",     // 必填，"animation" 或 "game"
+  "format": "string"            // 必填，"html5" | "gif" | "mp4"
+}
+```
+
+**响应格式**（html5同步）:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "result_id": "string",
+    "format": "html5",
+    "status": "completed",
+    "download_url": "string"
+  }
+}
+```
+
+**响应格式**（gif/mp4异步）:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "result_id": "string",
+    "content_type": "animation",
+    "format": "mp4",
+    "status": "generating",
+    "message": "export is processing asynchronously, result will be notified via callback"
+  }
+}
+```
+
+#### 1.6.4 将动画/游戏嵌入PPT页面
+
+**接口路径**: `POST /internal/ppt/integrate`
+
+**请求参数**:
+
+```json
+{
+  "task_id": "string",           // 必填
+  "page_id": "string",           // 必填，目标页面ID
+  "animation_ids": ["string"],   // 可选，要嵌入的动画ID列表
+  "game_ids": ["string"],        // 可选，要嵌入的游戏ID列表
+  "position": "string"           // 可选，嵌入位置："footer" | "sidebar" | "fullscreen"，默认"footer"
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "task_id": "string",
+    "page_id": "string",
+    "status": "completed",
+    "updated_py_code": "string"
+  }
+}
+```
+
+---
+
+### 1.7 批量生成/修改多个页面
+
+**接口路径**: `POST /internal/feedback/generate_pages`
+
+>**说明**：内部接口，用于并发修改多个页面。将相同的修改意图（intents）应用到多个页面，每个页面单独执行 LLM merge + 渲染。
+
+**请求参数**:
+
+```json
+{
+  "task_id": "string",           // 必填，任务ID
+  "base_timestamp": 0,          // 必填，基准时间戳（毫秒）
+  "raw_text": "string",          // 必填，用户原始语音/文本
+  "intents": [],                 // 可选，意图列表（未传则自动解析）
+  "page_ids": ["string"],        // 可选，指定页面列表；空则对所有页面生效
+  "max_parallel": 4,            // 可选，最大并发数，默认4
+  "reference_files": []          // 可选，参考资料（用于融合）
+}
+```
+
+**响应格式**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "task_id": "string",
+    "results": [
+      {
+        "page_id": "string",
+        "status": "completed",
+        "render_url": "string",
+        "version": 2,
+        "error": ""
+      }
+    ]
+  }
+}
+```
+
+---
 
 ## 2. 知识库服务接口
 
@@ -1279,6 +1594,10 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 | `ppt_preview` | PPT 预览 |
 | `export_ready` | 导出就绪 |
 | `conflict_question` | 冲突询问（自动设为高优先级，推送 `conflict_ask` 给客户端） |
+| `conflict_timeout` | 冲突问题超时未回复 |
+| `content_diversity_started` | 动画/游戏生成已开始 |
+| `content_diversity_completed` | 动画/游戏生成完成（携带结果数据） |
+| `content_diversity_failed` | 动画/游戏生成失败 |
 | `system_notify` | 内部高优先级提示 |
 | `task_list_update` | 内部任务列表更新 |
 | `error` | 错误消息 |
