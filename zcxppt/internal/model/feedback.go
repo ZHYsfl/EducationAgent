@@ -1,9 +1,18 @@
 package model
 
+// Intent represents a parsed user intent for PPT manipulation.
 type Intent struct {
 	ActionType   string `json:"action_type"`
 	TargetPageID string `json:"target_page_id"`
 	Instruction  string `json:"instruction"`
+	// AnimationStyle 指定动画风格: "slide_in" | "fade" | "zoom" | "draw" | "all"
+	// 仅在 action_type 为 "generate_animation" 时使用
+	AnimationStyle string `json:"animation_style,omitempty"`
+	// GameType 指定小游戏类型: "quiz" | "matching" | "ordering" | "fill_blank" | "random"
+	// 仅在 action_type 为 "generate_game" 时使用
+	GameType string `json:"game_type,omitempty"`
+	// ResultID 仅在 action_type 为 "generate_animation" 或 "generate_game" 时填充
+	ResultID string `json:"result_id,omitempty"`
 }
 
 type FeedbackRequest struct {
@@ -19,6 +28,12 @@ type FeedbackRequest struct {
 	// RefFusionResult pre-computed fusion result from ReferenceFiles (optional;
 	// if empty, the runtime will compute it on the fly).
 	RefFusionResult *FusionResultPayload `json:"ref_fusion_result,omitempty"`
+	// Topic 用于内容多样性生成的上下文（当 intents 包含 generate_animation/game 时使用）
+	Topic string `json:"topic,omitempty"`
+	// Subject 用于内容多样性生成
+	Subject string `json:"subject,omitempty"`
+	// KBSummary 知识库摘要（Init 时已获取，Feedback 时透传）
+	KBSummary string `json:"kb_summary,omitempty"`
 }
 
 // FusionResultPayload is the serialized FusionResult carried in FeedbackRequest.
@@ -31,6 +46,17 @@ type FusionResultPayload struct {
 type FeedbackResponse struct {
 	AcceptedIntents int  `json:"accepted_intents"`
 	Queued          bool `json:"queued"`
+	// ContentDiversityResults 承载 generate_animation/generate_game intent 的处理结果
+	ContentDiversityResults []ContentDiversityResult `json:"content_diversity_results,omitempty"`
+}
+
+// ContentDiversityResult 承载单个 generate_animation 或 generate_game intent 的处理结果。
+type ContentDiversityResult struct {
+	IntentIndex int    `json:"intent_index"` // 对应 req.Intents 的下标
+	ActionType  string `json:"action_type"`  // "generate_animation" | "generate_game"
+	ResultID    string `json:"result_id"`    // ContentDiversityService 返回的 result_id
+	Status      string `json:"status"`       // "generating" | "failed"
+	Error       string `json:"error,omitempty"`
 }
 
 type PendingFeedback struct {

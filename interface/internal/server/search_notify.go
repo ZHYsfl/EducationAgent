@@ -22,6 +22,9 @@ type voicePPTMessage struct {
 }
 
 type kbIngestBody struct {
+	SessionID    string         `json:"session_id"`
+	TaskID       string         `json:"task_id"`
+	RequestID    string         `json:"request_id,omitempty"`
 	UserID       string         `json:"user_id,omitempty"`
 	CollectionID string         `json:"collection_id,omitempty"`
 	Items        []kbIngestItem `json:"items"`
@@ -56,7 +59,7 @@ func (a *App) notifySearchCompletion(
 	if strings.TrimSpace(a.kbIngestURL) == "" || a.httpCallback == nil {
 		return
 	}
-	a.postKBIngestFromSearch(context.Background(), userID, results)
+	a.postKBIngestFromSearch(context.Background(), requestID, taskID, sessionID, userID, results)
 }
 
 func (a *App) postVoiceSearchCallback(taskID, sessionID, pipelineStatus string, persistFailed bool, results []SearchResultItem, summary string) {
@@ -134,7 +137,7 @@ func firstNonEmpty(a, b string) string {
 	return strings.TrimSpace(b)
 }
 
-func (a *App) postKBIngestFromSearch(ctx context.Context, userID string, results []SearchResultItem) {
+func (a *App) postKBIngestFromSearch(ctx context.Context, requestID, taskID, sessionID, userID string, results []SearchResultItem) {
 	items := make([]kbIngestItem, 0, len(results))
 	for _, r := range results {
 		content := strings.TrimSpace(r.Snippet)
@@ -151,7 +154,13 @@ func (a *App) postKBIngestFromSearch(ctx context.Context, userID string, results
 	if len(items) == 0 {
 		return
 	}
-	payload := kbIngestBody{UserID: userID, Items: items}
+	payload := kbIngestBody{
+		SessionID: sessionID,
+		TaskID:    taskID,
+		RequestID: requestID,
+		UserID:    userID,
+		Items:     items,
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("kb ingest marshal: %v", err)

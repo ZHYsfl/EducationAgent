@@ -19,18 +19,18 @@ import (
 )
 
 type fakeWorkingStore struct {
-	items map[string]model.WorkingMemory
+	items map[string]model.WorkingMemoryRecord
 }
 
-func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemory) error {
+func (f *fakeWorkingStore) Save(_ context.Context, wm model.WorkingMemoryRecord) error {
 	if f.items == nil {
-		f.items = map[string]model.WorkingMemory{}
+		f.items = map[string]model.WorkingMemoryRecord{}
 	}
 	f.items[wm.SessionID] = wm
 	return nil
 }
 
-func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemory, error) {
+func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.WorkingMemoryRecord, error) {
 	if f.items == nil {
 		return nil, repository.ErrNotFound
 	}
@@ -40,6 +40,15 @@ func (f *fakeWorkingStore) Get(_ context.Context, sessionID string) (*model.Work
 	}
 	out := v
 	return &out, nil
+}
+
+type fakeVoiceAgentClient struct {
+	requests []VoicePPTMessageRequest
+}
+
+func (f *fakeVoiceAgentClient) SendPPTMessage(_ context.Context, req VoicePPTMessageRequest) error {
+	f.requests = append(f.requests, req)
+	return nil
 }
 
 func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
@@ -53,10 +62,11 @@ func setupMemoryService(t *testing.T) (*MemoryService, *gorm.DB) {
 	execSQL(t, db, `CREATE TABLE memory_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, context TEXT DEFAULT 'general', confidence REAL DEFAULT 1.0, source TEXT DEFAULT 'explicit', source_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`)
 	execSQL(t, db, `CREATE UNIQUE INDEX idx_memory_user_key_context ON memory_entries(user_id, key, context);`)
 	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_u1','u1','u1@example.com','hash','Teacher','Math','School','teacher',1710000000000,1710000000000);`)
+	execSQL(t, db, `INSERT INTO users (id,username,email,password_hash,display_name,subject,school,role,created_at,updated_at) VALUES ('user_other','other','other@example.com','hash','Other','Physics','School','teacher',1710000000000,1710000000000);`)
 
 	authRepo := repository.NewAuthRepository(db)
 	memRepo := repository.NewMemoryRepository(db)
-	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemory{}}
+	workingRepo := &fakeWorkingStore{items: map[string]model.WorkingMemoryRecord{}}
 	svc := NewMemoryService(authRepo, memRepo, workingRepo, extractor.NewHybridExtractor(extractor.Config{}, nil))
 	return svc, db
 }
@@ -89,6 +99,72 @@ func TestWorkingMemorySaveGetAndMissing(t *testing.T) {
 	_, err = svc.GetWorkingMemory(ctx, "sess_missing")
 	if err == nil || err.(*ServiceError).Code != contract.CodeResourceNotFound {
 		t.Fatalf("missing working should be 40400")
+	}
+}
+
+func TestWorkingMemoryStoresInternalTaskStateAndProjectsCompatibility(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID:           "sess_internal",
+		UserID:              "user_u1",
+		ConversationSummary: "use uploaded textbook only",
+		ExtractedElements: model.TeachingElements{
+			KnowledgePoints: []string{"limits"},
+			TeachingGoals:   []string{"explain rate of change"},
+			TargetAudience:  "grade 11 students",
+			Duration:        "45 minutes",
+		},
+		RecentTopics: []string{"derivatives"},
+	})
+	if err != nil {
+		t.Fatalf("save working: %v", err)
+	}
+	store := svc.workingRepo.(*fakeWorkingStore)
+	record := store.items["sess_internal"]
+	if len(record.TaskState.KnowledgePoints) != 1 || record.TaskState.KnowledgePoints[0] != "limits" {
+		t.Fatalf("expected internal task_state knowledge_points, got %#v", record.TaskState)
+	}
+	if record.TaskState.TargetAudience != "grade 11 students" || record.TaskState.Duration != "45 minutes" {
+		t.Fatalf("expected internal task_state projection fields, got %#v", record.TaskState)
+	}
+	if meta := record.SlotMetadata[model.TaskSlotKnowledgePoints]; meta.Status == "" || meta.Provenance == "" {
+		t.Fatalf("expected slot metadata for knowledge points, got %#v", record.SlotMetadata)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_internal")
+	if err != nil {
+		t.Fatalf("get working: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) != 1 || wm.ExtractedElements.KnowledgePoints[0] != "limits" {
+		t.Fatalf("expected outward extracted elements projection, got %#v", wm.ExtractedElements)
+	}
+	if len(wm.RecentTopics) == 0 || wm.RecentTopics[0] != "derivatives" {
+		t.Fatalf("expected recent topics projection, got %#v", wm.RecentTopics)
+	}
+}
+
+func TestWorkingMemoryRejectsSessionOwnershipMismatch(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	now := util.NowMilli()
+	execSQL(t, db, `INSERT INTO sessions (id,user_id,title,status,created_at,updated_at) VALUES ('sess_owned','user_other','owned','active',?,?);`, now, now)
+
+	err := svc.SaveWorkingMemory(ctx, SaveWorkingMemoryRequest{
+		SessionID: "sess_owned",
+		UserID:    "user_u1",
+	})
+	if err == nil || err.(*ServiceError).Code != contract.CodeInvalidCredentials {
+		t.Fatalf("expected ownership mismatch on save, got %v", err)
+	}
+
+	_, err = svc.Recall(ctx, MemoryRecallRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_owned",
+		Query:     "continue this lesson",
+		TopK:      3,
+	})
+	if err == nil || err.(*ServiceError).Code != contract.CodeInvalidCredentials {
+		t.Fatalf("expected ownership mismatch on recall, got %v", err)
 	}
 }
 
@@ -338,6 +414,115 @@ func TestExtractKeepsUnsupportedPlanningFieldsInSummaryOnly(t *testing.T) {
 	if pollutedCount != 0 {
 		t.Fatalf("unsupported planning fields should not be persisted as long-term memory")
 	}
+	record := svc.workingRepo.(*fakeWorkingStore).items["sess_summary"]
+	if record.TaskState.TeachingLogic == "" {
+		t.Fatalf("expected teaching logic in internal task_state")
+	}
+	if len(record.TaskState.ReferenceMaterialUsage) == 0 {
+		t.Fatalf("expected reference usage in internal task_state")
+	}
+}
+
+func TestExtractChineseDialoguePopulatesWorkingMemoryWithoutDurableTaskLocalStyle(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	resp, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "这节课讲牛顿第一定律，知识点包括惯性、受力分析。"},
+			{Role: "user", Content: "面向高一学生，时长45分钟。"},
+			{Role: "user", Content: "这次课件用深蓝简洁风格，只用教材里的图。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_cn")
+	if err != nil {
+		t.Fatalf("get working: %v", err)
+	}
+	if len(wm.ExtractedElements.KnowledgePoints) == 0 {
+		t.Fatalf("expected chinese knowledge points in working memory")
+	}
+	if wm.ExtractedElements.Duration != "45分钟" {
+		t.Fatalf("expected chinese duration normalization, got %q", wm.ExtractedElements.Duration)
+	}
+	if wm.ExtractedElements.OutputStyle == "" {
+		t.Fatalf("expected task-local chinese output style in working memory")
+	}
+	if !strings.Contains(resp.ConversationSummary, "reference usage") {
+		t.Fatalf("expected chinese reference usage note in projected summary, got %q", resp.ConversationSummary)
+	}
+	var durableStyleCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "output_style").Count(&durableStyleCount).Error; err != nil {
+		t.Fatalf("query style preferences: %v", err)
+	}
+	if durableStyleCount != 0 {
+		t.Fatalf("task-local chinese style instruction should not persist durably")
+	}
+}
+
+func TestExtractChineseMixedDialoguePreventsFieldPollutionRegression(t *testing.T) {
+	svc, _ := setupMemoryService(t)
+	ctx := context.Background()
+	_, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn_mixed",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "我平时偏好简洁正式的课件风格，通常先讲概念再做例题。"},
+			{Role: "user", Content: "这次是初二勾股定理课件，40分钟，重点讲证明和基础应用。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	wm, err := svc.GetWorkingMemory(ctx, "sess_cn_mixed")
+	if err != nil {
+		t.Fatalf("get working memory: %v", err)
+	}
+	if wm.ExtractedElements.OutputStyle == "" {
+		t.Fatalf("expected output style to be preserved")
+	}
+	if strings.Contains(wm.ExtractedElements.OutputStyle, "先讲概念再做例题") {
+		t.Fatalf("output_style should not contain sequencing clause: %q", wm.ExtractedElements.OutputStyle)
+	}
+	for _, point := range wm.ExtractedElements.KnowledgePoints {
+		if strings.Contains(point, "先讲") || strings.Contains(point, "再做") {
+			t.Fatalf("knowledge points polluted by sequencing fragments: %#v", wm.ExtractedElements.KnowledgePoints)
+		}
+	}
+	for _, diff := range wm.ExtractedElements.KeyDifficulties {
+		if strings.Contains(diff, "讲证明和基础应用") {
+			t.Fatalf("key difficulties polluted by action-sequence fragment: %#v", wm.ExtractedElements.KeyDifficulties)
+		}
+	}
+}
+
+func TestExtractChineseStandingPreferencePromotesDurableVisualPreference(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	ctx := context.Background()
+	resp, err := svc.Extract(ctx, MemoryExtractRequest{
+		UserID:    "user_u1",
+		SessionID: "sess_cn_pref",
+		Messages: []model.ConversationTurn{
+			{Role: "user", Content: "我平时喜欢简洁的蓝色课件风格。"},
+			{Role: "user", Content: "这节课讲导数。"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(resp.ExtractedPreferences) == 0 {
+		t.Fatalf("expected durable chinese standing preference")
+	}
+	var durableStyleCount int64
+	if err := db.Model(&model.MemoryEntry{}).Where("user_id = ? AND category = ? AND key = ?", "user_u1", "preference", "output_style").Count(&durableStyleCount).Error; err != nil {
+		t.Fatalf("query style preferences: %v", err)
+	}
+	if durableStyleCount != 1 {
+		t.Fatalf("expected one durable chinese output_style preference, got %d", durableStyleCount)
+	}
 }
 
 func TestExtractPreventsLongTermPollutionFromOneOffLessonRequirements(t *testing.T) {
@@ -517,7 +702,72 @@ func TestRecallTopKDefaultStillAppliesWhenNonPositive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recall: %v", err)
 	}
-	if len(resp.Facts)+len(resp.Preferences) > 10 {
-		t.Fatalf("top_k default should keep compactness budget at 10 when request top_k<=0")
+	if len(resp.Facts)+len(resp.Preferences) > 5 {
+		t.Fatalf("top_k default should keep compactness budget at 5 when request top_k<=0")
+	}
+}
+
+func TestFormatRecallCallbackSummaryIsDeterministicAndCompact(t *testing.T) {
+	resp := MemoryRecallResponse{
+		ProfileSummary: "Subject: Mathematics | Visual preference: output_style=简洁蓝色 | History: teaching logic=先讲概念再做例题 | Current session: Lesson topic=勾股定理",
+		Preferences: []model.MemoryEntry{
+			{Key: "teaching_style", Value: "interactive"},
+			{Key: "color_scheme", Value: "deep blue"},
+		},
+		Facts: []model.MemoryEntry{
+			{Key: "subject", Value: "math teacher"},
+			{Key: "school_context", Value: "high school"},
+		},
+	}
+	first := FormatRecallCallbackSummary(resp)
+	second := FormatRecallCallbackSummary(resp)
+	if first != second {
+		t.Fatalf("expected deterministic callback summary")
+	}
+	if len([]rune(first)) > recallCallbackSummaryBudget {
+		t.Fatalf("expected callback summary budget <= %d, got %d", recallCallbackSummaryBudget, len([]rune(first)))
+	}
+	if strings.Contains(first, "\"preferences\"") || strings.Contains(first, "\"facts\"") {
+		t.Fatalf("callback summary should not serialize the raw sync payload")
+	}
+	if strings.Contains(first, "History:") || strings.Contains(first, "Current session:") || strings.Contains(first, "teaching logic=") {
+		t.Fatalf("callback summary should suppress low-signal internal phrasing, got %q", first)
+	}
+}
+
+func TestProcessRecallSendsCallbackWithTransportCompatibilityMapping(t *testing.T) {
+	svc, db := setupMemoryService(t)
+	now := util.NowMilli()
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_pref','user_u1','preference','teaching_style','interactive','general',1.0,'explicit',?,?);`, now, now)
+	execSQL(t, db, `INSERT INTO memory_entries (id,user_id,category,key,value,context,confidence,source,created_at,updated_at) VALUES ('mem_fact','user_u1','fact','subject','math teacher','general',1.0,'explicit',?,?);`, now, now)
+
+	client := &fakeVoiceAgentClient{}
+	svc.SetVoiceAgentClient(client)
+
+	err := svc.ProcessRecall(context.Background(), RecallJob{
+		RequestID: "req_123",
+		UserID:    "user_u1",
+		SessionID: "sess_callback",
+		Query:     "teaching style",
+		TopK:      3,
+	})
+	if err != nil {
+		t.Fatalf("process recall: %v", err)
+	}
+	if len(client.requests) != 1 {
+		t.Fatalf("expected one callback request, got %d", len(client.requests))
+	}
+	got := client.requests[0]
+	if got.TaskID != "sess_callback" || got.SessionID != "sess_callback" {
+		t.Fatalf("expected task/session transport mapping, got %#v", got)
+	}
+	if got.RequestID != "req_123" || got.EventType != "get_memory" {
+		t.Fatalf("unexpected callback metadata: %#v", got)
+	}
+	if strings.TrimSpace(got.Summary) == "" {
+		t.Fatalf("expected non-empty callback summary")
+	}
+	if len([]rune(got.Summary)) > recallCallbackSummaryBudget {
+		t.Fatalf("expected compact callback summary, got %d runes", len([]rune(got.Summary)))
 	}
 }
