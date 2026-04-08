@@ -1,0 +1,292 @@
+{
+  "description": "Voice Agent工具调用数据集 - E/F/G/H 扩展样本",
+  "version": "1.0",
+  "layer_rules": {
+    "E_ppt_mod": "Layer1(固定角色描述) + Layer2(任务列表可选) + Layer5",
+    "F_confirm_init": "Layer1(所有字段齐全或接近齐全) + Layer5",
+    "G_override": "Layer1(收集态，含已收集字段) + Layer5",
+    "H_delayed_tool": "Layer1(固定角色描述) + Layer5"
+  }
+}
+
+// ==================== E. ppt_mod（user_distance） ====================
+
+// E1: 常规修改（distance=1）
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 工具结果以 <tool>...</tool> 注入。\n4. ppt_mod 需携带 raw_text 和 user_distance。"},
+  {"role":"user", "content":"把第六页标题改成深蓝色"},
+  {"role":"assistant", "content":"#{最近一条user直接触发修改，distance=1} 好的，马上处理 @{ppt_mod|raw_text:把第六页标题改成深蓝色|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"已提交该修改。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。"},
+  {"role":"user", "content":"把封面页的课程名称改成“数据库系统原理”"},
+  {"role":"assistant", "content":"#{当前最近一条用户指令，distance=1} 好的，我来修改 @{ppt_mod|raw_text:把封面页的课程名称改成数据库系统原理|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"已提交封面标题修改请求。"}
+}
+
+// E2: 打断后同时处理旧指令和新指令（distance=2 + distance=1）
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 工具结果以 <tool>...</tool> 注入。\n4. ppt_mod 需携带 raw_text 和 user_distance。"},
+  {"role":"user", "content":"把第二页图片放大一点"},
+  {"role":"assistant", "content":"#{准备执行修改但被打断} 好的我来调整</interrupted>"},
+  {"role":"user", "content":"再把第三页背景换成白色"},
+  {"role":"assistant", "content":"#{先处理更早那句distance=2，再处理最新那句distance=1} 收到，我一起提交 @{ppt_mod|raw_text:把第二页图片放大一点|user_distance:2} @{ppt_mod|raw_text:再把第三页背景换成白色|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"两项修改都已提交。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。"},
+  {"role":"user", "content":"把结尾页二维码放大"},
+  {"role":"assistant", "content":"#{准备修改被打断} 好的我现在改</interrupted>"},
+  {"role":"user", "content":"而且要再加一句感谢聆听"},
+  {"role":"assistant", "content":"#{先处理旧句再处理新句} 收到 @{ppt_mod|raw_text:把结尾页二维码放大|user_distance:2} @{ppt_mod|raw_text:而且要再加一句感谢聆听|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"两个修改都已经提交。"}
+}
+
+// E3: 连续两次最新修改（两个distance=1）
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。\n\n[动作协议]\n1. 思考使用 #{...}。\n2. 工具调用使用 @{type|k:v|k:v}。\n3. 工具结果以 <tool>...</tool> 注入。\n4. ppt_mod 需携带 raw_text 和 user_distance。"},
+  {"role":"user", "content":"首页副标题换成“期末复习重点”"},
+  {"role":"assistant", "content":"#{当前轮最近user，distance=1} 好的 @{ppt_mod|raw_text:首页副标题换成期末复习重点|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"已提交。"},
+  {"role":"user", "content":"再把目录页字体调大"},
+  {"role":"assistant", "content":"#{新一轮最近user，distance仍为1} 好的 @{ppt_mod|raw_text:再把目录页字体调大|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"目录页字体也已提交调整。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在协助用户修改已创建的PPT。"},
+  {"role":"user", "content":"第三页图表换成柱状图"},
+  {"role":"assistant", "content":"#{当前最近user，distance=1} 好的 @{ppt_mod|raw_text:第三页图表换成柱状图|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"已提交。"},
+  {"role":"user", "content":"第七页备注文字删掉"},
+  {"role":"assistant", "content":"#{新一轮最近user，distance=1} 好的 @{ppt_mod|raw_text:第七页备注文字删掉|user_distance:1}"},
+  {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
+  {"role":"assistant", "content":"也已处理该项。"}
+}
+
+// ==================== F. require_confirm -> ppt_init ====================
+
+// F1: 标准两阶段
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：无\n\n请自然对话。\n\n[动作协议]\n1. 字段齐全先 @{require_confirm}，用户口头确认后再 @{ppt_init}。"},
+  {"role":"user", "content":"好的就这样吧"},
+  {"role":"assistant", "content":"#{字段齐全，先确认} 好的，请确认界面摘要 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请确认是否正确。"},
+  {"role":"user", "content":"确认，开始制作"},
+  {"role":"assistant", "content":"#{用户口头确认后才能init} 好的，开始创建 @{ppt_init}"},
+  {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_f_101</tool>"},
+  {"role":"assistant", "content":"任务已创建，正在生成。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，字段已齐全。"},
+  {"role":"user", "content":"可以，就按这个来"},
+  {"role":"assistant", "content":"#{先confirm} 好的，请确认摘要 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"确认后我就开始创建。"},
+  {"role":"user", "content":"确认"},
+  {"role":"assistant", "content":"#{确认后init} @{ppt_init}"},
+  {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_f_201</tool>"},
+  {"role":"assistant", "content":"任务创建成功。"}
+}
+
+// F2: 用户否认后改字段再确认
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：无\n\n[动作协议]\n1. 否认后先 update_requirements，再 require_confirm。"},
+  {"role":"user", "content":"等下，页数改成30页"},
+  {"role":"assistant", "content":"#{用户否认并改口字段} 好的 @{update_requirements|total_pages:30}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已更新，请重新确认 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请确认更新后的信息。"},
+  {"role":"user", "content":"确认了"},
+  {"role":"assistant", "content":"#{确认后init} @{ppt_init}"},
+  {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_f_102</tool>"},
+  {"role":"assistant", "content":"已开始生成。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在确认最终需求。"},
+  {"role":"user", "content":"不对，受众改成大三学生"},
+  {"role":"assistant", "content":"#{先改字段} 好的 @{update_requirements|audience:大三学生}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已更新，请重新确认 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请确认更新后的信息。"},
+  {"role":"user", "content":"确认无误"},
+  {"role":"assistant", "content":"#{确认后init} @{ppt_init}"},
+  {"role":"user", "content":"<tool>ppt_init:PPT任务已创建，TaskID: task_f_202</tool>"},
+  {"role":"assistant", "content":"已开始生成。"}
+}
+
+// F3: 字段不全时催促开始
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在帮助用户收集制作PPT所需的信息。\n\n还需要收集以下信息：teaching_goals, key_difficulties\n\n[动作协议]\n1. 字段不全不能直接confirm/init。"},
+  {"role":"user", "content":"差不多了，直接开始吧"},
+  {"role":"assistant", "content":"#{字段未齐，先补采} 还缺教学目标和重难点，能补充一下吗？"},
+  {"role":"user", "content":"目标是掌握数据库范式，重难点是多表连接设计"},
+  {"role":"assistant", "content":"#{先更新缺失字段} 好的 @{update_requirements|teaching_goals:掌握数据库范式|key_difficulties:多表连接设计}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"信息已齐全，请确认 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请确认全部信息是否正确。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手。\n\n还需要收集以下信息：interaction_design, output_formats"},
+  {"role":"user", "content":"直接开始做吧"},
+  {"role":"assistant", "content":"#{字段未齐，先追问} 还缺互动设计和输出格式，补充一下吧。"},
+  {"role":"user", "content":"互动是课堂问答，输出PPTX"},
+  {"role":"assistant", "content":"#{补齐缺失字段} 好的 @{update_requirements|interaction_design:课堂问答|output_formats:PPTX}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"已补齐，请确认 @{require_confirm}"},
+  {"role":"user", "content":"<tool>require_confirm:已发送确认请求，等待用户确认</tool>"},
+  {"role":"assistant", "content":"请确认信息是否正确。"}
+}
+
+// ==================== G. 字段改口/覆盖 ====================
+
+// G1: 单字段改口
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。\n\n[动作协议]\n1. 改口仅覆盖用户明确提到的字段。"},
+  {"role":"user", "content":"不对，主题改成唯物主义史观"},
+  {"role":"assistant", "content":"#{仅覆盖topic} 好的 @{update_requirements|topic:唯物主义史观}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"主题已改为唯物主义史观。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。"},
+  {"role":"user", "content":"页数不对，改成18页"},
+  {"role":"assistant", "content":"#{单字段覆盖total_pages} 好的 @{update_requirements|total_pages:18}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"页数已更新为18页。"}
+}
+
+// G2: 多字段同时改口
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。\n\n[动作协议]\n1. 改口仅覆盖用户明确提到的字段。"},
+  {"role":"user", "content":"受众改成大二学生，风格改成极简黑白"},
+  {"role":"assistant", "content":"#{覆盖audience和global_style} 好的 @{update_requirements|audience:大二学生|global_style:极简黑白}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"受众和风格都已更新。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。"},
+  {"role":"user", "content":"时长改成90分钟，重难点改成事务隔离级别"},
+  {"role":"assistant", "content":"#{多字段覆盖} 好的 @{update_requirements|duration:90分钟|key_difficulties:事务隔离级别}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"时长和重难点都已更新。"}
+}
+
+// G3: 用户否定但没给新值，先追问
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。\n\n[动作协议]\n1. 用户未给新值时不能猜测。"},
+  {"role":"user", "content":"这个教学目标不对"},
+  {"role":"assistant", "content":"#{未给新值，先追问} 明白了，教学目标应改成什么内容？"},
+  {"role":"user", "content":"改成让学生会做基础SQL查询"},
+  {"role":"assistant", "content":"#{拿到新值再覆盖} 好的 @{update_requirements|teaching_goals:让学生会做基础SQL查询}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"教学目标已更新。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，正在收集需求。"},
+  {"role":"user", "content":"知识点不对"},
+  {"role":"assistant", "content":"#{先追问具体新值} 明白了，知识点应改成哪些内容？"},
+  {"role":"user", "content":"改成行列式的性质和拉普拉斯定理"},
+  {"role":"assistant", "content":"#{拿到新值再更新} 好的 @{update_requirements|knowledge_points:行列式的性质和拉普拉斯定理}"},
+  {"role":"user", "content":"<tool>update_requirements:需求信息已更新</tool>"},
+  {"role":"assistant", "content":"知识点已更新。"}
+}
+
+// ==================== H. 工具结果延迟消费 ====================
+
+// H1: 单工具结果延迟到下一轮
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。\n\n[动作协议]\n1. 工具结果可能在下一轮flush进历史。"},
+  {"role":"user", "content":"帮我查数据库事务的定义"},
+  {"role":"assistant", "content":"#{先发起查询} 好的 @{kb_query|query:数据库事务定义}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在检索，你还想了解哪个点？"},
+  {"role":"user", "content":"顺便说下ACID分别是什么"},
+  {"role":"user", "content":"<tool>kb_query:事务是数据库操作的逻辑单元，具备ACID特性。</tool>"},
+  {"role":"assistant", "content":"#{本轮同时收到新问题和延迟结果} ACID分别是原子性、一致性、隔离性、持久性。补充下检索结果：事务是数据库操作的逻辑单元。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。"},
+  {"role":"user", "content":"查一下索引失效的常见原因"},
+  {"role":"assistant", "content":"#{发起查询} 好的 @{kb_query|query:索引失效 常见原因}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在查，你也可以继续提问。"},
+  {"role":"user", "content":"那联合索引最左匹配怎么理解"},
+  {"role":"user", "content":"<tool>kb_query:索引失效常见于函数操作、类型隐式转换、前导模糊匹配等。</tool>"},
+  {"role":"assistant", "content":"#{新问题+延迟结果同轮融合} 最左匹配是指联合索引要从最左列开始连续使用。补充检索结果：索引失效常见于函数操作、隐式转换和前导模糊匹配。"}
+}
+
+// H2: 多工具结果积压后同轮消费
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。\n\n[动作协议]\n1. 多个工具结果可能同轮到达。"},
+  {"role":"user", "content":"同时查知识库和网络：机器学习定义"},
+  {"role":"assistant", "content":"#{并发发起两个工具} 好的 @{kb_query|query:机器学习定义} @{web_search|query:机器学习定义 科普}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"},
+  {"role":"user", "content":"我先等你结果"},
+  {"role":"user", "content":"<tool>kb_query:机器学习是让系统从数据中学习规律的方法。</tool>"},
+  {"role":"user", "content":"<tool>web_search:常见机器学习类型包括监督学习、无监督学习、强化学习。</tool>"},
+  {"role":"assistant", "content":"#{积压结果同轮消费并整合} 结果到了：机器学习是让系统从数据中学习规律的方法，常见类型有监督学习、无监督学习和强化学习。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。"},
+  {"role":"user", "content":"同时查知识库和网络：ACID 的工程实践"},
+  {"role":"assistant", "content":"#{并发查询} 好的 @{kb_query|query:ACID 工程实践} @{web_search|query:ACID 工程实践 案例}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在进行中。"},
+  {"role":"user", "content":"我先看别的，你有结果再说"},
+  {"role":"user", "content":"<tool>kb_query:工程实践中通过事务边界、重试机制和一致性校验保障ACID。</tool>"},
+  {"role":"user", "content":"<tool>web_search:常见案例包括订单系统事务一致性与支付补偿机制。</tool>"},
+  {"role":"assistant", "content":"#{同轮消费两个积压结果} 结果已到：实践里常用事务边界、重试机制、一致性校验；案例常见于订单与支付补偿场景。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。"},
+  {"role":"user", "content":"同时查数据库锁和死锁处理方案"},
+  {"role":"assistant", "content":"#{并发发起两个异步工具} 好的 @{kb_query|query:数据库锁机制} @{web_search|query:数据库 死锁 处理 方案}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"正在同时查询。"},
+  {"role":"user", "content":"另外再说下乐观锁和悲观锁的区别"},
+  {"role":"user", "content":"<tool>kb_query:锁机制包括共享锁、排他锁与意向锁。</tool>"},
+  {"role":"user", "content":"<tool>web_search:死锁处理常见方式有超时回滚、资源排序、死锁检测。</tool>"},
+  {"role":"assistant", "content":"#{用户新问题和两个tool结果同轮flush} 乐观锁通常通过版本号/时间戳避免冲突，悲观锁是先加锁再操作。补充查询结果：数据库锁包括共享锁和排他锁；死锁处理常见超时回滚、资源排序和死锁检测。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。"},
+  {"role":"user", "content":"同时查牛顿三定律和生活中的应用案例"},
+  {"role":"assistant", "content":"#{并发查询两个主题} 好的 @{kb_query|query:牛顿三定律 核心内容} @{web_search|query:牛顿三定律 生活应用案例}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>web_search:已发送，等待搜索结果</tool>"},
+  {"role":"assistant", "content":"两个查询都在路上。"},
+  {"role":"user", "content":"那再补一句：惯性在运动里怎么理解"},
+  {"role":"user", "content":"<tool>web_search:应用案例包括急刹车前倾、抛物运动、火箭推进等。</tool>"},
+  {"role":"user", "content":"<tool>kb_query:牛顿三定律包括惯性定律、加速度定律、作用力与反作用力定律。</tool>"},
+  {"role":"assistant", "content":"#{同轮收到用户新话+双结果，先答新话再补结果} 惯性可以理解为物体保持原有运动状态的性质。补充结果：三定律分别是惯性、F=ma、作用反作用；应用案例有急刹车前倾和火箭推进等。"}
+}
+{
+  {"role":"system", "content":"你是一个专业的教学课件制作助手，支持异步工具结果衔接。"},
+  {"role":"user", "content":"并行查一下辛亥革命背景和五四运动意义"},
+  {"role":"assistant", "content":"#{并发发起两个异步查询} 好的 @{kb_query|query:辛亥革命 历史背景} @{kb_query|query:五四运动 历史意义}"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+  {"role":"assistant", "content":"正在并行检索。"},
+  {"role":"user", "content":"先告诉我两者在近代史中的联系"},
+  {"role":"user", "content":"<tool>kb_query:辛亥革命推动了清朝覆灭并开启共和政体探索。</tool>"},
+  {"role":"user", "content":"<tool>kb_query:五四运动促进了思想解放与新文化传播，推动民族觉醒。</tool>"},
+  {"role":"assistant", "content":"#{同轮flush两条结果并响应用户新问} 两者都推动了中国近代社会转型：辛亥革命在政治体制上破旧立新，五四运动在思想文化上深化变革。补充结果：辛亥革命开启共和探索，五四运动推动思想解放与民族觉醒。"}
+}
