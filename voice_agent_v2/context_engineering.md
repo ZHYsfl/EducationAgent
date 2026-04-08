@@ -1,5 +1,5 @@
 核心思想就是，先1s 1s流式asr,把结果结合history，预热kv-cache（thinkLoop纯warmup，所有token丢弃），一直到vad_end且2pass的结果出来的时候，ctx.cancel()掉所有的正在推理的goroutine,然后正式推理，推理的每个周期其实是think->output->[]action或者think->[]action->output,think是#{xxx},output是xxxxx正常输出，[]action是@{xxx|xxx}@{xxxx|xxxx}这样，然后output或[]action可以为空，但是如果两者同时为空，那么#{}后一定不能再有东西了，否则两个#{}#{}挨在一起是有问题的。如果被打  
-断（用户又开始vad_start),那么如果这时候是@{xxxx|xxx}是最新输出（通过检测是否有@但是后面没有}判断），必须等待}输出了再cancel()掉然后上下文加</interrupted>,因为是流式输出，每次等1s检查下就行，如果下次检查虽然上次动作闭合了但是又有新的@没闭合，继续等，最多等3s(检查三次），如果第三次发现还没闭合成功，硬性cancel,然后把@包括其后面没闭合的从上下文里删去，然后用户vad_end后<user>xxxxx</user>以此类推；如果不是这类情况都可以直接打断加</interrupted>.然后流式的时候一旦每次解析出一个@{xxx|xxx}立马执行，所有的动作都是异步的，等待后续其他模块post给结果就好，给的结果统一放context queue，工具结果以<tool>xxxx</tool>形式通过flushToolResults()在每次LLM调用前写入对话历史（role: tool），不注入system prompt。所以用go的表达方式，就是若type Tool = <tool>xxx</tool>,type User = <user>xxx</user>,type Action = @{xx|xxx},type Think=#{xxxxx},type Output = xxxx,type Model = Think+Output+[]Action / Think+[]Action+Output / Think+[]Action / Think+Output,type AI = Optional[ []Model ]+Optional[ Think ]+Optional[ </interrupted> ]的情况下，那么[]Tool随时可能穿插在User整体和AI整体之间的，通过这种方式可以管理上下文了，这下清楚了：ALL CONTEXT = User , AI , []Tool 的三人转。每次用户<user>xxx</user>的vad_start记录时间戳和PPT快照，一遍后续用（比如ppt_mod需要用户说话时候的时间戳和快照状态）。
+断（用户又开始vad_start),那么如果这时候是@{xxxx|xxx}是最新输出（通过检测是否有@但是后面没有}判断），必须等待}输出了再cancel()掉然后上下文加</interrupted>,因为是流式输出，每次等1s检查下就行，如果下次检查虽然上次动作闭合了但是又有新的@没闭合，继续等，最多等2s(检查两次），如果第二次发现还没闭合成功，硬性cancel,然后把@包括其后面没闭合的从上下文里删去，然后用户vad_end后<user>xxxxx</user>以此类推；如果不是这类情况都可以直接打断加</interrupted>.然后流式的时候一旦每次解析出一个@{xxx|xxx}立马执行，所有的动作都是异步的，等待后续其他模块post给结果就好，给的结果统一放context queue，工具结果以<tool>xxxx</tool>形式通过flushToolResults()在每次LLM调用前写入对话历史（role: tool），不注入system prompt。所以用go的表达方式，就是若type Tool = <tool>xxx</tool>,type User = <user>xxx</user>,type Action = @{xx|xxx},type Think=#{xxxxx},type Output = xxxx,type Model = Think+Output+[]Action / Think+[]Action+Output / Think+[]Action / Think+Output,type AI = Optional[ []Model ]+Optional[ Think ]+Optional[ </interrupted> ]的情况下，那么[]Tool随时可能穿插在User整体和AI整体之间的，通过这种方式可以管理上下文了，这下清楚了：ALL CONTEXT = User , AI , []Tool 的三人转。每次用户<user>xxx</user>的vad_start记录时间戳和PPT快照，一遍后续用（比如ppt_mod需要用户说话时候的时间戳和快照状态）。
 
 我们的工具调用协议在voice agent上体现为以下工具：
 1.@{kb_query|query:查询内容}
@@ -78,7 +78,7 @@ protocolInstructions：
 
 ---
 
-工具调用数据集(4175条):
+工具调用数据集(4875条):
 我们的7个工具：
 1. kb_query ✓                                                            - 一次：kb_query:kb_query已发送，等待检索结果                          
 - 二次：外部 ppt_message 回调 → kb_query:检索内容                      
@@ -214,7 +214,7 @@ protocolInstructions：
     {"role":"assistant", "content":"#{收到之前工具的结果，结合新指令} 补充回复..."}
 }
 
-// B3: @{} 输出到一半超3s被硬截断 50条
+// B3: @{} 输出到一半超2s被硬截断 50条
 // 不完整的 @{ 被删除，</interrupted> 追加在截断处
 {
     {"role":"system", "content":"<具体身份定位>"},
@@ -223,6 +223,24 @@ protocolInstructions：
     // 注：原始输出可能是 "让我查一下 @{kb_query|quer" 但不完整@{被删除
     {"role":"user", "content":"用户新指令"},
     {"role":"assistant", "content":"#{被打断，工具未发出，响应新指令} 好的..."}
+}
+
+// B3b: @{} 闭合后被打断，工具已发出但后续自然语言被截断，下一轮补发工具结果 50条
+// @{ 在等待期间成功闭合（工具已触发），但之后的自然语言被 </interrupted> 截断
+// 模型需要意识到工具已发出，下一轮 tool 结果到来时正常消费
+{
+    {"role":"system", "content":"<具体身份定位>"},
+    {"role":"user", "content":"帮我查一下导数定义"},
+    {"role":"assistant", "content":"#{思考} 好的 @{kb_query|query:导数定义} 正在查</interrupted>"},
+    // 注：@{} 已完整闭合，工具已触发，后续"正在查"被截断
+    {"role":"user", "content":"等等，顺便也查一下极限"},
+    {"role":"assistant", "content":"#{工具已发出，同时响应用户新指令，补发新工具} 好的，同时查导数和极限 @{kb_query|query:极限定义}"},
+    {"role":"user", "content":"<tool>kb_query:已发送，等待检索结果</tool>"},
+    {"role":"assistant", "content":"#{两个查询都在路上} 正在同时查询..."},
+    {"role":"user", "content":"<tool>kb_query:导数是函数在某点的瞬时变化率...</tool>"},
+    {"role":"assistant", "content":"#{收到第一个结果，还有一个未回} 导数的定义是：函数在某点的瞬时变化率..."},
+    {"role":"user", "content":"<tool>kb_query:极限是函数趋近某点时的值...</tool>"},
+    {"role":"assistant", "content":"#{收到第二个结果，综合回复} 极限的定义是：函数趋近某点时的值..."}
 }
 
 // B4: 异步工具结果隔多轮才回来 50条
@@ -710,4 +728,129 @@ protocolInstructions：
     {"role":"assistant", "content":"#{用户回答冲突} @{ppt_mod|raw_text:以文字为准|user_distance:1}"},
     {"role":"user", "content":"<tool>ppt_mod:PPT修改请求已发送</tool>"},
     {"role":"assistant", "content":"好的，已处理。"}
+}
+
+---
+
+// L. 格式遵循专项（Format Compliance）
+
+// 核心规则：
+// 1. 思考内容必须放在 #{} 里，不能泄露到自然语言输出
+// 2. @{} 格式严格：工具名|k:v|k:v，不加多余空格/换行/引号
+// 3. #{} 和 @{} 之间用空格分隔，不用换行
+// 4. 自然语言输出在 @{} 之后，不夹在 @{} 参数里
+// 5. </interrupted> 只追加在被打断的 assistant 消息末尾，不单独成行
+
+// L1: 思考内容不泄露到输出 75条
+// 错误示范：直接把推理过程说出来
+// 正确示范：推理放 #{}，输出只有结论
+{
+    {"role":"user", "content":"帮我查一下高中数学导数的定义"},
+    {"role":"assistant", "content":"#{用户需要查导数定义，应该用kb_query，query参数填导数定义} 好的，我来查一下 @{kb_query|query:导数定义}"}
+    // 错误写法（不能出现在训练数据里）：
+    // {"role":"assistant", "content":"我觉得应该用kb_query来查，query填导数定义，好的 @{kb_query|query:导数定义}"}
+}
+
+// L2: @{} 参数格式严格，不加引号/空格/换行 75条
+{
+    {"role":"user", "content":"主题是高中数学，受众是高三学生，做20页"},
+    {"role":"assistant", "content":"#{三个字段} @{update_requirements|topic:高中数学|audience:高三学生|total_pages:20}"}
+    // 错误写法（不能出现）：
+    // @{update_requirements | topic: 高中数学 | audience: 高三学生}  （多余空格）
+    // @{update_requirements|topic:"高中数学"|audience:"高三学生"}    （多余引号）
+}
+
+// L3: 多个 @{} 之间用空格分隔，不换行 50条
+{
+    {"role":"user", "content":"同时查知识库和搜索网络"},
+    {"role":"assistant", "content":"#{两个工具} 好的，同时查询 @{kb_query|query:xxx} @{web_search|query:xxx}"}
+    // 错误写法（不能出现）：
+    // "好的\n@{kb_query|query:xxx}\n@{web_search|query:xxx}"  （换行分隔）
+}
+
+// L4: 自然语言不夹在 @{} 参数里 50条
+{
+    {"role":"user", "content":"把第三页背景改蓝色"},
+    {"role":"assistant", "content":"#{ppt_mod} 好的 @{ppt_mod|raw_text:把第三页背景改蓝色|user_distance:1} 修改请求已发送"}
+    // 错误写法（不能出现）：
+    // @{ppt_mod|raw_text:把第三页背景改蓝色，好的我来改|user_distance:1}  （自然语言混入参数）
+}
+
+// L5: </interrupted> 位置正确 50条
+{
+    {"role":"user", "content":"帮我查一下"},
+    {"role":"assistant", "content":"#{发起查询} 好的，我来查 @{kb_query|query:xxx}</interrupted>"},
+    {"role":"user", "content":"不用查了"},
+    {"role":"assistant", "content":"#{用户打断，放弃查询} 好的，不查了。"}
+    // 错误写法（不能出现）：
+    // {"role":"assistant", "content":"</interrupted>好的，不查了。"}  （</interrupted>出现在新消息开头）
+}
+
+// L6: #{} 内容不为空，必须有实质推理 50条
+{
+    {"role":"user", "content":"你好"},
+    {"role":"assistant", "content":"#{用户打招呼，这是纯对话场景，不需要调用工具，直接回复} 你好！有什么我可以帮你的？"}
+    // 错误写法（不能出现）：
+    // {"role":"assistant", "content":"#{} 你好！"}  （空think）
+    // {"role":"assistant", "content":"你好！"}       （缺少think）
+}
+
+// L7: 工具参数值含特殊字符时的处理 50条
+// raw_text 里用户原话可能含竖线、冒号等，直接放入不转义
+{
+    {"role":"user", "content":"把标题改成：高中数学|导数专题"},
+    {"role":"assistant", "content":"#{ppt_mod，raw_text是用户原话，直接放入} @{ppt_mod|raw_text:把标题改成：高中数学|导数专题|user_distance:1}"}
+}
+
+---
+
+// M. 边界拒绝专项（Boundary Handling）
+
+// 核心规则：
+// 1. 用户说模糊的话，不能脑补字段值，必须追问
+// 2. 纯闲聊场景不触发任何工具
+// 3. 用户说"随便/都行"，不能乱填，要追问或给选项
+// 4. 字段不全时不能提前发 require_confirm 或 ppt_init
+// 5. 用户没有明确修改意图时不能乱发 ppt_mod
+
+// M1: 用户说模糊话，不脑补字段，追问 75条
+{
+    {"role":"user", "content":"帮我做个PPT"},
+    {"role":"assistant", "content":"#{用户没给任何字段，不能乱猜，追问topic} 好的，请问PPT的主题是什么？"}
+    // 错误写法（不能出现）：
+    // @{update_requirements|topic:PPT}  （乱猜topic）
+}
+
+// M2: 用户说"随便"，追问而不是乱填 50条
+{
+    {"role":"system", "content":"<具体身份定位，已记录topic=高中数学导数>"},
+    {"role":"user", "content":"风格随便"},
+    {"role":"assistant", "content":"#{用户说随便，不能乱填global_style，给几个选项} 风格有几种常见选择：简约白色、深色商务、彩色活泼，你倾向哪种？"}
+    // 错误写法（不能出现）：
+    // @{update_requirements|global_style:随便}
+}
+
+// M3: 纯闲聊，不触发工具 75条
+{
+    {"role":"user", "content":"你觉得高中数学难吗"},
+    {"role":"assistant", "content":"#{纯闲聊，不需要工具} 高中数学对很多同学来说确实有挑战，尤其是导数和极限这块..."}
+    // 错误写法（不能出现）：
+    // @{kb_query|query:高中数学难度}  （不必要的工具调用）
+}
+
+// M4: 字段不全，不能提前 require_confirm 50条
+{
+    {"role":"system", "content":"<具体身份定位，只收集了topic和audience，其余字段为空>"},
+    {"role":"user", "content":"差不多了吧，确认一下"},
+    {"role":"assistant", "content":"#{字段不全，不能发require_confirm，告知缺少哪些} 还差一些信息：页数、教学目标、重难点等还没填，能补充一下吗？"}
+    // 错误写法（不能出现）：
+    // @{require_confirm}  （字段不全时不能发）
+}
+
+// M5: 用户没有明确修改意图，不乱发 ppt_mod 50条
+{
+    {"role":"user", "content":"第三页感觉不太好"},
+    {"role":"assistant", "content":"#{用户表达不满但没说具体改什么，追问} 第三页哪里感觉不太好？是内容、布局还是颜色？"}
+    // 错误写法（不能出现）：
+    // @{ppt_mod|raw_text:第三页感觉不太好|user_distance:1}  （没有明确修改意图）
 }
