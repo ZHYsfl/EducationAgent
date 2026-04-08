@@ -25,8 +25,11 @@ func (r *MemoryRepository) UpsertMemoryEntry(in model.MemoryEntry) (model.Memory
 		ctx = "general"
 	}
 	var existing model.MemoryEntry
-	err := r.db.Where("user_id = ? AND key = ? AND context = ?", in.UserID, in.Key, ctx).First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	tx := r.db.Where("user_id = ? AND key = ? AND context = ?", in.UserID, in.Key, ctx).Limit(1).Find(&existing)
+	if tx.Error != nil {
+		return model.MemoryEntry{}, tx.Error
+	}
+	if tx.RowsAffected == 0 {
 		entry := in
 		entry.ID = util.NewMemoryID()
 		entry.Context = ctx
@@ -42,9 +45,6 @@ func (r *MemoryRepository) UpsertMemoryEntry(in model.MemoryEntry) (model.Memory
 			return model.MemoryEntry{}, err
 		}
 		return entry, nil
-	}
-	if err != nil {
-		return model.MemoryEntry{}, err
 	}
 	updates := map[string]interface{}{
 		"category":          in.Category,
