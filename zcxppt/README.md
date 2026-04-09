@@ -18,7 +18,7 @@
 | **三路合并**       | 每次反馈修改时获取基线快照，基于 base（基线）/ current（当前）/ incoming（新版本）三路进行 diff 合并，智能检测冲突类型并支持用户选择保留版本     |
 | **知识库融合**    | 调用 KB Service（RAG）获取知识摘要，作为 LLM 生成的内容背景                              |
 | **多格式参考融合**  | 支持上传 PDF/DOCX/PPTX/图片/视频参考文件，通过格式专用解析器提取文字和样式信息并注入 LLM               |
-| **教案自动生成**   | 基于 PPT 主题和教学要素，自动生成结构化 Word 教案（.docx）                                |
+| **教案自动生成**   | 基于 PPT PyCode 内容生成结构化 Word 教案；**与 PPT 实时联动**：每次 PPT 修改自动更新教案对应章节；**三路合并**：保证 Word 教案的并发修改安全                              |
 | **内容多样性**    | 生成教学动画（HTML5/CSS3）和互动小游戏（选择题/连连看/排序/填空）                              |
 | **多格式导出**    | 支持将完整 PPT 导出为 PPTX / DOCX / HTML5                                    |
 | **VAD 事件联动** | 监听 Voice Agent 的 VAD（语音活动检测）事件，自动解除悬挂页面冲突并继续处理待处理反馈队列                |
@@ -32,6 +32,7 @@ Voice Agent（语音交互前端）
     ├── POST /api/v1/ppt/init
     │       → 创建 Task → KB 查询 → LLM 生成多页代码
     │       → Python 渲染（并发） → OSS 上传 → 返回 task_id
+    │       → **联动生成教案**：收集所有 PyCode → LLM 生成 Word 教案 → DOCX 上传
     │
     ├── GET /canvas/status?task_id=
     │       → 返回画布页面路由表和渲染状态
@@ -40,6 +41,7 @@ Voice Agent（语音交互前端）
     │       → 意图解析 → 三路合并（base/current/incoming）
     │       → diff 检测冲突 → 自动合并 / 悬挂提问
     │       → 渲染更新 → 通知 Voice Agent（TTS/下一步）
+    │       → **联动更新教案**：PPT 修改成功后 → 提取页面文本 → LLM 更新对应 Word 章节
     │
     ├── POST /canvas/vad-event
     │       → 解悬挂 → 处理 pending 队列 → 继续反馈流程
@@ -89,7 +91,7 @@ Voice Agent（语音交互前端）
 ├─────────────────────────────────────────────────────────┤
 │                    Repository 层（数据访问）              │
 │  TaskRepository / PPTRepository / FeedbackRepository    │
-│  ExportRepository                                       │
+│  ExportRepository / TeachPlanRepository                   │
 │  （均支持内存模式 ↔ Redis 模式，按配置切换）            │
 ├─────────────────────────────────────────────────────────┤
 │                    Infrastructure 层（外部依赖）          │
@@ -108,6 +110,7 @@ Voice Agent（语音交互前端）
 3. **并发安全**：所有内存存储均使用 `sync.RWMutex`；PPT 渲染使用信号量控制最大并发数（默认 8）
 4. **异步非阻塞**：LLM 生成、渲染、教案生成、内容多样性导出均为异步 goroutine，通过轮询接口或回调通知获取结果
 5. **三路合并-冲突机制**：每次反馈修改时获取基线快照（BaseCode），通过 LLM 生成新版本（Incoming），与当前版本（Current）进行三路 diff 检测；无冲突自动合并，有冲突通过悬挂状态暂停，等待用户明确回复（VAD 事件或超时自动解除）
+6. **教案实时联动**：每次 PPT 修改成功后异步联动更新 Word 教案对应章节；Init 阶段基于 PyCode 生成教案，Feedback 阶段基于修改后的 PyCode 重新生成并三路合并教案 JSON
 
 ---
 
@@ -586,7 +589,11 @@ zcxppt/
   "audience": "初中三年级",
   "duration": "45分钟",
   "teaching_elements": {...},
-  "style_guide": "..."
+  "style_guide": "...",
+  "page_contents": [
+    {"page_id": "page_xxx", "page_index": 1, "title": "封面", "body_text": "...", "py_code": "..."},
+    ...
+  ]
 }
 ```
 
@@ -609,10 +616,10 @@ zcxppt/
 1. 生成唯一 plan_id = "plan_" + UUID
 2. 存储 job 到内存 map（planRepo）
 3. goroutine:
-   ├─ TeachingPlanService.generatePlanContent()
-   │   └─ LLM 生成 JSON 教案（title/subject/teaching_goals/
-   │      teaching_process/warm_up/new_teaching/practice/summary/homework/
-   │      classroom_activities/teaching_reflection/teaching_aids）
+   ├─ 收集所有已渲染页面的 PyCode，提取文本内容构建 page_contents
+   ├─ TeachingPlanService.generatePlanContentFromPyCode()
+   │   └─ LLM 基于 PyCode 实际内容生成 JSON 教案
+   │      （new_teaching 的 mapped_pages 字段精确关联 PPT 页面 ID）
    │
    └─ TeachingPlanService.renderDOCX()
        └─ Python 生成 .docx
@@ -624,6 +631,38 @@ zcxppt/
            ├─ 课堂活动设计
            └─ 教学反思
        └─ 上传 OSS → 返回签名 URL
+```
+
+#### 联动更新逻辑（Feedback → Word 教案）
+
+```
+FeedbackService.Handle(modify)
+    → RunFeedbackLoop（LLM 三路合并）
+    → applyMergeResult（更新 PPT PyCode）
+    → syncWordPlan（异步联动）
+        → 提取修改页面的 PyCode 文本内容
+        → TeachingPlanService.Update()
+            → 获取当前教案（current）+ 基线快照（base）
+            → LLM 生成更新后的教案（incoming）
+            → 三路合并（base/current/incoming）
+            → UpdatePlan() 保存合并结果
+            → 重新渲染 DOCX 上传 OSS
+```
+
+#### 教案三路合并策略
+
+```
+1. base：Init 阶段首次生成的教案快照（TeachPlanRepository）
+2. current：最近一次更新后的教案 JSON
+3. incoming：LLM 基于修改后的 PyCode 重新生成的教案 JSON
+
+合并策略：
+- 两者相同 → 直接返回
+- base 为空或等于 current → 以 incoming 为准
+- 三者均不同 → 字段级 diff，按 key 对 key 合并
+  - 内容相同字段保留
+  - 内容不同字段以 incoming 为准（用户修改覆盖自动更新）
+- 冲突场景（极少）→ 自动采纳 incoming（教案冲突不比 PPT 严重）
 ```
 
 ---
