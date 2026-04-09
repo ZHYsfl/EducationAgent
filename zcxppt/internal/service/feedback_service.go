@@ -76,11 +76,12 @@ type agentInterface interface {
 type FeedbackService struct {
 	pptRepo       repository.PPTRepository
 	feedbackRepo  repository.FeedbackRepository
-	llmRuntime    llm.ToolRuntime
+	llmRuntime   llm.ToolRuntime
 	notify        Notifier
 	renderer      *renderer.Renderer
 	refFusion     *RefFusionService
-	mergeService  *MergeService // 三路合并服务
+	mergeService  *MergeService // PPT 三路合并服务
+	teachPlanService *TeachingPlanService // 教案联动服务（PPT修改时更新Word教案）
 	timeoutTickMu sync.Mutex
 	newAgent      func(cfg toolcalling.LLMConfig) agentInterface
 	llmCfg        LLMClientConfig // 用于页面代码生成的 LLM 配置
@@ -97,6 +98,11 @@ func (s *FeedbackService) AttachMergeService(ms *MergeService) {
 			rt.InjectMergeService(ms)
 		}
 	}
+}
+
+// AttachTeachPlanService 注入教案联动服务，使得每次 PPT 修改时自动联动更新 Word 教案。
+func (s *FeedbackService) AttachTeachPlanService(ts *TeachingPlanService) {
+	s.teachPlanService = ts
 }
 
 // AttachLLMConfig sets the LLM configuration for page code generation (insert operations).
@@ -301,7 +307,11 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			if err != nil {
 				continue
 			}
-			_ = s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
+			applyErr := s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
+			if applyErr == nil && mergeResult.MergeStatus == "auto_resolved" {
+				// ── 联动更新 Word 教案 ──────────────────────────────────────────
+				s.syncWordPlan(req.TaskID, pageID, current, mergeResult.MergedPyCode)
+			}
 			acceptedCount++
 
 		case "insert_before", "insert_after":
@@ -381,7 +391,10 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 				if err != nil {
 					continue
 				}
-				_ = s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
+				applyErr := s.applyMergeResult(ctx, req.TaskID, pageID, mergeResult)
+				if applyErr == nil && mergeResult.MergeStatus == "auto_resolved" {
+					s.syncWordPlan(req.TaskID, pageID, current, mergeResult.MergedPyCode)
+				}
 				acceptedCount++
 			}
 
@@ -990,4 +1003,138 @@ func (s *FeedbackService) extractUserChoice(intents []model.Intent) string {
 		}
 	}
 	return ""
+}
+
+// syncWordPlan 当 PPT 页面被成功修改后，联动更新 Word 教案。
+// 基于修改的页面内容，调用 TeachingPlanService 更新教案对应章节。
+func (s *FeedbackService) syncWordPlan(taskID, pageID string, oldPage model.PageRenderResponse, newPyCode string) {
+	if s.teachPlanService == nil {
+		return
+	}
+
+		// 异步执行，不阻塞反馈流程
+	go func() {
+		ctx := context.Background()
+
+		// 提取修改页面的文本内容
+		title, body := extractTextFromPyCode(newPyCode)
+
+		// 获取该页面在 Canvas 中的顺序（1-based）
+		canvas, _ := s.pptRepo.GetCanvasStatus(taskID)
+		pageIndex := 0
+		for i, pid := range canvas.PageOrder {
+			if pid == pageID {
+				pageIndex = i + 1
+				break
+			}
+		}
+
+		// 构建修改页面的 PageContent
+		modifiedPage := model.PageContent{
+			PageID:    pageID,
+			PageIndex: pageIndex,
+			Title:     title,
+			BodyText:  body,
+			PyCode:    newPyCode,
+		}
+
+		// 获取当前教案的基线时间戳（从 Task 获取）
+		var baseTimestamp int64
+		if tr, ok := s.pptRepo.(interface{ GetTaskIDByPageID(pageID string) (string, error) }); ok {
+			if taskIDFromPage, _ := tr.GetTaskIDByPageID(pageID); taskIDFromPage != "" {
+				// 尝试从 Task 存储中读取 PlanBaseTimestamp
+				// 此处简化处理：直接使用 0，让 TeachingPlanService 使用当前版本
+				baseTimestamp = 0
+			}
+		}
+
+		updateReq := model.TeachingPlanRequest{
+			TaskID:        taskID,
+			Description:   body,
+			PageContents:  []model.PageContent{modifiedPage},
+			BaseTimestamp: baseTimestamp,
+			Action:        "update_chapter",
+		}
+
+		_, updateErr := s.teachPlanService.Update(ctx, updateReq)
+		if updateErr != nil {
+			log.Printf("[feedback] sync word plan failed: task_id=%s page_id=%s err=%v", taskID, pageID, updateErr)
+		} else {
+			log.Printf("[feedback] word plan synced: task_id=%s page_id=%s", taskID, pageID)
+		}
+	}()
+}
+
+// extractTextFromPyCode 从 python-pptx 代码中提取标题和正文文本。
+func extractTextFromPyCode(pyCode string) (title string, body string) {
+	lines := strings.Split(pyCode, "\n")
+	var titleLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// 跳过非文本行
+		if strings.Contains(trimmed, "add_rect(") ||
+			strings.Contains(trimmed, "add_oval(") ||
+			strings.Contains(trimmed, "slide.layout") ||
+			strings.Contains(trimmed, "prs.save") ||
+			strings.Contains(trimmed, "from pptx") ||
+			strings.Contains(trimmed, "import ") ||
+			strings.Contains(trimmed, "prs =") ||
+			strings.Contains(trimmed, "Presentation(") {
+			continue
+		}
+		// 提取带引号的文本内容
+		if strings.Contains(trimmed, "\"") || strings.Contains(trimmed, "'") {
+			titleLines = append(titleLines, extractQuotedTextFromLine(trimmed)...)
+		}
+	}
+	if len(titleLines) > 0 {
+		title = strings.Join(titleLines[:min(len(titleLines), 3)], " ")
+	}
+	if len(titleLines) > 3 {
+		body = strings.Join(titleLines[3:], " ")
+	}
+	if title == "" {
+		title = "未命名页面"
+	}
+	return
+}
+
+// extractQuotedTextFromLine 提取一行中所有引号内的文本。
+func extractQuotedTextFromLine(line string) []string {
+	var results []string
+	rest := line
+	for {
+		idx1 := -1
+		var delim byte = '"'
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == '"' || rest[i] == '\'' {
+				idx1 = i
+				delim = rest[i]
+				break
+			}
+		}
+		if idx1 < 0 {
+			break
+		}
+		rest = rest[idx1+1:]
+		idx2 := -1
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == delim {
+				idx2 = i
+				break
+			}
+		}
+		if idx2 < 0 {
+			break
+		}
+		text := strings.TrimSpace(rest[:idx2])
+		if text != "" && len(text) > 1 {
+			results = append(results, text)
+		}
+		rest = rest[idx2+1:]
+	}
+	return results
 }

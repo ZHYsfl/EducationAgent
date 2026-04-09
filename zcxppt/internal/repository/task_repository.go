@@ -18,6 +18,7 @@ type TaskRepository interface {
 	GetByID(taskID string) (model.Task, error)
 	UpdateStatus(taskID, status string, progress int) (model.Task, error)
 	UpdatePlanID(taskID, planID string) error
+	UpdatePlanBaseTimestamp(taskID string, ts int64) error
 	UpdateContentResultID(taskID, resultID string) error
 	ListBySession(sessionID string, page, pageSize int) ([]model.Task, int, error)
 }
@@ -80,6 +81,19 @@ func (r *InMemoryTaskRepository) UpdatePlanID(taskID, planID string) error {
 		return ErrTaskNotFound
 	}
 	t.PlanID = planID
+	t.UpdatedAt = time.Now().UTC()
+	r.tasks[taskID] = t
+	return nil
+}
+
+func (r *InMemoryTaskRepository) UpdatePlanBaseTimestamp(taskID string, ts int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t, ok := r.tasks[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	t.PlanBaseTimestamp = ts
 	t.UpdatedAt = time.Now().UTC()
 	r.tasks[taskID] = t
 	return nil

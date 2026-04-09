@@ -152,6 +152,13 @@ func main() {
 		exportService.AttachPPTRepository(pptRepo)
 	}
 
+	var teachPlanRepo repository.TeachPlanRepository
+	if strings.EqualFold(cfg.TeachPlanRepoMode, "redis") {
+		teachPlanRepo = repository.NewRedisTeachPlanRepository(redisClient)
+	} else {
+		teachPlanRepo = repository.NewInMemoryTeachPlanRepository()
+	}
+
 	teachingPlanService := service.NewTeachingPlanService(
 		service.LLMClientConfig{
 			APIKey:  cfg.LLMAPIKey,
@@ -165,7 +172,10 @@ func main() {
 			URLPrefix:  cfg.RenderURLPrefix,
 		},
 		ossClient,
+		teachPlanRepo,
 	)
+	// 注入教案联动服务到 FeedbackService（PPT修改时自动更新Word教案）
+	feedbackService.AttachTeachPlanService(teachingPlanService)
 
 	contentDiversityService := service.NewContentDiversityService(
 		service.LLMClientConfig{
