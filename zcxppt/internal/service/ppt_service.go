@@ -250,6 +250,21 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 	// 两个 goroutine 均与 PPT 生成解耦，并发执行
 	if req.AutoGenerateTeachingPlan && s.teachingPlanService != nil {
 		go func() {
+			// 收集所有已渲染页面的 PyCode，提取文本内容用于生成教案
+			var pageContents []model.PageContent
+			for i, pageID := range canvas.PageOrder {
+				page, err := s.pptRepo.GetPageRender(taskID, pageID)
+				if err != nil || page.PyCode == "" {
+					continue
+				}
+				pageContents = append(pageContents, model.PageContent{
+					PageID:    pageID,
+					PageIndex: i + 1,
+					Title:     extractPageTitle(page.PyCode),
+					BodyText:  extractPageBody(page.PyCode),
+					PyCode:    page.PyCode,
+				})
+			}
 			planReq := model.TeachingPlanRequest{
 				TaskID:           taskID,
 				Topic:            req.Topic,
@@ -258,6 +273,7 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 				Audience:         req.Audience,
 				Duration:         req.TeachingElements.Duration,
 				TeachingElements: req.TeachingElements,
+				PageContents:     pageContents, // 基于 PyCode 内容生成
 			}
 			planResp, planErr := s.teachingPlanService.Generate(context.Background(), planReq)
 			if planErr != nil {
@@ -265,6 +281,10 @@ func (s *PPTService) runInitGeneration(req model.PPTInitRequest, taskID string) 
 				return
 			}
 			_ = s.taskRepo.UpdatePlanID(taskID, planResp.PlanID)
+			// 保存教案基线时间戳（用于后续三路合并）
+			if tr, ok := s.taskRepo.(interface{ UpdatePlanBaseTimestamp(taskID string, ts int64) error }); ok {
+				_ = tr.UpdatePlanBaseTimestamp(taskID, time.Now().UnixMilli())
+			}
 			log.Printf("auto teaching_plan generated: task_id=%s plan_id=%s", taskID, planResp.PlanID)
 		}()
 	}
@@ -704,4 +724,91 @@ func formatTeachingElementsForPrompt(te *model.InitTeachingElements) string {
 		return "teaching_elements=(序列化失败)"
 	}
 	return "teaching_elements=" + string(b)
+}
+
+// extractPageTitle 从 python-pptx 代码中提取标题文本。
+func extractPageTitle(pyCode string) string {
+	lines := strings.Split(pyCode, "\n")
+	var candidates []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(trimmed, "add_rect(") || strings.Contains(trimmed, "add_oval(") ||
+			strings.Contains(trimmed, "slide.layout") || strings.Contains(trimmed, "prs.save") ||
+			strings.Contains(trimmed, "from pptx") || strings.Contains(trimmed, "import ") ||
+			strings.Contains(trimmed, "prs =") || strings.Contains(trimmed, "Presentation(") {
+			continue
+		}
+		if strings.Contains(trimmed, "\"") || strings.Contains(trimmed, "'") {
+			candidates = append(candidates, extractQuotedStrings(trimmed)...)
+		}
+	}
+	if len(candidates) > 0 {
+		return strings.Join(candidates[:min(len(candidates), 3)], " ")
+	}
+	return "未命名页面"
+}
+
+// extractPageBody 从 python-pptx 代码中提取正文文本（标题之后的内容）。
+func extractPageBody(pyCode string) string {
+	lines := strings.Split(pyCode, "\n")
+	var candidates []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(trimmed, "add_rect(") || strings.Contains(trimmed, "add_oval(") ||
+			strings.Contains(trimmed, "slide.layout") || strings.Contains(trimmed, "prs.save") ||
+			strings.Contains(trimmed, "from pptx") || strings.Contains(trimmed, "import ") ||
+			strings.Contains(trimmed, "prs =") || strings.Contains(trimmed, "Presentation(") {
+			continue
+		}
+		if strings.Contains(trimmed, "\"") || strings.Contains(trimmed, "'") {
+			candidates = append(candidates, extractQuotedStrings(trimmed)...)
+		}
+	}
+	if len(candidates) > 3 {
+		return strings.Join(candidates[3:], " ")
+	}
+	return ""
+}
+
+// extractQuotedStrings 提取一行中所有引号内的文本。
+func extractQuotedStrings(line string) []string {
+	var results []string
+	rest := line
+	for {
+		idx1 := -1
+		var delim byte = '"'
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == '"' || rest[i] == '\'' {
+				idx1 = i
+				delim = rest[i]
+				break
+			}
+		}
+		if idx1 < 0 {
+			break
+		}
+		rest = rest[idx1+1:]
+		idx2 := -1
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == delim {
+				idx2 = i
+				break
+			}
+		}
+		if idx2 < 0 {
+			break
+		}
+		text := strings.TrimSpace(rest[:idx2])
+		if text != "" && len(text) > 1 {
+			results = append(results, text)
+		}
+		rest = rest[idx2+1:]
+	}
+	return results
 }

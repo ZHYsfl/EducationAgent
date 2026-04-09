@@ -95,6 +95,17 @@ func (r *RedisTaskRepository) UpdatePlanID(taskID, planID string) error {
 	return r.saveTask(ctx, t)
 }
 
+func (r *RedisTaskRepository) UpdatePlanBaseTimestamp(taskID string, ts int64) error {
+	ctx := context.Background()
+	t, err := r.GetByID(taskID)
+	if err != nil {
+		return err
+	}
+	t.PlanBaseTimestamp = ts
+	t.UpdatedAt = time.Now().UTC()
+	return r.saveTask(ctx, t)
+}
+
 func (r *RedisTaskRepository) UpdateContentResultID(taskID, resultID string) error {
 	ctx := context.Background()
 	t, err := r.GetByID(taskID)

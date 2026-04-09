@@ -26,6 +26,7 @@ type Config struct {
 	LLMBaseURL       string
 	TaskRepoMode     string
 	TaskTTLHours     int
+	TeachPlanRepoMode string
 	OSSProvider      string
 	OSSBucket        string
 	OSSRegion        string
@@ -65,6 +66,7 @@ func Load() Config {
 		LLMBaseURL:       getEnv("LLM_BASE_URL", "https://api.moonshot.cn/v1"),
 		TaskRepoMode:     getEnv("TASK_REPO_MODE", "redis"),
 		TaskTTLHours:     getEnvInt("TASK_TTL_HOURS", 168),
+		TeachPlanRepoMode: getEnv("TEACHPLAN_REPO_MODE", "redis"),
 		OSSProvider:      getEnv("OSS_PROVIDER", "local"),
 		OSSBucket:        getEnv("OSS_BUCKET", "exports"),
 		OSSRegion:        getEnv("OSS_REGION", ""),

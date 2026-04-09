@@ -13,6 +13,9 @@ type Intent struct {
 	GameType string `json:"game_type,omitempty"`
 	// ResultID 仅在 action_type 为 "generate_animation" 或 "generate_game" 时填充
 	ResultID string `json:"result_id,omitempty"`
+	// WordSection 当 action_type 为 "modify" 时，标记此修改影响的教案章节
+	// 格式如 "new_teaching[1]" 表示 new_teaching 的第1个步骤，"teaching_goals" 表示教学目标
+	WordSection string `json:"word_section,omitempty"`
 }
 
 type FeedbackRequest struct {
