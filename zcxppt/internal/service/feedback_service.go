@@ -192,6 +192,17 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			}
 
 			_ = s.feedbackRepo.ResolveSuspend(req.TaskID, req.ViewingPageID)
+
+			// Send ppt_mod_result callback with conflict_resolved flag
+			_ = s.notify.SendPPTMessage(ctx, map[string]any{
+				"task_id":           req.TaskID,
+				"session_id":        "", // Will be filled by voice agent routing
+				"event_type":        "ppt_mod_result",
+				"tts_text":          "修改已完成",
+				"context_id":        req.ReplyToContextID,
+				"conflict_resolved": true,
+			})
+
 			if pending, ok, _ := s.feedbackRepo.DequeuePending(req.TaskID, req.ViewingPageID); ok {
 				_, _ = s.Handle(ctx, model.FeedbackRequest{
 					TaskID:        pending.TaskID,
@@ -229,6 +240,14 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 	// 4. 处理其他意图
 	acceptedCount := 0
 	var contentDiversityResults []model.ContentDiversityResult
+
+	// Send first-phase ppt_mod callback
+	_ = s.notify.SendPPTMessage(ctx, map[string]any{
+		"task_id":    req.TaskID,
+		"session_id": "",
+		"event_type": "ppt_mod",
+		"tts_text":   "已发送，等待处理结果",
+	})
 
 	for idx, intent := range req.Intents {
 		action := strings.ToLower(strings.TrimSpace(intent.ActionType))
@@ -435,6 +454,16 @@ func (s *FeedbackService) Handle(ctx context.Context, req model.FeedbackRequest)
 			log.Printf("[feedback] content_diversity started: task_id=%s result_id=%s type=%s",
 				req.TaskID, divResp.ResultID, action)
 		}
+	}
+
+	// Send second-phase ppt_mod_result callback
+	if acceptedCount > 0 {
+		_ = s.notify.SendPPTMessage(ctx, map[string]any{
+			"task_id":    req.TaskID,
+			"session_id": "",
+			"event_type": "ppt_mod_result",
+			"tts_text":   "修改已完成",
+		})
 	}
 
 	return model.FeedbackResponse{

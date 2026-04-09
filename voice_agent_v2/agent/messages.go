@@ -87,4 +87,5 @@ type PPTMessageRequest struct {
 	DownloadURL string          `json:"download_url,omitempty"`
 	Format      string          `json:"format,omitempty"`
 	ErrorCode   int             `json:"error_code,omitempty"`
+	ConflictResolved bool       `json:"conflict_resolved,omitempty"`
 }
