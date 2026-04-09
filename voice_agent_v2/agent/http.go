@@ -199,6 +199,18 @@ func HandlePPTMessage(w http.ResponseWriter, r *http.Request) {
 			Type: "conflict_ask", TaskID: req.TaskID,
 			PageID: req.PageID, ContextID: req.ContextID, Question: content,
 		})
+	case "ppt_mod_result":
+		// If this result resolves a conflict, clean it up
+		if req.ConflictResolved && req.ContextID != "" {
+			s.ResolvePendingQuestion(req.ContextID)
+		}
+		// Forward result to frontend
+		s.SendJSON(WSMessage{
+			Type: "ppt_mod_result",
+			TaskID: req.TaskID,
+			ContextID: req.ContextID,
+			Text: content,
+		})
 	case "ppt_status":
 		s.SendJSON(WSMessage{Type: "task_status", TaskID: req.TaskID, Status: req.Status, Progress: req.Progress, Text: content})
 	case "page_rendered":

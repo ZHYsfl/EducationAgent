@@ -195,6 +195,7 @@ func (r *TaskRequirements) BuildCollectionPrompt() string {
 		if len(r.OutputFormats) > 0 {
 			fmt.Fprintf(&sb, "- output_formats: %s\n", strings.Join(r.OutputFormats, "、"))
 		}
+
 	}
 
 	sb.WriteString("\n请自然地与用户对话，逐步收集缺失的信息。每次只问1-2个问题。")
