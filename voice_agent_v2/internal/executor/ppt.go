@@ -108,7 +108,7 @@ func (e *Executor) executePPTModify(ctx context.Context, params map[string]strin
 		return fmt.Sprintf("PPT修改失败: %v", err)
 	}
 
-	return "PPT修改请求已发送"
+	return "已发送，等待处理结果"
 }
 
 func checkRequiredFields(ctx SessionContext) []string {

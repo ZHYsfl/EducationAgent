@@ -171,9 +171,12 @@ curl -X POST http://ppt-agent-url/api/v1/ppt/init \
 ```
 
 **回调约定（对应工具 `ppt_mod`）**:
-- 后续回调 `POST /api/v1/voice/ppt_message` 时，`event_type` 使用具体事件名（例如 `"ppt_status"`）。
+- `ppt_mod` 是**异步工具**，采用两阶段回调模式：
+  - **第一阶段**：立即返回确认消息（`event_type: "ppt_mod"`），内容为 "已发送，等待处理结果"
+  - **第二阶段**：处理完成后回调（`event_type: "ppt_mod_result"`），内容为 "修改已完成"
+- 如果该修改解决了某个冲突问题，第二阶段回调需设置 `conflict_resolved: true` 和对应的 `context_id`，Voice Agent 会自动清理该冲突并更新系统提示
 
-**回调示例**:
+**回调示例（第一阶段 - 立即确认）**:
 
 ```bash
 curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
@@ -181,9 +184,23 @@ curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
   -d '{
     "task_id": "task_001",
     "session_id": "sess_abc123",
-    "event_type": "ppt_status",
-    "status": "processing",
-    "tts_text": "已收到修改意见，正在调整"
+    "event_type": "ppt_mod",
+    "tts_text": "已发送，等待处理结果"
+  }'
+```
+
+**回调示例（第二阶段 - 处理完成）**:
+
+```bash
+curl -X POST http://voice-agent-url/api/v1/voice/ppt_message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_001",
+    "session_id": "sess_abc123",
+    "event_type": "ppt_mod_result",
+    "tts_text": "修改已完成",
+    "context_id": "ctx_501",
+    "conflict_resolved": true
   }'
 ```
 
@@ -1588,7 +1605,8 @@ curl -X GET http://voice-agent-url/api/v1/tasks/task_001/preview
 | `update_requirements` | `@{update_requirements|...}` 内部工具回调 |
 | `require_confirm` | `@{require_confirm}` 内部工具回调 |
 | `ppt_init` | `@{ppt_init|...}` 的直接工具消息 |
-| `ppt_mod` | `@{ppt_mod|...}` 的直接工具消息 |
+| `ppt_mod` | `@{ppt_mod|...}` 的第一阶段工具消息（立即确认） |
+| `ppt_mod_result` | `@{ppt_mod|...}` 的第二阶段工具消息（处理完成），可携带 `conflict_resolved` 标记 |
 | `ppt_status` | PPT 状态更新 |
 | `page_rendered` | 页面渲染完成 |
 | `ppt_preview` | PPT 预览 |
