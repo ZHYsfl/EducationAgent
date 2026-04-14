@@ -1,6 +1,6 @@
 api.md
 
-we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.
+we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.the backend program is deployed in a docker sandbox.the sandbox has node.js,go,slidev installed.
 
 ### module 1: voice agent
 
