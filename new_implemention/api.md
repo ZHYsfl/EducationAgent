@@ -424,4 +424,60 @@ when ppt is being generated, **though the new version of the ppt is not finished
 
 ---
 
-#### 2.3 
+#### 2.3 POST /api/v1/kb/query-chunks（同步）
+
+request body:
+```json
+{
+    "from": "ppt_agent",
+    "to": "kb_service",
+    "query": "string",
+}
+```
+
+response body:
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "chunks": [
+            {
+                "chunk_id": "string",
+                "content": "string",
+            }
+        ],
+        "total": "int",
+    },
+}
+```
+
+if failed:
+```json
+{
+    "code": 400,
+    "message": "failed to query the chunks from the kb service",   
+    "data": null,
+}
+```
+
+go:
+
+```go
+type chunk struct {
+    chunk_id: "string",
+    content: "string",
+}
+```
+
+```go
+func query_chunks(ctx context.Context, query string) ([]chunk, int, error) {
+    // query the chunks from the kb service
+    return []chunk, total, nil
+    or
+    return []chunk, 0, errors.New("failed to query the chunks from the kb service") or ctx.Err()
+}
+```
+
+
+
