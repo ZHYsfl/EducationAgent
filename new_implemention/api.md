@@ -1,6 +1,6 @@
 api.md
 
-we follow the mvp rule to build things fast and iteratively.
+we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.
 
 ### module 1: voice agent
 
@@ -95,7 +95,7 @@ LLM:
 ```
 go：
 ```go
-func update_requirements(requirements map[string]any) (string, error) {
+func update_requirements(ctx context.Context, requirements map[string]any) (string, error) {
     // update the requirements fields in the backend
     // return the missing fields after some fields are updated
     return "we now still missing xxx,xxx,xxx ...", nil
@@ -157,7 +157,7 @@ LLM:
 ```
 go:
 ```go
-func require_confirm(requirements map[string]any) (string, error) {
+func require_confirm(ctx context.Context, requirements map[string]any) (string, error) {
     // require the user to confirm the requirements
     return "data is sent to the frontend successfully", nil
     or
@@ -232,7 +232,7 @@ LLM:
 ```
 go:
 ```go
-func send_to_ppt_agent(data string) (string, error) {
+func send_to_ppt_agent(ctx context.Context, data string) (string, error) {
     // send the data to the ppt agent
     return "data is sent to the ppt agent successfully", nil
     or
@@ -283,9 +283,14 @@ for instance:
 
 ### module 2: ppt agent
 
-#### 2.1 Post api/v1/
 
-
+#### 2.1 some tools:
+func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
+func write_file(ctx context.Context, path string, content string) error // will overwrite the file
+func read_file(ctx context.Context, path string) (string, error) // will read the file
+func list_dir(ctx context.Context, path string) ([]string, error) // will list the directory
+func move_file(ctx context.Context, src, dst string) error // will move the file
+func execute_command(ctx context.Context, command string, workdir string) (stdout string, stderr string, err error) // will execute the command
 
 ---
 
@@ -329,7 +334,7 @@ LLM:
 ```
 go:
 ```go
-func send_to_voice_agent(data string) (string, error) {
+func send_to_voice_agent(ctx context.Context, data string) (string, error) {
     // send the data to the voice agent
     return "data is sent to the voice agent successfully", nil
     or
