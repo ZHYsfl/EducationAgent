@@ -1,6 +1,6 @@
 api.md
 
-we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.the backend program is deployed in a docker sandbox.the sandbox has node.js,go,slidev installed.
+we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.the backend program is deployed in a docker sandbox.the sandbox has node.js,go,slidev installed.the voice agent llm will be finetined by us,and the ppt agent llm will directly use the sota llm api.
 
 ### module 1: voice agent
 
@@ -102,7 +102,7 @@ func update_requirements(ctx context.Context, requirements map[string]any) (stri
     or
     return "all fields are updated", nil
     or
-    return "failed to update the requirements,please try again", errors.New("failed to update the requirements,please try again")
+    return "failed to update the requirements,please try again", errors.New("failed to update the requirements,please try again") or ctx.Err()  
 }
 ```
 
@@ -163,7 +163,7 @@ func require_confirm(ctx context.Context, requirements map[string]any) (string, 
     // require the user to confirm the requirements
     return "data is sent to the frontend successfully", nil
     or
-    return "failed to send the data to the frontend", errors.New("failed to send the data to the frontend")
+    return "failed to send the data to the frontend", errors.New("failed to send the data to the frontend") or ctx.Err()
 }
 ```
 
@@ -240,7 +240,7 @@ func send_to_ppt_agent(ctx context.Context, data string) (string, error) {
     // send the data to the ppt agent
     return "data is sent to the ppt agent successfully", nil
     or
-    return "failed to send the data to the ppt agent", errors.New("failed to send the data to the ppt agent")
+    return "failed to send the data to the ppt agent", errors.New("failed to send the data to the ppt agent") or ctx.Err()
 }
 ```
 
@@ -343,12 +343,15 @@ func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
 ### module 2: ppt agent
 
 #### 2.1 some tools:
+
+```go
 func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
 func write_file(ctx context.Context, path string, content string) error // will overwrite the file
 func read_file(ctx context.Context, path string) (string, error) // will read the file
 func list_dir(ctx context.Context, path string) ([]string, error) // will list the directory
 func move_file(ctx context.Context, src, dst string) error // will move the file
 func execute_command(ctx context.Context, command string, workdir string) (stdout string, stderr string, err error) // will execute the command
+```
 
 ---
 
@@ -396,7 +399,7 @@ func send_to_voice_agent(ctx context.Context, data string) (string, error) {
     // send the data to the voice agent
     return "data is sent to the voice agent successfully", nil
     or
-    return "failed to send the data to the voice agent", errors.New("failed to send the data to the voice agent")
+    return "failed to send the data to the voice agent", errors.New("failed to send the data to the voice agent") or ctx.Err()
 }
 ```
 
@@ -417,4 +420,5 @@ for instance:
 }
 ```
 
-when ppt is being generated, **though the new version of the ppt is not finished, the voice agent may send some feedbacks to the ppt agent via api/v1/send_to_ppt_agent(send_to_voice_agent tool).** if so,we will stop all the tools of ppt agent via ctx.cancel(),and the ppt agent will fetch the feedbacks in queue(the send_to_ppt_agent and send_to_voice_agent are both sending data to the voice_message_queue(the send_to_ppt_agent) or ppt_message_queue(send_to_voice_agent) which will be maintained by the backend program.). 
+when ppt is being generated, **though the new version of the ppt is not finished, the voice agent may send some feedbacks to the ppt agent via api/v1/send_to_ppt_agent(send_to_voice_agent tool).** if so,we will stop all the tools of ppt agent via ctx.cancel() and stop the ppt agent runtime(goroutine),and then we will add the feedbacks in queue(the send_to_ppt_agent and send_to_voice_agent are both sending data to the voice_message_queue(the send_to_ppt_agent) or ppt_message_queue(send_to_voice_agent) which will be maintained by the backend program.) to the history of the ppt agent(a new user prompt),and then we will start a new ppt agent runtime(goroutine) to generate the new version of the ppt,if ppt agent is confused by the feedbacks,it can use send_to_voice_agent tool to send the questions to the voice agent,and voice agent next time call the fetch_from_ppt_message_queue tool to get those questions,the voice agent will ask the user to answer the questions,and then the voice agent will call the send_to_ppt_agent tool to send the answers to the ppt agent and get the success or failure back to the voice agent quickly.and in this process,the ppt agent will be canceled until the next send_to_ppt_agent tool is called.(namely,the ppt agent will stoped if it calls the send_to_voice_agent tool,and restart until the next send_to_ppt_agent tool is called.)
+
