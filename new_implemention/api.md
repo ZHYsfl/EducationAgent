@@ -534,4 +534,6 @@ func search_web(ctx context.Context, query string) (string, error) {
 
 ## frontend api
 
-###
+the frontend will written by ts and react.we will use the ability of web browser to implement the frontend,such as vad_detection,acoustic echo cancellation,noise suppression,etc.
+
+---
