@@ -137,6 +137,25 @@ func HandlePreview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleUploadFile proxies multipart uploads to the DB/file service.
+func HandleUploadFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, 40001, "method not allowed")
+		return
+	}
+	clients := getGlobalClients()
+	if clients == nil {
+		writeError(w, http.StatusServiceUnavailable, 50200, "service clients not ready")
+		return
+	}
+	data, err := clients.UploadFile(r)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, 50200, fmt.Sprintf("upload file failed: %v", err))
+		return
+	}
+	writeSuccess(w, http.StatusOK, data)
+}
+
 // HandlePPTMessage handles POST /api/v1/voice/ppt_message
 // Receives async results from PPT Agent, Search, and KB services.
 func HandlePPTMessage(w http.ResponseWriter, r *http.Request) {
