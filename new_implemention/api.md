@@ -91,7 +91,7 @@ for instance:
 the update_requirements tool function definition:
 LLM:
 ```text
-@{update_requirements|topic:...|description:...|total_pages:...|audience:...}
+<action>update_requirements|topic:...|description:...|total_pages:...|audience:...</action>
 ```
 go：
 ```go
@@ -108,6 +108,8 @@ func update_requirements(ctx context.Context, requirements map[string]any) (stri
 
 LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> think and ask the user to provide the missing fields.
 if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
+
+the update_requirements tool will disappear forever after the first send_to_voice_agent tool is called.
 
 ---
 
@@ -153,7 +155,7 @@ Notice:this tool will return the success or failure quickly,and will not wait fo
 the require_confirm tool function definition:
 LLM:
 ```text
-@{require_confirm}
+<action>require_confirm</action>
 ```
 go:
 ```go
@@ -186,6 +188,8 @@ for instance:
     "data": null,
 }
 ```
+
+the require_confirm tool will disappear forever after the first send_to_ppt_agent tool is called.
 
 ---
 
@@ -228,7 +232,7 @@ Notice:this tool will return the success or failure quickly,and will not wait fo
 the send_to_ppt_agent tool function definition:
 LLM:
 ```text
-@{send_to_ppt_agent|data:...}
+<action>send_to_ppt_agent|data:...</action>
 ```
 go:
 ```go
@@ -281,6 +285,49 @@ for instance:
 
 ---
 
+#### 1.4 Post api/v1/fetch_from_ppt_message_queue
+
+request body:
+```json
+{
+    "from": "voice_agent",
+}
+```
+
+response body:
+if success:
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": "string"|null,
+}
+```
+
+if failed:
+```json
+{
+    "code": 400,
+    "message": "failed to fetch the data from the ppt message queue",
+    "data": null,
+}
+```
+
+the user prompt of the voice agent will record if the ppt_message_queue is not empty in real time,and when user interrupt the voice agent,and the queue is not empty when vad_end,the context will be like:
+
+</interrupted>
+<status>not empty</status>
+<user>xxxxx</user>
+
+if user say in idle status of voice_agent,and the queue is empty when vad_end,the context will be like:
+
+<status>empty</status>
+<user>xxxxx</user>
+
+and voice agent will depend if the queue is not empty to judge if call the fetch_from_ppt_message_queue tool to fetch the data from the queue or not.
+
+---
+
 ### module 2: ppt agent
 
 
@@ -330,7 +377,7 @@ Notice:this tool will return the success or failure quickly,and will not wait fo
 the send_to_voice_agent tool function definition:
 LLM:
 ```text
-@{send_to_voice_agent|data:...}
+<action>send_to_voice_agent|data:...</action>
 ```
 go:
 ```go
@@ -359,4 +406,4 @@ for instance:
 }
 ```
 
-when ppt is being generated, **though the new version of the ppt is not finished, the voice agent may send some feedbacks to the ppt agent via api/v1/send_to_ppt_agent(send_to_voice_agent tool).** if so,we will stop 
+when ppt is being generated, **though the new version of the ppt is not finished, the voice agent may send some feedbacks to the ppt agent via api/v1/send_to_ppt_agent(send_to_voice_agent tool).** if so,we will stop all the tools of ppt agent via ctx.cancel(),and the ppt agent will fetch the feedbacks in queue(the send_to_ppt_agent and send_to_voice_agent are both sending data to the voice_message_queue(the send_to_ppt_agent) or ppt_message_queue(send_to_voice_agent) which will be maintained by the backend program.). 
