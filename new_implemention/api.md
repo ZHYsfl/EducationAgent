@@ -426,7 +426,9 @@ when ppt is being generated, **though the new version of the ppt is not finished
 
 ---
 
-#### 2.3 POST /api/v1/kb/query-chunks（同步）
+### module 3: kb service
+
+#### 3.1 Post api/v1/kb/query-chunks（同步）
 
 request body:
 ```json
@@ -483,7 +485,11 @@ func query_chunks(ctx context.Context, query string) ([]chunk, int, error) {
 
 if ppt agent want to query the chunks from the kb service,it can call the query_chunks tool,that tool will call this api to query the chunks from the kb service and get the chunks and the total back to the ppt agent slowly(blockingly).
 
-#### 2.4 POST /api/v1/kb/search_web
+---
+
+### module 4: search service
+
+#### 4.1 Post api/v1/search/query
 
 request body:
 ```json
@@ -526,3 +532,6 @@ func search_web(ctx context.Context, query string) (string, error) {
 
 ---
 
+## frontend api
+
+###
