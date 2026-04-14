@@ -326,10 +326,21 @@ if user say in idle status of voice_agent,and the queue is empty when vad_end,th
 
 and voice agent will depend if the queue is not empty to judge if call the fetch_from_ppt_message_queue tool to fetch the data from the queue or not.
 
+go:
+```go
+func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
+    // fetch the data from the ppt message queue
+    return "the ppt message is xxxx,xxxx...", true, nil
+    or
+    return "queue is empty", false, nil
+    or
+    return "failed to fetch the data from the ppt message queue", false, errors.New("failed to fetch the data from the ppt message queue") or ctx.Err()
+}
+```
+
 ---
 
 ### module 2: ppt agent
-
 
 #### 2.1 some tools:
 func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
