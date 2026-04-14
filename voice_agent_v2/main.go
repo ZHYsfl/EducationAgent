@@ -55,6 +55,7 @@ func main() {
 	api := r.Group("/api/v1")
 	{
 		api.GET("/tasks/:task_id/preview", gin.WrapF(agent.HandlePreview))
+		api.POST("/files/upload", gin.WrapF(agent.HandleUploadFile))
 		api.POST("/voice/ppt_message", gin.WrapF(agent.HandlePPTMessage))
 	}
 
