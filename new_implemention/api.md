@@ -479,5 +479,46 @@ func query_chunks(ctx context.Context, query string) ([]chunk, int, error) {
 }
 ```
 
+if ppt agent want to query the chunks from the kb service,it can call the query_chunks tool,that tool will call this api to query the chunks from the kb service and get the chunks and the total back to the ppt agent slowly(blockingly).
 
+#### 2.4 POST /api/v1/kb/search_web
+
+request body:
+```json
+{
+    "from": "ppt_agent",
+    "to": "search_service",
+    "query": "string",
+}
+```
+
+response body:  
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": "string",
+}
+```
+
+if failed:
+```json
+{
+    "code": 400,
+    "message": "failed to search the web",
+    "data": null,
+}
+```
+
+if ppt agent want to search the web,it can call the search_web tool,that tool will call this api to search the web and get the result back to the ppt agent slowly(blockingly).the result is the summary of the search result.
+
+go:
+```go
+func search_web(ctx context.Context, query string) (string, error) {
+    // search the web
+    return "the summary of the search result is xxxx,xxxx...", nil
+    or
+    return "failed to search the web", errors.New("failed to search the web") or ctx.Err()
+}
+```
 
