@@ -108,7 +108,7 @@ func update_requirements(ctx context.Context, requirements map[string]any) (stri
 }
 ```
 
-LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> think and ask the user to provide the missing fields.
+LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> ask the user to provide the missing fields.
 if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
 
 the update_requirements tool will disappear forever after the first send_to_voice_agent tool is called.
