@@ -15,7 +15,7 @@ export function Chat() {
     <div className="chat-container" data-testid="chat-container">
       <header className="chat-header">
         <h1>Education Agent</h1>
-        <div className="status-badge" data-testid="status-badge">
+        <div className="status-badge" data-testid="status-badge" data-status={status}>
           {status}
         </div>
       </header>
