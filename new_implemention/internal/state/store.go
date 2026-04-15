@@ -23,6 +23,7 @@ type AppState struct {
 	conversationStarted bool
 	lastVADInterrupt    *bool
 	voiceHistory        []openai.ChatCompletionMessageParamUnion
+	voiceTurnMu         sync.Mutex
 }
 
 // NewAppState creates a fresh application state.
@@ -171,16 +172,16 @@ func (s *AppState) SendToVoiceAgent(data string) {
 }
 
 // FetchFromPPTMessageQueue dequeues the oldest message from the ppt message queue.
-// It returns the message and true if one existed.
-func (s *AppState) FetchFromPPTMessageQueue() (string, bool) {
+// It returns the message, or an empty string if the queue is empty.
+func (s *AppState) FetchFromPPTMessageQueue() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.pptMessageQueue) == 0 {
-		return "", false
+		return "", nil
 	}
 	msg := s.pptMessageQueue[0]
 	s.pptMessageQueue = s.pptMessageQueue[1:]
-	return msg, true
+	return msg, nil
 }
 
 // PeekPPTMessageQueue returns the oldest ppt message without removing it.
@@ -289,4 +290,14 @@ func (s *AppState) VoiceHistoryLen() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.voiceHistory)
+}
+
+// LockVoiceTurn blocks until the current voice turn (including its action sequence) finishes.
+func (s *AppState) LockVoiceTurn() {
+	s.voiceTurnMu.Lock()
+}
+
+// UnlockVoiceTurn releases the voice turn lock.
+func (s *AppState) UnlockVoiceTurn() {
+	s.voiceTurnMu.Unlock()
 }

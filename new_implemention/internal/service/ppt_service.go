@@ -359,6 +359,10 @@ func (s *PPTService) startRuntimeWithQueuedMessages() {
 	for _, m := range msgs {
 		s.state.AppendPPTHistory(openai.UserMessage(m))
 	}
+	// Refresh the system message so it reflects the now-empty queue before
+	// the first inference of this restart.
+	history := s.refreshSystemMessageInHistory()
+	s.state.SetPPTHistory(history)
 	s.runPPTAgentLoop(true)
 }
 

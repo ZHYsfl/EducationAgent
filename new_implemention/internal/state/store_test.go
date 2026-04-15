@@ -60,18 +60,19 @@ func TestMessageQueues(t *testing.T) {
 
 	// PPT -> Voice queue
 	s.SendToVoiceAgent("ppt says hello")
-	msg, ok := s.FetchFromPPTMessageQueue()
-	assert.True(t, ok)
+	msg, err := s.FetchFromPPTMessageQueue()
+	assert.NoError(t, err)
 	assert.Equal(t, "ppt says hello", msg)
 
-	_, ok = s.FetchFromPPTMessageQueue()
-	assert.False(t, ok)
+	msg, err = s.FetchFromPPTMessageQueue()
+	assert.NoError(t, err)
+	assert.Equal(t, "", msg)
 
 	// Voice -> PPT queue
 	s.SendToPPTAgent("voice says hi")
-	msg, ok = s.FetchFromVoiceMessageQueue()
+	vmsg, ok := s.FetchFromVoiceMessageQueue()
 	assert.True(t, ok)
-	assert.Equal(t, "voice says hi", msg)
+	assert.Equal(t, "voice says hi", vmsg)
 }
 
 func TestPPTHistory(t *testing.T) {
@@ -129,8 +130,8 @@ func TestPeekPPTMessageQueue(t *testing.T) {
 	assert.Equal(t, "msg1", msg)
 
 	// Fetch should remove it.
-	msg, ok = s.FetchFromPPTMessageQueue()
-	assert.True(t, ok)
+	msg, err := s.FetchFromPPTMessageQueue()
+	assert.NoError(t, err)
 	assert.Equal(t, "msg1", msg)
 
 	msg, ok = s.PeekPPTMessageQueue()

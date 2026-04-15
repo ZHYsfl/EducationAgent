@@ -62,8 +62,11 @@ func main() {
 		return "data is sent to the ppt agent successfully", nil
 	})
 	voiceActionExec.Register("fetch_from_ppt_message_queue", func(ctx context.Context, args map[string]string) (string, error) {
-		msg, ok := voiceSvc.FetchFromPPTMessageQueue()
-		if !ok {
+		msg, err := voiceSvc.FetchFromPPTMessageQueue()
+		if err != nil {
+			return "failed to fetch the data from the ppt message queue", err
+		}
+		if msg == "" {
 			return "queue is empty", nil
 		}
 		return fmt.Sprintf("the ppt message is: %s", msg), nil
