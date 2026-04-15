@@ -449,7 +449,28 @@ the frontend will start the conversation,call this api,and the vad detection,noi
 
 ### module 2: ppt agent
 
-#### 2.1 some tools:
+#### 2.1 system prompt
+
+every time the ppt agent runtime starts a new llm turn (except the very first passive restart after being idle), the backend rebuilds the system message so it always contains the **real-time voice message queue status**.
+
+example system prompt:
+```text
+You are a PPT generation agent. Use the available tools to create the presentation.
+You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax,
+then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF.
+After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent.
+Current voice message queue status: has 2 pending message(s).
+If the queue has messages, call fetch_from_voice_message_queue to consume them.
+```
+
+notice:
+- the agent **does not need to wait** for the voice agent to confirm before continuing its work.
+- the agent decides on its own when to pause (e.g. after sending a message via `send_to_voice_agent`).
+- the agent decides on its own when to fetch new feedback via `fetch_from_voice_message_queue`.
+
+---
+
+#### 2.2 some tools:
 
 ```go
 func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
@@ -462,7 +483,7 @@ func execute_command(ctx context.Context, command string, workdir string) (stdou
 
 ---
 
-#### 2.2 Post api/v1/send_to_voice_agent
+#### 2.3 Post api/v1/send_to_voice_agent
 
 request body:
 ```json
@@ -492,8 +513,9 @@ if failed:
 }
 ```
 
-ppt agent is generating the new version of the ppt,and when the ppt is finished, the ppt agent will call the send_to_voice_agent tool,that tool will call this api to notice the voice agent that the new version of the ppt is generated successfully and get the success or failure back to the ppt agent quickly.
-Notice:this tool will return the success or failure quickly,and will not wait for the voice agent to notice the new version of the ppt is generated successfully.so the response data is just a message of if the data is sent to the voice agent successfully.
+ppt agent is generating the new version of the ppt. when it wants to notify the voice agent (e.g. "the new version of the ppt is generated successfully"), it calls the `send_to_voice_agent` tool. this tool only enqueues the message into the `ppt_message_queue`; it **does not stop the ppt agent runtime**. the ppt agent decides on its own when to pause or continue working.
+
+Notice:this tool will return the success or failure quickly,and will not wait for the voice agent to receive the message.so the response data is just a message of if the data is enqueued successfully.
 
 the send_to_voice_agent tool function definition:
 LLM:
@@ -503,7 +525,7 @@ LLM:
 go:
 ```go
 func send_to_voice_agent(ctx context.Context, data string) (string, error) {
-    // send the data to the voice agent
+    // enqueue the message to the voice agent
     return "data is sent to the voice agent successfully", nil
     or
     return "failed to send the data to the voice agent", errors.New("failed to send the data to the voice agent") or ctx.Err()
@@ -527,7 +549,45 @@ for instance:
 }
 ```
 
-when ppt is being generated, **though the new version of the ppt is not finished, the voice agent may send some feedbacks to the ppt agent via api/v1/send_to_ppt_agent(send_to_voice_agent tool).** if so,we will stop all the tools of ppt agent via ctx.cancel() and stop the ppt agent runtime(goroutine),and then we will add the feedbacks in queue(the send_to_ppt_agent and send_to_voice_agent are both sending data to the voice_message_queue(the send_to_ppt_agent) or ppt_message_queue(send_to_voice_agent) which will be maintained by the backend program.) to the history of the ppt agent(a new user prompt),and then we will start a new ppt agent runtime(goroutine) to generate the new version of the ppt,if ppt agent is confused by the feedbacks,it can use send_to_voice_agent tool to send the questions to the voice agent,and voice agent next time call the fetch_from_ppt_message_queue tool to get those questions,the voice agent will ask the user to answer the questions,and then the voice agent will call the send_to_ppt_agent tool to send the answers to the ppt agent and get the success or failure back to the voice agent quickly.and in this process,the ppt agent will be canceled until the next send_to_ppt_agent tool is called.(namely,the ppt agent will stoped if it calls the send_to_voice_agent tool,and restart until the next send_to_ppt_agent tool is called.)the ppt agent has no Post api/v1/fetch_from_voice_message_queue api because the voice agent will fetch the data from the voice_message_queue directly to append it to the history of the voice agent(a new user prompt).
+---
+
+#### 2.3 PPT agent runtime lifecycle
+
+the backend maintains a background goroutine (runtime) for the ppt agent. the runtime runs a loop:
+
+1. **refresh system prompt**: before every llm call, the backend rebuilds the system message so it always contains the **real-time voice message queue status** (e.g. "queue is empty" or "queue has 2 pending messages").
+2. **llm inference**: call the llm with the current history. because the system prompt tells the queue status, the ppt agent can decide whether to call `fetch_from_voice_message_queue` to consume feedback.
+3. **after the llm turn finishes**:
+   - if the `voice_message_queue` has new messages, the backend drains all of them, appends them as `user` messages to the history, and immediately starts the next llm turn (the runtime keeps running).
+   - if the queue is empty, the runtime exits (goes idle). it will be restarted later when a new voice message arrives.
+
+**voice message arrival (`send_to_ppt_agent`)**:
+- the message is always enqueued into the `voice_message_queue` first.
+- if the ppt agent runtime is **already running**, the runtime will notice the queue on its next loop iteration; no cancel/restart happens.
+- if the ppt agent runtime is **idle**, the backend drains the entire queue, appends the messages to the ppt agent history as user prompts, and starts the runtime again.
+
+this means the ppt agent is never forcibly interrupted while it is working. it only stops when it finishes a turn and finds the queue empty.
+
+---
+
+#### 2.4 fetch_from_voice_message_queue tool
+
+the ppt agent can call this tool to explicitly fetch the next pending message from the `voice_message_queue`.
+
+LLM:
+```text
+<action>fetch_from_voice_message_queue</action>
+```
+
+go:
+```go
+func fetch_from_voice_message_queue(ctx context.Context) (string, error) {
+    // fetch the next message from the voice message queue
+    return "the feedback is: xxxx,xxxx...", nil
+    or
+    return "queue is empty", nil
+}
+```
 
 ---
 
