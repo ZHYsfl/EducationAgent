@@ -11,17 +11,13 @@ import (
 	"sort"
 	"strings"
 	"unicode"
-)
 
-// Chunk 知识库检索结果块
-type Chunk struct {
-	ChunkID string `json:"chunk_id"`
-	Content string `json:"content"`
-}
+	"new_implemention/internal/model"
+)
 
 // KBService 定义知识库查询接口
 type KBService interface {
-	QueryChunks(ctx context.Context, query string) ([]Chunk, int, error)
+	QueryChunks(ctx context.Context, query string) ([]model.Chunk, int, error)
 }
 
 // DefaultKBService 本地文件检索实现
@@ -38,7 +34,7 @@ func NewKBService() KBService {
 
 // QueryChunks 检索知识库 chunks
 // 实现 BM25 关键词检索算法，与 kb-service 逻辑一致
-func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]Chunk, int, error) {
+func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]model.Chunk, int, error) {
 	// 1. 遍历知识库目录，收集所有 markdown 文件
 	var files []string
 	if err := filepath.Walk(s.basePath, func(path string, info os.FileInfo, err error) error {
@@ -116,9 +112,9 @@ func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]Chu
 	}
 
 	// 6. 转换为返回格式
-	result := make([]Chunk, 0, len(scored))
+	result := make([]model.Chunk, 0, len(scored))
 	for _, sc := range scored {
-		result = append(result, Chunk{
+		result = append(result, model.Chunk{
 			ChunkID: sc.chunk.id,
 			Content: sc.chunk.content,
 		})
@@ -127,13 +123,13 @@ func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]Chu
 }
 
 // returnTopChunks 返回前 topK 个 chunk
-func (s *DefaultKBService) returnTopChunks(chunks []fileChunk, topK int) ([]Chunk, int, error) {
+func (s *DefaultKBService) returnTopChunks(chunks []fileChunk, topK int) ([]model.Chunk, int, error) {
 	if len(chunks) > topK {
 		chunks = chunks[:topK]
 	}
-	result := make([]Chunk, 0, len(chunks))
+	result := make([]model.Chunk, 0, len(chunks))
 	for _, c := range chunks {
-		result = append(result, Chunk{
+		result = append(result, model.Chunk{
 			ChunkID: c.id,
 			Content: c.content,
 		})
