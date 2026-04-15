@@ -318,11 +318,11 @@ func (s *PPTService) buildSystemMessage() openai.ChatCompletionMessageParamUnion
 	}
 	content := fmt.Sprintf(
 		"You are a PPT generation agent. Use the available tools to create the presentation. "+
-		"You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax, "+
-		"then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF. "+
-		"After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent. "+
-		"Current voice message queue status: %s. "+
-		"If the queue has messages, call fetch_from_voice_message_queue to consume them.",
+			"You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax, "+
+			"then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF. "+
+			"After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent. "+
+			"Current voice message queue status: %s. "+
+			"If the queue has messages, call fetch_from_voice_message_queue to consume them.",
 		queueStatus,
 	)
 	return openai.SystemMessage(content)
