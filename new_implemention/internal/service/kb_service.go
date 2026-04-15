@@ -26,9 +26,26 @@ type DefaultKBService struct {
 
 // NewKBService 创建本地知识库检索服务
 func NewKBService() KBService {
+	basePath := resolveDataPath()
 	return &DefaultKBService{
-		basePath: "new_implemention/data",
+		basePath: basePath,
 	}
+}
+
+// resolveDataPath 查找 data 目录，支持从模块根目录或子包中运行。
+func resolveDataPath() string {
+	candidates := []string{"data", filepath.Join("..", "..", "..", "data"), filepath.Join("..", "data")}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "data"
+	}
+	for _, rel := range candidates {
+		p := filepath.Join(wd, rel)
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			return p
+		}
+	}
+	return "data"
 }
 
 // fileChunk is an internal struct for chunking files.
