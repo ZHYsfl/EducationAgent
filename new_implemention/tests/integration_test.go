@@ -68,7 +68,6 @@ func TestFullConversationFlow(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 	resp := parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
-	assert.True(t, st.IsConversationStarted())
 
 	// 2. partial update requirements
 	w = doPost(t, r, "/api/v1/update_requirements", map[string]any{

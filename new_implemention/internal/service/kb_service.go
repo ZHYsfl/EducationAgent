@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"new_implemention/internal/model"
+	"educationagent/internal/model"
 )
 
 // KBService 定义知识库查询接口
@@ -27,9 +26,32 @@ type DefaultKBService struct {
 
 // NewKBService 创建本地知识库检索服务
 func NewKBService() KBService {
+	basePath := resolveDataPath()
 	return &DefaultKBService{
-		basePath: "new_implemention/data",
+		basePath: basePath,
 	}
+}
+
+// resolveDataPath 查找 data 目录，支持从模块根目录或子包中运行。
+func resolveDataPath() string {
+	candidates := []string{"data", filepath.Join("..", "..", "..", "data"), filepath.Join("..", "data")}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "data"
+	}
+	for _, rel := range candidates {
+		p := filepath.Join(wd, rel)
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			return p
+		}
+	}
+	return "data"
+}
+
+// fileChunk is an internal struct for chunking files.
+type fileChunk struct {
+	id      string
+	content string
 }
 
 // QueryChunks 检索知识库 chunks
@@ -50,13 +72,9 @@ func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]mod
 	}
 
 	// 2. 读取所有文件内容并分块
-	type fileChunk struct {
-		id      string
-		content string
-	}
 	var allChunks []fileChunk
 	for _, f := range files {
-		content, err := ioutil.ReadFile(f)
+		content, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}
