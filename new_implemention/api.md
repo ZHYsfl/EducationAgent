@@ -287,14 +287,7 @@ for instance:
 
 ---
 
-#### 1.4 Post api/v1/fetch_from_ppt_message_queue
-
-request body:
-```json
-{
-    "from": "voice_agent",
-}
-```
+#### 1.4 Get api/v1/fetch_from_ppt_message_queue
 
 response body:
 if success:
