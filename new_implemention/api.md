@@ -581,7 +581,7 @@ the backend maintains a background goroutine (runtime) for the ppt agent. the ru
 1. **refresh system prompt**: before every llm call, the backend rebuilds the system message so it always contains the **real-time voice message queue status** (e.g. "queue is empty" or "queue has 2 pending messages").
 2. **llm inference**: call the llm with the current history. because the system prompt tells the queue status, the ppt agent can decide whether to call `fetch_from_voice_message_queue` to consume feedback.
 3. **after the llm turn finishes**:
-   - if the `voice_message_queue` has new messages, the backend drains all of them, appends them as `user` messages to the history, and immediately starts the next llm turn (the runtime keeps running).
+   - if the `voice_message_queue` has new messages, the runtime keeps running. on the next loop iteration it refreshes the system prompt (which now reports the real-time queue status) and calls the llm again, so the ppt agent can decide on its own when to call `fetch_from_voice_message_queue` to consume the feedback.
    - if the queue is empty, the runtime exits (goes idle). it will be restarted later when a new voice message arrives.
 
 **voice message arrival (`send_to_ppt_agent`)**:
