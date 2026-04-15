@@ -4,6 +4,86 @@ api.md
 
 we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.the backend program is deployed in a docker sandbox.the sandbox has node.js,go,slidev installed.the voice agent llm will be finetined by us,and the ppt agent llm will directly use the sota llm api.
 
+### module 0: voice turn api
+
+the frontend handles vad_start and vad_end locally. no audio chunks are streamed before vad_end.
+
+#### 0.1 Post `/api/v1/voice/vad_start`
+
+when the frontend detects `vad_start`, it begins buffering microphone data into a local ring buffer. it waits until either `vad_end` fires or `1.5s` elapses, whichever comes first. only then does it send the captured audio segment to the backend for a fast interrupt check.
+
+request body:
+```json
+{
+    "audio": "base64-encoded audio from vad_start to min(vad_end, vad_start + 1.5s)",
+    "format": "pcm"
+}
+```
+
+backend processing:
+1. run local asr on the short audio segment.
+2. send the transcript to the interrupt-check llm to decide if this is a real interruption.
+
+response body:
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "interrupt": true | false
+    }
+}
+```
+
+frontend behavior after response:
+- if `interrupt: true`:
+  - if the assistant turn is active, the frontend immediately clears the tts queue and stops playback, and discards any buffered tokens.
+  - if the backend stream has not yet emitted the opening `<` of the first `<action`, the stream is aborted and no action is generated.
+  - if the opening `<` has already been emitted, the frontend must let the goroutine continue running until the **full action sequence** is complete. a single `<action>...</action>` may be fully closed, but if the goroutine is still running, there may be more `<action>...</action>` tags following. because actions are silent (not tts-played), the user will not experience "the machine is still talking".
+  - the assistant message that goes into the conversation history contains the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence) plus the complete action sequence only if the stream had already entered the action phase.
+  - when vad_end arrives, the frontend sends the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr and skips the interrupt-check llm because the fast check has already confirmed this is a real turn. however, if the action sequence from the previous turn is still running, the backend must wait for it to finish before starting the voice agent llm.
+- if `interrupt: false`:
+  - if the assistant turn is active, the frontend continues playing tts as if nothing happened. the conversation history is unchanged.
+  - when vad_end arrives, the frontend still sends the full audio to `POST /api/v1/voice/vad_end`. the backend reuses the `interrupt: false` result and returns `{"ignored": true}` without calling the voice agent llm.
+
+#### 0.2 Post `/api/v1/voice/vad_end`
+
+call this right after vad_end.
+
+request body:
+```json
+{
+    "audio": "base64-encoded audio from vad_start to vad_end",
+    "format": "pcm"
+}
+```
+
+backend processing:
+1. run local asr on the full audio segment. this asr can start in parallel with the short asr from `vad_start` because the audio is just a prefix extension. the two asr jobs are cascaded (they may share the same session state) but the full asr does not need to wait for the fast check to finish.
+2. look up the fast-check result stored for this turn:
+   - if `vad_start` returned `interrupt: false`, return immediately:
+     ```json
+     {
+         "code": 200,
+         "message": "success",
+         "data": {
+             "ignored": true
+         }
+     }
+     ```
+     the frontend discards this turn and does nothing.
+   - if `vad_start` returned `interrupt: true`, skip the interrupt-check llm and send the transcript directly to the finetuned voice agent llm. stream the response back to the frontend token by token.
+
+streamed response format (server-sent events or websocket chunks):
+
+| chunk type | example | meaning |
+|------------|---------|---------|
+| tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to the tts engine |
+| action | `{"type": "action", "payload": "update_requirements|topic:数学"}` | a parsed action extracted from the llm stream |
+| turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
+
+note: these two endpoints are declared here but not yet implemented in the current mvp backend code. the current backend only exposes the http tool apis documented below.
+
 ### module 1: voice agent
 
 #### 1.1 Post api/v1/update_requirements
@@ -308,13 +388,13 @@ if failed:
 }
 ```
 
-the user prompt of the voice agent will record if the ppt_message_queue is not empty in real time,and when user interrupt the voice agent,and the queue is not empty when vad_end,the context will be like:
+the user prompt of the voice agent will record if the ppt_message_queue is not empty in real time. when the user interrupts the voice agent while it is still speaking (vad_start fires during assistant output), and the queue is not empty when vad_end, the context will be like:
 
 </interrupted>
 <status>not empty</status>
 <user>xxxxx</user>
 
-if user say in idle status of voice_agent,and the queue is empty when vad_end,the context will be like:
+if the assistant is idle and the user speaks, and the queue is empty when vad_end, the context will be like:
 
 <status>empty</status>
 <user>xxxxx</user>
@@ -563,13 +643,28 @@ the frontend will written by ts and react.we will use the ability of web browser
 
 ### frontend interrupt handling responsibility (critical)
 
-when the user interrupts the voice agent while the LLM stream is still generating, the frontend must handle the ordering guarantee between the incomplete assistant message and the new user input:
+data flow recap: the backend streams tokens to the frontend. the frontend buffers them and feeds the tts engine sentence by sentence (triggered by punctuation). therefore:
+- "already spoken" = text the tts engine has actually finished playing before vad_start. if a sentence is cut off mid-playback, only the part that was actually spoken is kept.
+- "not yet spoken" = everything else: text the frontend has buffered but not yet pushed to tts, plus the tail of any sentence that was pushed to tts but not finished playing.
+- "still being generated by the backend" = text not yet received by the frontend.
 
-1. cache the interrupt: the user's transcribed text and the `</interrupted>` marker must be buffered locally. do not append them to the LLM context immediately.
-2. wait for the stream to finish: because the voice agent outputs TTS text first and `<action>` last, if the interrupt happens after the `<` of `<action` has already been emitted, the frontend must let the stream continue until the **full action sequence** is complete. a single `<action>...</action>` may be fully closed, but if the goroutine is still running, there may be more `<action>...</action>` tags following. since actions are silent (not TTS-played), the user will not experience "the machine is still talking".
-3. append in strict order: once the stream finishes, the frontend must append:
-   - first, the complete assistant message (TTS text + action)
-   - then, the user interrupt message (`</interrupted>\n<status>...</status>\n<user>...</user>`)
-4. only then send to LLM: the context is now correctly ordered and can be submitted for the next inference.
+when vad_start fires, the frontend does the following in order:
 
-this ensures the LLM history never contains a "half-generated action" followed by a user message. if the stream hangs abnormally, the frontend may truncate the trailing incomplete action before appending the cached user input.
+1. fast interrupt check: send the audio from vad_start to min(vad_end, vad_start + 1.5s) to `POST /api/v1/voice/vad_start`. the backend runs a quick asr + interrupt-check llm and returns `{"interrupt": true | false}`.
+2. if `interrupt: false`:
+   - the frontend does nothing. if the assistant is active, tts continues playing as if nothing happened.
+   - when vad_end arrives, the frontend still sends the full audio to `POST /api/v1/voice/vad_end`. this is mostly a formality to keep the frontend logic uniform: the backend simply looks up the already-computed fast-check result and immediately returns `{"ignored": true}`. no llm inference is triggered and the conversation history is unchanged.
+3. if `interrupt: true`:
+   - if the assistant turn is active, stop local playback: clear the tts queue and stop any audio currently playing.
+   - tell the backend to cancel: the backend aborts the ongoing llm inference.
+   - buffer the new audio locally until vad_end. do not append anything to the llm context yet.
+   - wait if action has started: if the backend stream has already emitted the opening `<` of the first `<action`, the frontend must let that goroutine run until the **full action sequence** is complete. actions are silent, so the user will not feel "the machine is still talking".
+   - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr. however, the voice agent llm inference cannot start until both (1) the action sequence is fully resolved and (2) the full asr transcript is ready.
+   - decide what goes into history:
+     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence), plus the **complete action sequence** only if the stream had already entered the action phase. if the stream was cancelled before any `<` was emitted, there is no action.
+     - user message (role = `user`):
+       - if the assistant was still streaming when vad_start fires: `{"role": "user", "content": "</interrupted>\n<status>...</status>\n<user>...</user>"}`
+       - if the assistant had already finished its turn (tts fully played, stream ended) and the user simply spoke again: `{"role": "user", "content": "<status>...</status>\n<user>...</user>"}` (no `</interrupted>`)
+   - send the rebuilt context to the llm: assistant message first, then the user message.
+
+edge case: if the backend stream hangs abnormally, the frontend may truncate any trailing incomplete action before appending the cached user input.
