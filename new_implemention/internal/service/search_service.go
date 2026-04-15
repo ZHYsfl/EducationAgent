@@ -24,7 +24,7 @@ type SearchService interface {
 const (
 	defaultSearchAPIURL    = "https://api.tavily.com/search"
 	defaultSearchLLMModel  = "gpt-4o-mini"
-	maxSearchResultSnippet = 6
+	maxSearchResultSnippet = 10
 )
 
 // DefaultSearchService integrates a third-party search API and an LLM summarizer.
