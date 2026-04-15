@@ -140,6 +140,23 @@ func (s *AppState) PeekVoiceMessageQueue() (string, bool) {
 	return s.voiceMessageQueue[0], true
 }
 
+// DrainVoiceMessageQueue removes and returns all messages from the voice message queue.
+func (s *AppState) DrainVoiceMessageQueue() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.voiceMessageQueue))
+	copy(out, s.voiceMessageQueue)
+	s.voiceMessageQueue = s.voiceMessageQueue[:0]
+	return out
+}
+
+// VoiceMessageQueueLen returns the number of pending messages in the voice message queue.
+func (s *AppState) VoiceMessageQueueLen() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.voiceMessageQueue)
+}
+
 // SendToVoiceAgent enqueues a message from the ppt agent to the voice agent
 // (stored in the ppt message queue).
 func (s *AppState) SendToVoiceAgent(data string) {
