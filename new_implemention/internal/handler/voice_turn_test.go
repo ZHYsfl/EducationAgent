@@ -82,7 +82,7 @@ func TestVADEndWithoutPriorStartFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	st := state.NewAppState()
 	asr := service.NewASRService()
-	voiceAgent := service.NewVoiceAgentService(toolcalling.LLMConfig{})
+	voiceAgent := service.NewVoiceAgentService(toolcalling.LLMConfig{}, nil)
 
 	r := gin.New()
 	r.POST("/api/v1/voice/vad_end", VoiceVADEnd(st, asr, voiceAgent))
@@ -106,7 +106,7 @@ func TestVADEndIgnoredWhenInterruptFalse(t *testing.T) {
 	st.SetLastVADInterrupt(false)
 
 	asr := service.NewASRService()
-	voiceAgent := service.NewVoiceAgentService(toolcalling.LLMConfig{})
+	voiceAgent := service.NewVoiceAgentService(toolcalling.LLMConfig{}, nil)
 
 	r := gin.New()
 	r.POST("/api/v1/voice/vad_end", VoiceVADEnd(st, asr, voiceAgent))

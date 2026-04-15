@@ -29,7 +29,7 @@ func setupIntegrationServer() (*gin.Engine, *state.AppState, *service.PPTService
 	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
 	asrSvc := service.NewASRService()
 	interruptSvc := service.NewInterruptService(toolcalling.LLMConfig{})
-	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{})
+	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{}, nil)
 	r := gin.New()
 	handler.RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
 	return r, st, pptSvc
