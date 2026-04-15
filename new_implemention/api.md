@@ -342,6 +342,38 @@ func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
 
 ---
 
+#### 1.5 Post api/v1/start_conversation
+
+request body:
+```json
+{
+    "from": "frontend",
+    "to":"voice_agent",
+}
+```
+
+response body:
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": null,
+}
+```
+
+if failed:
+```json
+{
+    "code": 400,        
+    "message": "failed to start the conversation",
+    "data": null,
+}
+```
+
+the frontend will start the conversation,call this api,and the vad detection,noise suppression,acoustic echo cancellation will be started.the voice agent will start the conversation once frontend call this api.
+
+---
+
 ### module 2: ppt agent
 
 #### 2.1 some tools:
@@ -536,10 +568,3 @@ func search_web(ctx context.Context, query string) (string, error) {
 
 the frontend will written by ts and react.we will use the ability of web browser to implement the frontend,such as vad_detection,acoustic echo cancellation,noise suppression,etc.
 
----
-
-### module 5: frontend
-
-#### 5.1 Post api/v1/start_conversation
-
-request body:
