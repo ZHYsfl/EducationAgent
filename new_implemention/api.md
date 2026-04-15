@@ -449,7 +449,28 @@ the frontend will start the conversation,call this api,and the vad detection,noi
 
 ### module 2: ppt agent
 
-#### 2.1 some tools:
+#### 2.1 system prompt
+
+every time the ppt agent runtime starts a new llm turn (except the very first passive restart after being idle), the backend rebuilds the system message so it always contains the **real-time voice message queue status**.
+
+example system prompt:
+```text
+You are a PPT generation agent. Use the available tools to create the presentation.
+You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax,
+then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF.
+After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent.
+Current voice message queue status: has 2 pending message(s).
+If the queue has messages, call fetch_from_voice_message_queue to consume them.
+```
+
+notice:
+- the agent **does not need to wait** for the voice agent to confirm before continuing its work.
+- the agent decides on its own when to pause (e.g. after sending a message via `send_to_voice_agent`).
+- the agent decides on its own when to fetch new feedback via `fetch_from_voice_message_queue`.
+
+---
+
+#### 2.2 some tools:
 
 ```go
 func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
@@ -462,7 +483,7 @@ func execute_command(ctx context.Context, command string, workdir string) (stdou
 
 ---
 
-#### 2.2 Post api/v1/send_to_voice_agent
+#### 2.3 Post api/v1/send_to_voice_agent
 
 request body:
 ```json
