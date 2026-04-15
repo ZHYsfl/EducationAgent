@@ -539,10 +539,13 @@ ppt agent is generating the new version of the ppt. when it wants to notify the 
 
 Notice:this tool will return the success or failure quickly,and will not wait for the voice agent to receive the message.so the response data is just a message of if the data is enqueued successfully.
 
-the send_to_voice_agent tool function definition:
+the send_to_voice_agent tool function definition (PPT agent uses standard OpenAI function calling):
 LLM:
-```text
-<action>send_to_voice_agent|data:...</action>
+```json
+{
+  "name": "send_to_voice_agent",
+  "arguments": {"data": "..."}
+}
 ```
 go:
 ```go
@@ -597,9 +600,12 @@ this means the ppt agent is never forcibly interrupted while it is working. it o
 
 the ppt agent can call this tool to explicitly fetch the next pending message from the `voice_message_queue`.
 
-LLM:
-```text
-<action>fetch_from_voice_message_queue</action>
+LLM (PPT agent uses standard OpenAI function calling):
+```json
+{
+  "name": "fetch_from_voice_message_queue",
+  "arguments": {}
+}
 ```
 
 go:

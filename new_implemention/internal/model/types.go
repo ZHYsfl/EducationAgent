@@ -141,7 +141,7 @@ type VADEndIgnoredData struct {
 // It is used whenever the backend streams a voice turn back to the frontend
 // (e.g. during vad_end full processing).
 type SSEChunk struct {
-	Type    string `json:"type"`              // "tts" | "action" | "turn_end"
-	Text    string `json:"text,omitempty"`    // for type="tts"
+	Type    string `json:"type"`              // "tts" | "action" | "tool" | "turn_end"
+	Text    string `json:"text,omitempty"`    // for type="tts" or type="tool"
 	Payload string `json:"payload,omitempty"` // for type="action"
 }
