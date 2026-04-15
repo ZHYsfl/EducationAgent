@@ -24,8 +24,11 @@ func setupRouter() (*gin.Engine, *state.AppState, *service.VoiceService, *servic
 	voiceSvc := service.NewVoiceService(st)
 	agent := toolcalling.NewAgent(toolcalling.LLMConfig{})
 	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
+	asrSvc := service.NewASRService()
+	interruptSvc := service.NewInterruptService(toolcalling.LLMConfig{})
+	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{})
 	r := gin.New()
-	RegisterRoutes(r, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService())
+	RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
 	return r, st, voiceSvc, pptSvc
 }
 
@@ -143,7 +146,7 @@ func TestSendToPPTAgentAndFetch(t *testing.T) {
 }
 
 func TestStartConversation(t *testing.T) {
-	r, _, _, _ := setupRouter()
+	r, st, _, _ := setupRouter()
 
 	body := map[string]any{"from": "frontend", "to": "voice_agent"}
 	b, _ := json.Marshal(body)
@@ -153,6 +156,7 @@ func TestStartConversation(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
+	assert.True(t, st.IsConversationStarted())
 }
 
 func TestKBQueryChunks(t *testing.T) {

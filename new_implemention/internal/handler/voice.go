@@ -5,6 +5,7 @@ import (
 	"educationagent/internal/middleware"
 	"educationagent/internal/model"
 	"educationagent/internal/service"
+	"educationagent/internal/state"
 )
 
 // VoiceUpdateRequirements handles POST /api/v1/update_requirements
@@ -79,7 +80,7 @@ func VoiceFetchFromPPTQueue(voiceSvc *service.VoiceService) gin.HandlerFunc {
 }
 
 // StartConversation handles POST /api/v1/start_conversation
-func StartConversation() gin.HandlerFunc {
+func StartConversation(st *state.AppState) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req model.StartConversationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -87,6 +88,7 @@ func StartConversation() gin.HandlerFunc {
 			return
 		}
 
+		st.MarkConversationStarted()
 		middleware.OK(c, nil)
 	}
 }
