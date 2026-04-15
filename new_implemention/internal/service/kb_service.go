@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"new_implemention/internal/model"
+	"educationagent/internal/model"
 )
 
 // KBService 定义知识库查询接口
@@ -30,6 +29,12 @@ func NewKBService() KBService {
 	return &DefaultKBService{
 		basePath: "new_implemention/data",
 	}
+}
+
+// fileChunk is an internal struct for chunking files.
+type fileChunk struct {
+	id      string
+	content string
 }
 
 // QueryChunks 检索知识库 chunks
@@ -50,13 +55,9 @@ func (s *DefaultKBService) QueryChunks(ctx context.Context, query string) ([]mod
 	}
 
 	// 2. 读取所有文件内容并分块
-	type fileChunk struct {
-		id      string
-		content string
-	}
 	var allChunks []fileChunk
 	for _, f := range files {
-		content, err := ioutil.ReadFile(f)
+		content, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}

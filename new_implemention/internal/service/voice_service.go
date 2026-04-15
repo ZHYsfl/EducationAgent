@@ -34,7 +34,3 @@ func (s *VoiceService) FetchFromPPTMessageQueue() (string, bool) {
 	return s.state.FetchFromPPTMessageQueue()
 }
 
-// StartConversation marks the conversation as started.
-func (s *VoiceService) StartConversation() {
-	s.state.StartConversation()
-}

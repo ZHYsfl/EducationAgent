@@ -79,7 +79,7 @@ func VoiceFetchFromPPTQueue(voiceSvc *service.VoiceService) gin.HandlerFunc {
 }
 
 // StartConversation handles POST /api/v1/start_conversation
-func StartConversation(voiceSvc *service.VoiceService) gin.HandlerFunc {
+func StartConversation() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req model.StartConversationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -87,7 +87,6 @@ func StartConversation(voiceSvc *service.VoiceService) gin.HandlerFunc {
 			return
 		}
 
-		voiceSvc.StartConversation()
 		middleware.OK(c, nil)
 	}
 }
