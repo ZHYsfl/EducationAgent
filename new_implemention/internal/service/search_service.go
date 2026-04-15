@@ -80,6 +80,11 @@ func (s *DefaultSearchService) SearchWeb(ctx context.Context, query string) (str
 		return "", err
 	}
 
+	// When no external search API key is configured, fall back to local KB.
+	if s.searchAPIKey == "" {
+		return s.searchLocalKB(ctx, query)
+	}
+
 	results, err := s.search(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("search api failed: %w", err)
@@ -96,12 +101,45 @@ func (s *DefaultSearchService) SearchWeb(ctx context.Context, query string) (str
 	return summary, nil
 }
 
+func (s *DefaultSearchService) searchLocalKB(ctx context.Context, query string) (string, error) {
+	kb := NewKBService()
+	chunks, total, err := kb.QueryChunks(ctx, query)
+	if err != nil {
+		return "", err
+	}
+	if total == 0 {
+		return fmt.Sprintf("No relevant results found for: %s", query), nil
+	}
+
+	maxItems := 3
+	if len(chunks) < maxItems {
+		maxItems = len(chunks)
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Found %d relevant results for: %s\n", total, query))
+	for i := 0; i < maxItems; i++ {
+		content := strings.TrimSpace(chunks[i].Content)
+		content = strings.ReplaceAll(content, "\r", " ")
+		content = strings.ReplaceAll(content, "\n", " ")
+		content = strings.Join(strings.Fields(content), " ")
+		if len(content) > 140 {
+			content = content[:140] + "..."
+		}
+		b.WriteString(fmt.Sprintf("%d) %s", i+1, content))
+		if i != maxItems-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String(), nil
+}
+
 type tavilySearchRequest struct {
-	APIKey       string `json:"api_key"`
-	Query        string `json:"query"`
-	SearchDepth  string `json:"search_depth"`
-	MaxResults   int    `json:"max_results"`
-	IncludeAnswer bool  `json:"include_answer"`
+	APIKey        string `json:"api_key"`
+	Query         string `json:"query"`
+	SearchDepth   string `json:"search_depth"`
+	MaxResults    int    `json:"max_results"`
+	IncludeAnswer bool   `json:"include_answer"`
 }
 
 type tavilySearchResponse struct {

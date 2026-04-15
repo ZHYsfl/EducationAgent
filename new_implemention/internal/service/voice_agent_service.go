@@ -8,6 +8,7 @@ import (
 	"educationagent/internal/model"
 	"educationagent/internal/state"
 	"educationagent/internal/toolcalling"
+	"educationagent/internal/voiceagent"
 
 	"github.com/openai/openai-go/v3"
 )
@@ -21,18 +22,22 @@ type VoiceAgentService interface {
 
 // DefaultVoiceAgentService uses an LLM to generate the voice turn.
 type DefaultVoiceAgentService struct {
-	agent *toolcalling.Agent
+	agent    *toolcalling.Agent
+	executor *voiceagent.Executor
 }
 
 // NewVoiceAgentService creates the voice agent from environment config.
-func NewVoiceAgentService(cfg toolcalling.LLMConfig) VoiceAgentService {
+func NewVoiceAgentService(cfg toolcalling.LLMConfig, exec *voiceagent.Executor) VoiceAgentService {
 	return &DefaultVoiceAgentService{
-		agent: toolcalling.NewAgent(cfg),
+		agent:    toolcalling.NewAgent(cfg),
+		executor: exec,
 	}
 }
 
 // StreamTurn builds the context, calls the LLM stream, parses inline actions,
-// and forwards SSE chunks to out.  It updates voice history on completion.
+// forwards SSE chunks to out, and executes actions via the executor.
+// Action results are appended to voice history after the turn ends so the next
+// LLM turn can observe them.
 func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, out chan<- model.SSEChunk) error {
 	defer close(out)
 
@@ -60,11 +65,19 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
 
 	stream := s.agent.StreamChat(ctx, messages)
-	extractor := newStreamExtractor(out)
 
-	var assistantText strings.Builder
+	extractor := newStreamExtractor(out, func(payload string) string {
+		if s.executor == nil {
+			return "<tool>no executor registered</tool>"
+		}
+		res, err := s.executor.Execute(ctx, payload)
+		if err != nil && res == "" {
+			res = err.Error()
+		}
+		return fmt.Sprintf("<tool>%s</tool>", res)
+	})
+
 	for token := range stream {
-		assistantText.WriteString(token)
 		extractor.Feed(token)
 	}
 
@@ -75,8 +88,17 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 	extractor.Flush()
 
 	// Save assistant turn into history.
+	// Voice Agent uses a custom protocol where <action> and <tool> are both
+	// embedded directly in the assistant content string, in the exact order
+	// they were produced: action1 -> tool1 -> action2 -> tool2 ...
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
-	st.AppendVoiceHistory(openai.AssistantMessage(assistantText.String()))
+	st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
+		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+				OfString: openai.String(extractor.history.String()),
+			},
+		},
+	})
 
 	// Emit turn_end.
 	select {
@@ -89,15 +111,18 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 }
 
 // streamExtractor parses inline <action>...</action> tags from a token stream
-// and emits model.SSEChunk values.
+// and emits model.SSEChunk values. When a complete action is found, onAction
+// is invoked and its return value is emitted as a "tool" chunk.
 type streamExtractor struct {
 	out      chan<- model.SSEChunk
 	raw      strings.Builder
+	history  strings.Builder
 	inAction bool
+	onAction func(payload string) string
 }
 
-func newStreamExtractor(out chan<- model.SSEChunk) *streamExtractor {
-	return &streamExtractor{out: out}
+func newStreamExtractor(out chan<- model.SSEChunk, onAction func(string) string) *streamExtractor {
+	return &streamExtractor{out: out, onAction: onAction}
 }
 
 func (e *streamExtractor) emit(chunk model.SSEChunk) {
@@ -110,11 +135,22 @@ func (e *streamExtractor) emit(chunk model.SSEChunk) {
 func (e *streamExtractor) writeText(text string) {
 	if text != "" {
 		e.emit(model.SSEChunk{Type: "tts", Text: text})
+		e.history.WriteString(text)
 	}
 }
 
 func (e *streamExtractor) writeAction(payload string) {
 	e.emit(model.SSEChunk{Type: "action", Payload: payload})
+	e.history.WriteString("<action>")
+	e.history.WriteString(payload)
+	e.history.WriteString("</action>")
+	if e.onAction != nil {
+		toolText := e.onAction(payload)
+		if toolText != "" {
+			e.emit(model.SSEChunk{Type: "tool", Text: toolText})
+			e.history.WriteString(toolText)
+		}
+	}
 }
 
 // Feed processes one token (which may contain multiple characters).

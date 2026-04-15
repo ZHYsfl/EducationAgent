@@ -80,9 +80,10 @@ streamed response format (server-sent events or websocket chunks):
 |------------|---------|---------|
 | tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to the tts engine |
 | action | `{"type": "action", "payload": "update_requirements|topic:数学"}` | a parsed action extracted from the llm stream |
+| tool | `{"type": "tool", "text": "<tool>all fields are updated</tool>"}` | the synchronous result of the action just emitted. appended to the same assistant message in history as `<tool>...</tool>`. |
 | turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
 
-note: these two endpoints are declared here but not yet implemented in the current mvp backend code. the current backend only exposes the http tool apis documented below.
+note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. once an action is emitted, no more tts text follows in the same turn. the tool result is a plain string wrapped in `<tool>...</tool>`, and both `<action>` and `<tool>` are appended to the same assistant message in history in that exact order.
 
 ### module 1: voice agent
 
@@ -179,14 +180,19 @@ go：
 ```go
 func update_requirements(ctx context.Context, requirements map[string]any) (string, error) {
     // update the requirements fields in the backend
-    // return the missing fields after some fields are updated
-    return "we now still missing xxx,xxx,xxx ...", nil
-    or
+    // success: return a plain string telling the missing fields or completion
+    return "we now still missing total_pages, audience", nil
+    // or
     return "all fields are updated", nil
-    or
-    return "failed to update the requirements,please try again", errors.New("failed to update the requirements,please try again") or ctx.Err()  
+    // failure: return the error message directly
+    return "failed to update the requirements,please try again", errors.New("failed to update the requirements,please try again") or ctx.Err()
 }
 ```
+
+tool result examples (what goes inside `<tool>...</tool>`):
+- success (still missing fields): `<tool>we now still missing total_pages, audience</tool>`
+- success (complete): `<tool>all fields are updated</tool>`
+- failure: `<tool>failed to update the requirements,please try again</tool>`
 
 LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> ask the user to provide the missing fields.
 if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
@@ -243,11 +249,16 @@ go:
 ```go
 func require_confirm(ctx context.Context, requirements map[string]any) (string, error) {
     // require the user to confirm the requirements
+    // success: plain string confirmation
     return "data is sent to the frontend successfully", nil
-    or
+    // failure: plain string error
     return "failed to send the data to the frontend", errors.New("failed to send the data to the frontend") or ctx.Err()
 }
 ```
+
+tool result examples:
+- success: `<tool>data is sent to the frontend successfully</tool>`
+- failure: `<tool>failed to send the data to the frontend</tool>`
 
 for instance:
 ```json
@@ -320,11 +331,16 @@ go:
 ```go
 func send_to_ppt_agent(ctx context.Context, data string) (string, error) {
     // send the data to the ppt agent
+    // success: plain string confirmation
     return "data is sent to the ppt agent successfully", nil
-    or
+    // failure: plain string error
     return "failed to send the data to the ppt agent", errors.New("failed to send the data to the ppt agent") or ctx.Err()
 }
 ```
+
+tool result examples:
+- success: `<tool>data is sent to the ppt agent successfully</tool>`
+- failure: `<tool>failed to send the data to the ppt agent</tool>`
 
 for instance:
 ```json
@@ -405,13 +421,19 @@ go:
 ```go
 func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
     // fetch the data from the ppt message queue
+    // success (has message): plain string with the message content
     return "the ppt message is xxxx,xxxx...", true, nil
-    or
+    // success (empty): plain string telling it's empty
     return "queue is empty", false, nil
-    or
+    // failure: plain string error
     return "failed to fetch the data from the ppt message queue", false, errors.New("failed to fetch the data from the ppt message queue") or ctx.Err()
 }
 ```
+
+tool result examples:
+- success (has message): `<tool>the ppt message is the new version of the ppt is generated successfully</tool>`
+- success (empty): `<tool>queue is empty</tool>`
+- failure: `<tool>failed to fetch the data from the ppt message queue</tool>`
 
 ---
 
@@ -526,8 +548,9 @@ go:
 ```go
 func send_to_voice_agent(ctx context.Context, data string) (string, error) {
     // enqueue the message to the voice agent
+    // success: plain string confirmation
     return "data is sent to the voice agent successfully", nil
-    or
+    // failure: plain string error
     return "failed to send the data to the voice agent", errors.New("failed to send the data to the voice agent") or ctx.Err()
 }
 ```
@@ -583,8 +606,9 @@ go:
 ```go
 func fetch_from_voice_message_queue(ctx context.Context) (string, error) {
     // fetch the next message from the voice message queue
+    // success (has message): plain string with the feedback
     return "the feedback is: xxxx,xxxx...", nil
-    or
+    // success (empty): plain string telling it's empty
     return "queue is empty", nil
 }
 ```
@@ -642,9 +666,10 @@ type chunk struct {
 ```go
 func query_chunks(ctx context.Context, query string) ([]chunk, int, error) {
     // query the chunks from the kb service
+    // success: returns chunk list and total count
     return []chunk, total, nil
-    or
-    return []chunk, 0, errors.New("failed to query the chunks from the kb service") or ctx.Err()
+    // failure: returns empty list, 0, and a plain error string
+    return []chunk{}, 0, errors.New("failed to query the chunks from the kb service") or ctx.Err()
 }
 ```
 
@@ -689,8 +714,9 @@ go:
 ```go
 func search_web(ctx context.Context, query string) (string, error) {
     // search the web
+    // success: returns a plain string summary of the search result
     return "the summary of the search result is xxxx,xxxx...", nil
-    or
+    // failure: returns a plain string error
     return "failed to search the web", errors.New("failed to search the web") or ctx.Err()
 }
 ```
@@ -721,7 +747,7 @@ when vad_start fires, the frontend does the following in order:
    - wait if action has started: if the backend stream has already emitted the opening `<` of the first `<action`, the frontend must let that goroutine run until the **full action sequence** is complete. actions are silent, so the user will not feel "the machine is still talking".
    - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr. however, the voice agent llm inference cannot start until both (1) the action sequence is fully resolved and (2) the full asr transcript is ready.
    - decide what goes into history:
-     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence), plus the **complete action sequence** only if the stream had already entered the action phase. if the stream was cancelled before any `<` was emitted, there is no action.
+     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** including each `<action>...</action>` and its synchronous `<tool>...</tool>` result, in order. if the stream was cancelled before any `<` was emitted, there is no action.
      - user message (role = `user`):
        - if the assistant was still streaming when vad_start fires: `{"role": "user", "content": "</interrupted>\n<status>...</status>\n<user>...</user>"}`
        - if the assistant had already finished its turn (tts fully played, stream ended) and the user simply spoke again: `{"role": "user", "content": "<status>...</status>\n<user>...</user>"}` (no `</interrupted>`)
