@@ -240,3 +240,5 @@ models/
 # Go local cache (used by commands like: GOCACHE=.gocache go test ./...)
 .gocache/
 **/.gocache/
+
+node_modules/
