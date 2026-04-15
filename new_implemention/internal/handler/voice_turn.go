@@ -46,6 +46,11 @@ func VoiceVADStart(st *state.AppState, asr service.ASRService, interrupt service
 // It streams the response using Server-Sent Events.
 func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.VoiceAgentService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Ensure only one voice turn (including its full synchronous action sequence)
+		// runs at a time. If a previous turn is still executing actions, wait here.
+		st.LockVoiceTurn()
+		defer st.UnlockVoiceTurn()
+
 		var req model.VADEndRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "invalid request body"})

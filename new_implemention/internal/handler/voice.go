@@ -70,8 +70,12 @@ func VoiceSendToPPTAgent(voiceSvc *service.VoiceService, pptSvc *service.PPTServ
 // VoiceFetchFromPPTQueue handles GET /api/v1/fetch_from_ppt_message_queue
 func VoiceFetchFromPPTQueue(voiceSvc *service.VoiceService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		msg, ok := voiceSvc.FetchFromPPTMessageQueue()
-		if !ok {
+		msg, err := voiceSvc.FetchFromPPTMessageQueue()
+		if err != nil {
+			middleware.Fail(c, 400, "failed to fetch the data from the ppt message queue")
+			return
+		}
+		if msg == "" {
 			middleware.OK(c, nil)
 			return
 		}

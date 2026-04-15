@@ -160,8 +160,8 @@ func TestPPTServiceSendToVoiceAgentDoesNotStopRuntime(t *testing.T) {
 	ps.WaitRuntime()
 	assert.False(t, ps.IsRuntimeRunning())
 
-	msg, ok := st.FetchFromPPTMessageQueue()
-	assert.True(t, ok)
+	msg, err := st.FetchFromPPTMessageQueue()
+	assert.NoError(t, err)
 	assert.Equal(t, "ppt done", msg)
 }
 

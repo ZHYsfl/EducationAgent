@@ -30,7 +30,7 @@ func (s *VoiceService) SendToPPTAgent(data string) {
 }
 
 // FetchFromPPTMessageQueue proxies to the state store.
-func (s *VoiceService) FetchFromPPTMessageQueue() (string, bool) {
+func (s *VoiceService) FetchFromPPTMessageQueue() (string, error) {
 	return s.state.FetchFromPPTMessageQueue()
 }
 

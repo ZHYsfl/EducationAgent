@@ -174,7 +174,7 @@ for instance:
 the update_requirements tool function definition:
 LLM:
 ```text
-<action>update_requirements|topic:...|description:...|total_pages:...|audience:...</action>
+<action>update_requirements|topic:...|style:...|total_pages:...|audience:...</action>
 ```
 go：
 ```go
@@ -197,7 +197,7 @@ tool result examples (what goes inside `<tool>...</tool>`):
 LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> ask the user to provide the missing fields.
 if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
 
-the update_requirements tool will disappear forever after the first send_to_voice_agent tool is called.
+the update_requirements tool will disappear forever after the first send_to_ppt_agent tool is called.
 
 ---
 
