@@ -568,3 +568,15 @@ func search_web(ctx context.Context, query string) (string, error) {
 
 the frontend will written by ts and react.we will use the ability of web browser to implement the frontend,such as vad_detection,acoustic echo cancellation,noise suppression,etc.
 
+### frontend interrupt handling responsibility (critical)
+
+when the user interrupts the voice agent while the LLM stream is still generating, the frontend must handle the ordering guarantee between the incomplete assistant message and the new user input:
+
+1. **cache the interrupt**: the user's transcribed text and the `</interrupted>` marker must be **buffered** locally. do **not** append them to the LLM context immediately.
+2. **wait for the stream to finish**: because the voice agent outputs TTS text first and `<action>` last, if the interrupt happens after the `<` of `<action` has already been emitted, the frontend must let the stream continue until the action is fully generated. since actions are silent (not TTS-played), the user will not experience "the machine is still talking".
+3. **append in strict order**: once the stream finishes, the frontend must append:
+   - first, the **complete assistant message** (TTS text + action)
+   - then, the **user interrupt message** (`</interrupted>\n<status>...</status>\n<user>...</user>`)
+4. **only then send to LLM**: the context is now correctly ordered and can be submitted for the next inference.
+
+this ensures the LLM history never contains a "half-generated action" followed by a user message. if the stream hangs abnormally, the frontend may truncate the trailing incomplete action (refer to `voice_agent_v2/internal/protocol/parser.go` `TrimTrailingIncompleteAction`) before appending the cached user input.
