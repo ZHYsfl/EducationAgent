@@ -114,12 +114,12 @@ func TestFullConversationFlow(t *testing.T) {
 	assert.Equal(t, float64(200), resp["code"])
 
 	// 5. send to ppt agent (first time) – should start runtime
-	// Fake chat loop enqueues a message directly via state (so the runtime itself
-	// keeps running) and then blocks on ctx.Done().
+	// Fake chat loop enqueues a message and then blocks so the runtime stays alive.
+	firstBlocker := make(chan struct{})
 	pptSvc.SetRunChatFn(func(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
 		st.SendToVoiceAgent("the new version of the ppt is generated successfully")
-		<-ctx.Done()
-		return history, ctx.Err()
+		<-firstBlocker
+		return history, nil
 	})
 
 	w = doPost(t, r, "/api/v1/send_to_ppt_agent", map[string]any{
@@ -143,18 +143,9 @@ func TestFullConversationFlow(t *testing.T) {
 	assert.Equal(t, float64(200), resp["code"])
 	assert.Equal(t, "the new version of the ppt is generated successfully", resp["data"])
 
-	// 7. voice agent sends feedback -> runtime should restart
-	// The old runtime is still running. OnVoiceMessage will detect it is running,
-	// cancel it, and start a new one.
-	feedbackBlocker := make(chan struct{})
-	pptSvc.SetRunChatFn(func(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
-		select {
-		case <-feedbackBlocker:
-		case <-ctx.Done():
-		}
-		return history, ctx.Err()
-	})
-
+	// 7. voice agent sends feedback while runtime is running.
+	// In the new architecture OnVoiceMessage does NOT cancel a running runtime;
+	// it only enqueues the feedback. the existing goroutine stays alive.
 	w = doPost(t, r, "/api/v1/send_to_ppt_agent", map[string]any{
 		"from": "voice_agent",
 		"to":   "ppt_agent",
@@ -164,9 +155,15 @@ func TestFullConversationFlow(t *testing.T) {
 	resp = parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
 
-	// wait for restart
+	// the running goroutine should NOT have been cancelled.
 	time.Sleep(50 * time.Millisecond)
 	assert.True(t, pptSvc.IsRuntimeRunning())
+
+	// cleanup: stop the runtime explicitly because the queue still has the
+	// feedback message, so the goroutine would otherwise keep looping.
+	close(firstBlocker)
+	pptSvc.StopRuntime()
+	pptSvc.WaitRuntime()
 
 	// 8. update_requirements should now fail because tools disappeared
 	w = doPost(t, r, "/api/v1/update_requirements", map[string]any{
