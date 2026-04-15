@@ -18,6 +18,11 @@ type AppState struct {
 	pptMessageQueue       []string
 	voiceMessageQueue     []string
 	pptHistory            []openai.ChatCompletionMessageParamUnion
+
+	// Voice turn state
+	conversationStarted bool
+	lastVADInterrupt    *bool
+	voiceHistory        []openai.ChatCompletionMessageParamUnion
 }
 
 // NewAppState creates a fresh application state.
@@ -178,6 +183,16 @@ func (s *AppState) FetchFromPPTMessageQueue() (string, bool) {
 	return msg, true
 }
 
+// PeekPPTMessageQueue returns the oldest ppt message without removing it.
+func (s *AppState) PeekPPTMessageQueue() (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.pptMessageQueue) == 0 {
+		return "", false
+	}
+	return s.pptMessageQueue[0], true
+}
+
 // AppendPPTHistory appends a message to the PPT agent's conversation history.
 func (s *AppState) AppendPPTHistory(msg openai.ChatCompletionMessageParamUnion) {
 	s.mu.Lock()
@@ -200,4 +215,78 @@ func (s *AppState) SetPPTHistory(history []openai.ChatCompletionMessageParamUnio
 	defer s.mu.Unlock()
 	s.pptHistory = make([]openai.ChatCompletionMessageParamUnion, len(history))
 	copy(s.pptHistory, history)
+}
+
+// ---------------------------------------------------------------------------
+// Conversation lifecycle
+// ---------------------------------------------------------------------------
+
+// MarkConversationStarted records that the conversation has begun.
+func (s *AppState) MarkConversationStarted() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.conversationStarted = true
+}
+
+// IsConversationStarted reports whether the conversation has begun.
+func (s *AppState) IsConversationStarted() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.conversationStarted
+}
+
+// ---------------------------------------------------------------------------
+// VAD interrupt cache
+// ---------------------------------------------------------------------------
+
+// SetLastVADInterrupt stores the result of the most recent vad_start check.
+func (s *AppState) SetLastVADInterrupt(val bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastVADInterrupt = &val
+}
+
+// GetLastVADInterrupt returns the cached vad_start result and true if it exists.
+func (s *AppState) GetLastVADInterrupt() (bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.lastVADInterrupt == nil {
+		return false, false
+	}
+	return *s.lastVADInterrupt, true
+}
+
+// ---------------------------------------------------------------------------
+// Voice agent conversation history
+// ---------------------------------------------------------------------------
+
+// AppendVoiceHistory appends a message to the voice agent's history.
+func (s *AppState) AppendVoiceHistory(msg openai.ChatCompletionMessageParamUnion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.voiceHistory = append(s.voiceHistory, msg)
+}
+
+// GetVoiceHistory returns a copy of the voice agent's history.
+func (s *AppState) GetVoiceHistory() []openai.ChatCompletionMessageParamUnion {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]openai.ChatCompletionMessageParamUnion, len(s.voiceHistory))
+	copy(out, s.voiceHistory)
+	return out
+}
+
+// SetVoiceHistory replaces the entire voice agent history.
+func (s *AppState) SetVoiceHistory(history []openai.ChatCompletionMessageParamUnion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.voiceHistory = make([]openai.ChatCompletionMessageParamUnion, len(history))
+	copy(s.voiceHistory, history)
+}
+
+// VoiceHistoryLen returns the length of the voice agent history.
+func (s *AppState) VoiceHistoryLen() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.voiceHistory)
 }

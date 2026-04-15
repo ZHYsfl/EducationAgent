@@ -116,3 +116,32 @@ type SearchQueryRequest struct {
 	To    string `json:"to"`
 	Query string `json:"query"`
 }
+
+// VAD DTOs
+
+type VADStartRequest struct {
+	Audio  string `json:"audio"`  // base64-encoded audio
+	Format string `json:"format"` // e.g. "pcm"
+}
+
+type VADStartData struct {
+	Interrupt bool `json:"interrupt"`
+}
+
+type VADEndRequest struct {
+	Audio  string `json:"audio"`  // base64-encoded audio
+	Format string `json:"format"` // e.g. "pcm"
+}
+
+type VADEndIgnoredData struct {
+	Ignored bool `json:"ignored"`
+}
+
+// SSEChunk is the unified streaming chunk emitted by the voice agent LLM.
+// It is used whenever the backend streams a voice turn back to the frontend
+// (e.g. during vad_end full processing).
+type SSEChunk struct {
+	Type    string `json:"type"`              // "tts" | "action" | "turn_end"
+	Text    string `json:"text,omitempty"`    // for type="tts"
+	Payload string `json:"payload,omitempty"` // for type="action"
+}

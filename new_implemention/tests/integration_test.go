@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"educationagent/internal/handler"
+	"educationagent/internal/model"
 	"educationagent/internal/service"
 	"educationagent/internal/state"
 	"educationagent/internal/toolcalling"
@@ -26,9 +27,51 @@ func setupIntegrationServer() (*gin.Engine, *state.AppState, *service.PPTService
 	voiceSvc := service.NewVoiceService(st)
 	agent := toolcalling.NewAgent(toolcalling.LLMConfig{})
 	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
+	asrSvc := service.NewASRService()
+	interruptSvc := service.NewInterruptService(toolcalling.LLMConfig{})
+	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{})
 	r := gin.New()
-	handler.RegisterRoutes(r, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService())
+	handler.RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
 	return r, st, pptSvc
+}
+
+func setupVADIntegrationServer() (*gin.Engine, *state.AppState, *service.StubASRService, *mockVoiceAgentSvc) {
+	gin.SetMode(gin.TestMode)
+	st := state.NewAppState()
+	voiceSvc := service.NewVoiceService(st)
+	agent := toolcalling.NewAgent(toolcalling.LLMConfig{})
+	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
+	asrSvc := &service.StubASRService{}
+	interruptSvc := &mockInterruptCheckSvc{result: true}
+	voiceAgentSvc := &mockVoiceAgentSvc{}
+	r := gin.New()
+	handler.RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
+	return r, st, asrSvc, voiceAgentSvc
+}
+
+type mockInterruptCheckSvc struct {
+	result bool
+	err    error
+}
+
+func (m *mockInterruptCheckSvc) Check(ctx context.Context, transcript string) (bool, error) {
+	return m.result, m.err
+}
+
+type mockVoiceAgentSvc struct {
+	chunks []model.SSEChunk
+}
+
+func (m *mockVoiceAgentSvc) StreamTurn(ctx context.Context, st *state.AppState, transcript string, out chan<- model.SSEChunk) error {
+	for _, c := range m.chunks {
+		select {
+		case out <- c:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	close(out)
+	return nil
 }
 
 func doPost(t *testing.T, r *gin.Engine, path string, body any) *httptest.ResponseRecorder {
@@ -181,4 +224,65 @@ func TestFullConversationFlow(t *testing.T) {
 	// cleanup
 	pptSvc.StopRuntime()
 	pptSvc.WaitRuntime()
+}
+
+func TestVADFlow(t *testing.T) {
+	r, st, asr, voiceAgent := setupVADIntegrationServer()
+
+	// 1. start conversation
+	w := doPost(t, r, "/api/v1/start_conversation", map[string]any{
+		"from": "frontend",
+		"to":   "voice_agent",
+	})
+	assert.Equal(t, 200, w.Code)
+	resp := parseResp(t, w)
+	assert.Equal(t, float64(200), resp["code"])
+	assert.True(t, st.IsConversationStarted())
+
+	// 2. vad_start with mocked ASR returning an interrupt
+	asr.Override = func(string) string { return "stop" }
+	w = doPost(t, r, "/api/v1/voice/vad_start", map[string]any{
+		"audio":  "dummy",
+		"format": "pcm",
+	})
+	assert.Equal(t, 200, w.Code)
+	resp = parseResp(t, w)
+	assert.Equal(t, float64(200), resp["code"])
+	data := resp["data"].(map[string]any)
+	assert.True(t, data["interrupt"].(bool))
+
+	// 3. vad_end should stream voice agent response via SSE
+	asr.Override = func(string) string { return "make the font bigger" }
+	voiceAgent.chunks = []model.SSEChunk{
+		{Type: "tts", Text: "ok"},
+		{Type: "action", Payload: "send_to_ppt_agent|data:make the font bigger"},
+		{Type: "turn_end"},
+	}
+
+	body := map[string]any{"audio": "dummy", "format": "pcm"}
+	b, err := json.Marshal(body)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/api/v1/voice/vad_end", bytes.NewReader(b))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), `"type":"tts"`)
+	assert.Contains(t, w.Body.String(), `"type":"action"`)
+	assert.Contains(t, w.Body.String(), `"type":"turn_end"`)
+
+	// 4. vad_end when interrupt was false should return ignored immediately
+	st.SetLastVADInterrupt(false)
+	w = doPost(t, r, "/api/v1/voice/vad_end", map[string]any{
+		"audio":  "dummy",
+		"format": "pcm",
+	})
+	assert.Equal(t, 200, w.Code)
+	resp = parseResp(t, w)
+	assert.Equal(t, float64(200), resp["code"])
+	ignoredData := resp["data"].(map[string]any)
+	assert.True(t, ignoredData["ignored"].(bool))
 }
