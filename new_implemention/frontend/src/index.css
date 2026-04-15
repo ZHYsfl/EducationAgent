@@ -1,24 +1,63 @@
 /* ---------------------------------------------------------------------------
-   Global styles
+   Global styles — clean, elegant, literary
    --------------------------------------------------------------------------- */
 
 * {
   box-sizing: border-box;
 }
 
+:root {
+  --bg-page: #f8f6f3;
+  --bg-card: #ffffff;
+  --bg-warm: #f3f1ee;
+  --bg-blue-tint: #eef4f7;
+  --bg-yellow-tint: #faf6ed;
+  --bg-green-tint: #f0f5f1;
+
+  --text-primary: #2c2c2c;
+  --text-secondary: #5c5c5c;
+  --text-tertiary: #8a8a8a;
+
+  --border-light: #e8e5e0;
+
+  --accent-sage: #8da399;
+  --accent-sage-hover: #7a8f86;
+  --accent-rose: #c98b8b;
+  --accent-rose-hover: #b57a7a;
+  --accent-teal: #7a9e9f;
+  --accent-teal-hover: #6a8e8f;
+  --accent-sand: #d4cfc7;
+
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.04);
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  background: #f5f6f7;
-  color: #1a1a1a;
+  font-family:
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
   display: flex;
   justify-content: center;
-  padding: 24px;
+  padding: 32px 24px;
 }
 
 .app {
@@ -31,86 +70,117 @@ body {
    --------------------------------------------------------------------------- */
 
 .chat-container {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
   min-height: 80vh;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
 }
 
 .chat-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #e8e8e8;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  background: var(--bg-card);
 }
 
 .chat-header h1 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
 }
 
 .status-badge {
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 999px;
-  background: #e8e8e8;
-  color: #555;
+  background: var(--bg-warm);
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  border: 1px solid var(--border-light);
 }
 
 .status-badge[data-status="speaking"],
 .status-badge[data-status="acting"] {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--bg-blue-tint);
+  color: #4a6b7c;
+  border-color: #d6e3ea;
 }
 
 .status-badge[data-status="listening"] {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--bg-green-tint);
+  color: #5a7a66;
+  border-color: #d3e4da;
 }
 
 .status-badge[data-status="thinking"] {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--bg-yellow-tint);
+  color: #8c7348;
+  border-color: #efe5d3;
 }
 
 .chat-history {
   flex: 1;
-  padding: 16px 20px;
+  padding: 20px 24px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .empty-state {
-  color: #888;
+  color: var(--text-tertiary);
   text-align: center;
-  margin-top: 40px;
+  margin-top: 48px;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
 }
 
 .message {
-  padding: 12px 16px;
-  border-radius: 8px;
-  max-width: 90%;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  max-width: 88%;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  border: 1px solid transparent;
 }
 
 .message.user {
-  background: #f3f4f6;
+  background: var(--bg-warm);
   align-self: flex-start;
+  color: var(--text-primary);
+  border-color: var(--border-light);
 }
 
 .message.assistant {
-  background: #eff6ff;
+  background: var(--bg-blue-tint);
   align-self: flex-end;
+  color: var(--text-primary);
+  border-color: #e1ebf1;
+}
+
+.message strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  font-weight: 500;
 }
 
 .message pre {
-  margin: 8px 0 0;
+  margin: 0;
   white-space: pre-wrap;
   font-family: inherit;
   font-size: 0.95rem;
@@ -121,36 +191,46 @@ body {
    --------------------------------------------------------------------------- */
 
 .confirm-section {
-  padding: 16px 20px;
-  border-top: 1px solid #e8e8e8;
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-card);
 }
 
 .confirm-table {
-  background: #fafafa;
-  border-radius: 8px;
-  padding: 16px;
+  background: var(--bg-warm);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  border: 1px solid var(--border-light);
 }
 
 .confirm-table h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
 }
 
 .confirm-table table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .confirm-table td {
-  padding: 8px 0;
-  border-bottom: 1px solid #e8e8e8;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.95rem;
 }
 
 .confirm-table td:first-child {
   font-weight: 500;
-  width: 40%;
-  color: #555;
+  width: 36%;
+  color: var(--text-secondary);
+}
+
+.confirm-table td:last-child {
+  color: var(--text-primary);
 }
 
 .confirm-actions {
@@ -160,21 +240,35 @@ body {
 
 .confirm-actions button {
   flex: 1;
-  padding: 10px;
+  padding: 11px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
+  font-size: 0.95rem;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.confirm-actions button:active {
+  transform: translateY(1px);
 }
 
 .confirm-actions button:first-child {
-  background: #2563eb;
+  background: var(--accent-teal);
   color: #fff;
 }
 
+.confirm-actions button:first-child:hover {
+  background: var(--accent-teal-hover);
+}
+
 .confirm-actions button:last-child {
-  background: #e5e7eb;
-  color: #1a1a1a;
+  background: var(--accent-sand);
+  color: var(--text-primary);
+}
+
+.confirm-actions button:last-child:hover {
+  background: #c9c4bc;
 }
 
 /* ---------------------------------------------------------------------------
@@ -182,13 +276,17 @@ body {
    --------------------------------------------------------------------------- */
 
 .ppt-section {
-  padding: 16px 20px;
-  border-top: 1px solid #e8e8e8;
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-card);
 }
 
 .ppt-messages h4 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
 }
 
 .ppt-messages ul {
@@ -197,9 +295,10 @@ body {
 }
 
 .ppt-message {
-  margin-bottom: 6px;
-  font-size: 0.9rem;
-  color: #374151;
+  margin-bottom: 8px;
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
 }
 
 /* ---------------------------------------------------------------------------
@@ -207,33 +306,47 @@ body {
    --------------------------------------------------------------------------- */
 
 .chat-controls {
-  padding: 16px 20px;
-  border-top: 1px solid #e8e8e8;
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-light);
   display: flex;
   gap: 12px;
+  background: var(--bg-card);
 }
 
 .chat-controls button {
   flex: 1;
-  padding: 12px;
+  padding: 13px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
 }
 
 .chat-controls button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+.chat-controls button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .chat-controls button:first-child {
-  background: #10b981;
+  background: var(--accent-sage);
   color: #fff;
 }
 
+.chat-controls button:first-child:hover:not(:disabled) {
+  background: var(--accent-sage-hover);
+}
+
 .chat-controls button:last-child {
-  background: #ef4444;
+  background: var(--accent-rose);
   color: #fff;
+}
+
+.chat-controls button:last-child:hover:not(:disabled) {
+  background: var(--accent-rose-hover);
 }
