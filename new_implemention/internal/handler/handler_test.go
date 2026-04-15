@@ -131,11 +131,8 @@ func TestSendToPPTAgentAndFetch(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// fetch from ppt queue
-	fetchBody := map[string]any{"from": "voice_agent"}
-	fb, _ := json.Marshal(fetchBody)
 	w2 := httptest.NewRecorder()
-	req2, _ := http.NewRequest("POST", "/api/v1/fetch_from_ppt_message_queue", bytes.NewReader(fb))
-	req2.Header.Set("Content-Type", "application/json")
+	req2, _ := http.NewRequest("GET", "/api/v1/fetch_from_ppt_message_queue", nil)
 	r.ServeHTTP(w2, req2)
 
 	assert.Equal(t, 200, w2.Code)

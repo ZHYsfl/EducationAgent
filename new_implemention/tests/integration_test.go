@@ -42,6 +42,14 @@ func doPost(t *testing.T, r *gin.Engine, path string, body any) *httptest.Respon
 	return w
 }
 
+func doGet(t *testing.T, r *gin.Engine, path string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", path, nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+	return w
+}
+
 func parseResp(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
@@ -130,9 +138,7 @@ func TestFullConversationFlow(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	// 6. fetch from ppt message queue
-	w = doPost(t, r, "/api/v1/fetch_from_ppt_message_queue", map[string]any{
-		"from": "voice_agent",
-	})
+	w = doGet(t, r, "/api/v1/fetch_from_ppt_message_queue")
 	assert.Equal(t, 200, w.Code)
 	resp = parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
