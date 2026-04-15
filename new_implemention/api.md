@@ -566,7 +566,7 @@ the frontend will written by ts and react.we will use the ability of web browser
 when the user interrupts the voice agent while the LLM stream is still generating, the frontend must handle the ordering guarantee between the incomplete assistant message and the new user input:
 
 1. cache the interrupt: the user's transcribed text and the `</interrupted>` marker must be buffered locally. do not append them to the LLM context immediately.
-2. wait for the stream to finish: because the voice agent outputs TTS text first and `<action>` last, if the interrupt happens after the `<` of `<action` has already been emitted, the frontend must let the stream continue until the action is fully generated. since actions are silent (not TTS-played), the user will not experience "the machine is still talking".
+2. wait for the stream to finish: because the voice agent outputs TTS text first and `<action>` last, if the interrupt happens after the `<` of `<action` has already been emitted, the frontend must let the stream continue until the **full action sequence** is complete. a single `<action>...</action>` may be fully closed, but if the goroutine is still running, there may be more `<action>...</action>` tags following. since actions are silent (not TTS-played), the user will not experience "the machine is still talking".
 3. append in strict order: once the stream finishes, the frontend must append:
    - first, the complete assistant message (TTS text + action)
    - then, the user interrupt message (`</interrupted>\n<status>...</status>\n<user>...</user>`)
