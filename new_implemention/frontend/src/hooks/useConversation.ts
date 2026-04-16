@@ -37,6 +37,7 @@ export function useConversation() {
 
   // Accumulate raw SSE text so we can rebuild the exact assistant message.
   const streamHistoryRef = useRef<string>('')
+  const pendingToolsRef = useRef<string[]>([])
 
   // -------------------------------------------------------------------------
   // TTS helpers
@@ -81,13 +82,17 @@ export function useConversation() {
         store.setStatus('acting')
       } else if (chunk.type === 'tool') {
         const toolText = chunk.text ?? ''
-        store.appendHistory({ role: 'tool', content: toolText })
+        pendingToolsRef.current.push(toolText)
       } else if (chunk.type === 'turn_end') {
         flushTTS()
         const content = streamHistoryRef.current
         if (content) {
           store.appendHistory({ role: 'assistant', content })
         }
+        for (const toolText of pendingToolsRef.current) {
+          store.appendHistory({ role: 'tool', content: toolText })
+        }
+        pendingToolsRef.current = []
         streamHistoryRef.current = ''
         store.resetBuffer()
         actionStartedRef.current = false
@@ -132,9 +137,9 @@ export function useConversation() {
       if (streamContent.startsWith(spokenText)) {
         assistantContent = streamContent
       } else {
-        // Concatenate spoken text with the non-text tail of the stream.
-        const textPart = streamContent.replace(/<action>.*?<\/action>/gs, '').trim()
-        const tail = streamContent.replace(textPart, '').trimStart()
+        // Concatenate spoken text with the action tags from the stream.
+        const actionTags = streamContent.match(/<action>.*?<\/action>/gs) || []
+        const tail = actionTags.join(' ')
         assistantContent = (spokenText + ' ' + tail).trim()
       }
     }
@@ -156,6 +161,11 @@ export function useConversation() {
         store.appendHistory({ role: 'assistant', content: assistantContent })
       }
     }
+
+    for (const toolText of pendingToolsRef.current) {
+      store.appendHistory({ role: 'tool', content: toolText })
+    }
+    pendingToolsRef.current = []
 
     streamHistoryRef.current = ''
     store.resetBuffer()
@@ -199,6 +209,7 @@ export function useConversation() {
     fastCheckPromiseRef.current = null
     interruptPendingRef.current = false
     actionStartedRef.current = false
+    pendingToolsRef.current = []
 
     if (fastCheckTimeoutRef.current) {
       clearTimeout(fastCheckTimeoutRef.current)
@@ -279,6 +290,7 @@ export function useConversation() {
     vadRef.current = null
     recorderRef.current = null
     ttsRef.current = null
+    pendingToolsRef.current = []
     store.setStatus('idle')
   }, [sse, store])
 

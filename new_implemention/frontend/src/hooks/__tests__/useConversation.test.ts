@@ -17,6 +17,7 @@ describe('useConversation', () => {
       isInterrupted: false,
       confirmPayload: null,
       pptMessages: [],
+      toolBuffer: [],
     })
 
     navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue({

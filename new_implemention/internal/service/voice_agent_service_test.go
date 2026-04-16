@@ -57,6 +57,7 @@ func TestStreamExtractorSingleAction(t *testing.T) {
 	require.Equal("tts", chunks[3].Type)
 	require.Equal(" done", chunks[3].Text)
 	require.Equal([]string{"ok"}, extractor.toolResults)
+	require.Equal([]string{"voice-agent-action-0"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorSplitActionTag(t *testing.T) {
@@ -79,6 +80,7 @@ func TestStreamExtractorSplitActionTag(t *testing.T) {
 	require.Equal("tool", chunks[2].Type)
 	require.Equal("done", chunks[2].Text)
 	require.Equal([]string{"done"}, extractor.toolResults)
+	require.Equal([]string{"voice-agent-action-0"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorUnclosedAction(t *testing.T) {
@@ -126,6 +128,7 @@ func TestStreamExtractorMultipleActions(t *testing.T) {
 	require.Equal("tool", chunks[4].Type)
 	require.Equal("result2", chunks[4].Text)
 	require.Equal([]string{"result1", "result2"}, extractor.toolResults)
+	require.Equal([]string{"voice-agent-action-0", "voice-agent-action-1"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorActionCallback(t *testing.T) {
@@ -170,6 +173,7 @@ func TestStreamExtractorHistorySingleAction(t *testing.T) {
 	_ = collectChunks(extractor, out)
 	assert.Equal(t, "ok <action>update_requirements|topic:math</action> done", extractor.history.String())
 	assert.Equal(t, []string{"all fields are updated"}, extractor.toolResults)
+	assert.Equal(t, []string{"voice-agent-action-0"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorHistoryMultipleActions(t *testing.T) {
@@ -187,6 +191,7 @@ func TestStreamExtractorHistoryMultipleActions(t *testing.T) {
 	_ = collectChunks(extractor, out)
 	assert.Equal(t, "<action>a1</action> mid <action>a2</action>", extractor.history.String())
 	assert.Equal(t, []string{"result1", "result2"}, extractor.toolResults)
+	assert.Equal(t, []string{"voice-agent-action-0", "voice-agent-action-1"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorHistorySplitActionTag(t *testing.T) {
@@ -200,6 +205,7 @@ func TestStreamExtractorHistorySplitActionTag(t *testing.T) {
 	_ = collectChunks(extractor, out)
 	assert.Equal(t, "hello <action>data</action>", extractor.history.String())
 	assert.Equal(t, []string{"done"}, extractor.toolResults)
+	assert.Equal(t, []string{"voice-agent-action-0"}, extractor.toolCallIDs)
 }
 
 func TestStreamExtractorHistoryUnclosedAction(t *testing.T) {

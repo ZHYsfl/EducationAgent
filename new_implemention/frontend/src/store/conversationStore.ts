@@ -38,6 +38,13 @@ export interface ConversationState {
   markActionPhase: () => void
 
   // -------------------------------------------------------------------------
+  // Tool result buffer (flushed after the assistant turn ends)
+  // -------------------------------------------------------------------------
+  toolBuffer: string[]
+  resetToolBuffer: () => void
+  flushToolBuffer: () => void
+
+  // -------------------------------------------------------------------------
   // TTS playback tracking
   // -------------------------------------------------------------------------
   /** Text that has already been spoken by the TTS engine. */
@@ -104,6 +111,21 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     })),
   markActionPhase: () => set({ hasEnteredActionPhase: true }),
 
+  // Tool buffer
+  toolBuffer: [],
+  resetToolBuffer: () => set({ toolBuffer: [] }),
+  flushToolBuffer: () =>
+    set((state) => {
+      const toolMsgs: ConversationMessage[] = state.toolBuffer.map((t) => ({
+        role: 'tool',
+        content: t,
+      }))
+      return {
+        history: [...state.history, ...toolMsgs],
+        toolBuffer: [],
+      }
+    }),
+
   // TTS
   spokenText: '',
   ttsPendingText: '',
@@ -151,12 +173,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       set({ status: 'acting' })
     } else if (chunk.type === 'tool') {
       const toolText = chunk.text ?? ''
-      get().appendHistory({ role: 'tool', content: toolText })
+      set((state) => ({ toolBuffer: [...state.toolBuffer, toolText] }))
     } else if (chunk.type === 'turn_end') {
       const buffer = get().assistantBuffer
       if (buffer) {
         get().appendHistory({ role: 'assistant', content: buffer })
       }
+      get().flushToolBuffer()
       get().resetBuffer()
       set({ status: 'idle' })
     }

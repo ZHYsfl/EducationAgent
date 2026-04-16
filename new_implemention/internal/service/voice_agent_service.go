@@ -81,13 +81,23 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 		extractor.Feed(token)
 	}
 
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
 	extractor.Flush()
 
-	// Save assistant turn and tool results into history.
+	// Build ToolCalls array so that subsequent ToolMessages have matching IDs.
+	var tcParams []openai.ChatCompletionMessageToolCallUnionParam
+	for _, id := range extractor.toolCallIDs {
+		tcParams = append(tcParams, openai.ChatCompletionMessageToolCallUnionParam{
+			OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+				ID: id,
+				Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+					Name:      "voice_agent_action",
+					Arguments: "{}",
+				},
+			},
+		})
+	}
+
+	// Save assistant turn and tool results into history unconditionally.
 	// Voice Agent assistant message contains only TTS text + <action> tags.
 	// Each tool result is stored as an independent tool role message.
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
@@ -96,10 +106,15 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
 				OfString: openai.String(extractor.history.String()),
 			},
+			ToolCalls: tcParams,
 		},
 	})
-	for _, tr := range extractor.toolResults {
-		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-action"))
+	for i, tr := range extractor.toolResults {
+		st.AppendVoiceHistory(openai.ToolMessage(tr, extractor.toolCallIDs[i]))
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// Emit turn_end.
@@ -120,6 +135,7 @@ type streamExtractor struct {
 	raw         strings.Builder
 	history     strings.Builder
 	toolResults []string
+	toolCallIDs []string
 	inAction    bool
 	onAction    func(payload string) string
 }
@@ -150,8 +166,10 @@ func (e *streamExtractor) writeAction(payload string) {
 	if e.onAction != nil {
 		toolText := e.onAction(payload)
 		if toolText != "" {
+			toolID := fmt.Sprintf("voice-agent-action-%d", len(e.toolResults))
 			e.emit(model.SSEChunk{Type: "tool", Text: toolText})
 			e.toolResults = append(e.toolResults, toolText)
+			e.toolCallIDs = append(e.toolCallIDs, toolID)
 		}
 	}
 }
