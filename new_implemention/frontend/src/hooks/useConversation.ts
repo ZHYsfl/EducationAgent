@@ -132,16 +132,11 @@ export function useConversation() {
 
     let assistantContent = spokenText
     if (hadEnteredAction && streamContent) {
-      // If the spoken text is already a prefix of the stream, keep the
-      // stream content because it includes actions/tools.
-      if (streamContent.startsWith(spokenText)) {
-        assistantContent = streamContent
-      } else {
-        // Concatenate spoken text with the action tags from the stream.
-        const actionTags = streamContent.match(/<action>.*?<\/action>/gs) || []
-        const tail = actionTags.join(' ')
-        assistantContent = (spokenText + ' ' + tail).trim()
-      }
+      // Always preserve only the actually spoken text plus complete action tags.
+      // Do NOT include unplayed post-action TTS that arrived after the interrupt.
+      const actionTags = streamContent.match(/<action>.*?<\/action>/gs) || []
+      const tail = actionTags.join(' ')
+      assistantContent = (spokenText + ' ' + tail).trim()
     }
 
     if (assistantContent) {

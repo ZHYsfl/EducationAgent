@@ -83,7 +83,13 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 
 	extractor.Flush()
 
-	// Save assistant turn and tool results into history unconditionally.
+	if ctx.Err() != nil {
+		// Turn was interrupted; do not persist the partial assistant message.
+		// The frontend owns history reconstruction for interrupted turns.
+		return ctx.Err()
+	}
+
+	// Save assistant turn and tool results into history.
 	// Voice Agent assistant message contains only TTS text + <action> tags.
 	// Tool results are stored as independent tool role messages in order.
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
@@ -96,10 +102,6 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 	})
 	for _, tr := range extractor.toolResults {
 		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-action"))
-	}
-
-	if ctx.Err() != nil {
-		return ctx.Err()
 	}
 
 	// Emit turn_end.
