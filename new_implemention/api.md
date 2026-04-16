@@ -419,19 +419,19 @@ and voice agent will depend if the queue is not empty to judge if call the fetch
 
 go:
 ```go
-func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
+func fetch_from_ppt_message_queue(ctx context.Context, args map[string]string) (string, error) {
     // fetch the data from the ppt message queue
     // success (has message): plain string with the message content
-    return "the ppt message is xxxx,xxxx...", true, nil
+    return "the ppt message is: xxxx,xxxx...", nil
     // success (empty): plain string telling it's empty
-    return "queue is empty", false, nil
+    return "queue is empty", nil
     // failure: plain string error
-    return "failed to fetch the data from the ppt message queue", false, errors.New("failed to fetch the data from the ppt message queue") or ctx.Err()
+    return "failed to fetch the data from the ppt message queue", errors.New("failed to fetch the data from the ppt message queue") or ctx.Err()
 }
 ```
 
 tool result examples:
-- success (has message): `the ppt message is the new version of the ppt is generated successfully`
+- success (has message): `the ppt message is: the new version of the ppt is generated successfully`
 - success (empty): `queue is empty`
 - failure: `failed to fetch the data from the ppt message queue`
 

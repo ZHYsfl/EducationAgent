@@ -17,7 +17,7 @@ import (
 type VoiceAgentService interface {
 	// StreamTurn runs the voice agent on the user transcript and emits SSE chunks.
 	// The channel is closed when the turn ends or an error occurs.
-	StreamTurn(ctx context.Context, st *state.AppState, transcript string, out chan<- model.SSEChunk) error
+	StreamTurn(ctx context.Context, st *state.AppState, transcript string, interrupted bool, out chan<- model.SSEChunk) error
 }
 
 // DefaultVoiceAgentService uses an LLM to generate the voice turn.
@@ -38,7 +38,7 @@ func NewVoiceAgentService(cfg toolcalling.LLMConfig, exec *voiceagent.Executor) 
 // forwards SSE chunks to out, and executes actions via the executor.
 // Action results are appended to voice history after the turn ends so the next
 // LLM turn can observe them.
-func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, out chan<- model.SSEChunk) error {
+func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, interrupted bool, out chan<- model.SSEChunk) error {
 	defer close(out)
 
 	queueStatus := "empty"
@@ -47,6 +47,9 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	}
 
 	userContent := fmt.Sprintf("<status>%s</status>\n<user>%s</user>", queueStatus, transcript)
+	if interrupted {
+		userContent = "</interrupted>\n" + userContent
+	}
 
 	history := st.GetVoiceHistory()
 	history = append(history, openai.UserMessage(userContent))
