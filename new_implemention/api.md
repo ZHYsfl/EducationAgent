@@ -83,7 +83,7 @@ streamed response format (server-sent events or websocket chunks):
 | tool | `{"type": "tool", "text": "all fields are updated"}` | the synchronous result of the action just emitted. inserted into the conversation history as an independent `tool` message after the assistant turn ends. |
 | turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
 
-note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. once an action is emitted, no more tts text follows in the same turn. the tool result is a plain string (no xml wrapper) and is stored as a separate `tool` role message in history, following the `assistant` message that emitted the corresponding `<action>`.
+note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. **after all actions are emitted, the assistant may output additional tts text to report the action results, but no further actions are allowed after that.** the tool result is a plain string (no xml wrapper) and is stored as a separate `tool` role message in history, following the `assistant` message that emitted the corresponding `<action>`.
 
 ### module 1: voice agent
 
