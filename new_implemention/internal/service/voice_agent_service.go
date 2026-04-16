@@ -68,13 +68,13 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 
 	extractor := newStreamExtractor(out, func(payload string) string {
 		if s.executor == nil {
-			return "<tool>no executor registered</tool>"
+			return "no executor registered"
 		}
 		res, err := s.executor.Execute(ctx, payload)
 		if err != nil && res == "" {
 			res = err.Error()
 		}
-		return fmt.Sprintf("<tool>%s</tool>", res)
+		return res
 	})
 
 	for token := range stream {
@@ -87,10 +87,9 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 
 	extractor.Flush()
 
-	// Save assistant turn into history.
-	// Voice Agent uses a custom protocol where <action> and <tool> are both
-	// embedded directly in the assistant content string, in the exact order
-	// they were produced: action1 -> tool1 -> action2 -> tool2 ...
+	// Save assistant turn and tool results into history.
+	// Voice Agent assistant message contains only TTS text + <action> tags.
+	// Each tool result is stored as an independent tool role message.
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
 	st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
 		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
@@ -99,6 +98,9 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 			},
 		},
 	})
+	for _, tr := range extractor.toolResults {
+		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-action"))
+	}
 
 	// Emit turn_end.
 	select {
@@ -114,11 +116,12 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 // and emits model.SSEChunk values. When a complete action is found, onAction
 // is invoked and its return value is emitted as a "tool" chunk.
 type streamExtractor struct {
-	out      chan<- model.SSEChunk
-	raw      strings.Builder
-	history  strings.Builder
-	inAction bool
-	onAction func(payload string) string
+	out         chan<- model.SSEChunk
+	raw         strings.Builder
+	history     strings.Builder
+	toolResults []string
+	inAction    bool
+	onAction    func(payload string) string
 }
 
 func newStreamExtractor(out chan<- model.SSEChunk, onAction func(string) string) *streamExtractor {
@@ -148,7 +151,7 @@ func (e *streamExtractor) writeAction(payload string) {
 		toolText := e.onAction(payload)
 		if toolText != "" {
 			e.emit(model.SSEChunk{Type: "tool", Text: toolText})
-			e.history.WriteString(toolText)
+			e.toolResults = append(e.toolResults, toolText)
 		}
 	}
 }

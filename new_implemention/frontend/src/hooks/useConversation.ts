@@ -81,8 +81,7 @@ export function useConversation() {
         store.setStatus('acting')
       } else if (chunk.type === 'tool') {
         const toolText = chunk.text ?? ''
-        streamHistoryRef.current += toolText
-        store.appendToBuffer(toolText)
+        store.appendHistory({ role: 'tool', content: toolText })
       } else if (chunk.type === 'turn_end') {
         flushTTS()
         const content = streamHistoryRef.current
@@ -134,7 +133,7 @@ export function useConversation() {
         assistantContent = streamContent
       } else {
         // Concatenate spoken text with the non-text tail of the stream.
-        const textPart = streamContent.replace(/<action>.*?<\/action>/gs, '').replace(/<tool>.*?<\/tool>/gs, '').trim()
+        const textPart = streamContent.replace(/<action>.*?<\/action>/gs, '').trim()
         const tail = streamContent.replace(textPart, '').trimStart()
         assistantContent = (spokenText + ' ' + tail).trim()
       }

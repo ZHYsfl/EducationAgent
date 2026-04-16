@@ -35,7 +35,7 @@ func TestStreamExtractorPlainText(t *testing.T) {
 
 func TestStreamExtractorSingleAction(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "<tool>ok</tool>" })
+	extractor := newStreamExtractor(out, func(p string) string { return "ok" })
 
 	extractor.Feed("ok ")
 	extractor.Feed("<action>")
@@ -53,14 +53,15 @@ func TestStreamExtractorSingleAction(t *testing.T) {
 	require.Equal("action", chunks[1].Type)
 	require.Equal("update_requirements|topic:math", chunks[1].Payload)
 	require.Equal("tool", chunks[2].Type)
-	require.Equal("<tool>ok</tool>", chunks[2].Text)
+	require.Equal("ok", chunks[2].Text)
 	require.Equal("tts", chunks[3].Type)
 	require.Equal(" done", chunks[3].Text)
+	require.Equal([]string{"ok"}, extractor.toolResults)
 }
 
 func TestStreamExtractorSplitActionTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "<tool>done</tool>" })
+	extractor := newStreamExtractor(out, func(p string) string { return "done" })
 
 	// <action> split across tokens
 	extractor.Feed("hello <act")
@@ -76,7 +77,8 @@ func TestStreamExtractorSplitActionTag(t *testing.T) {
 	require.Equal("action", chunks[1].Type)
 	require.Equal("data", chunks[1].Payload)
 	require.Equal("tool", chunks[2].Type)
-	require.Equal("<tool>done</tool>", chunks[2].Text)
+	require.Equal("done", chunks[2].Text)
+	require.Equal([]string{"done"}, extractor.toolResults)
 }
 
 func TestStreamExtractorUnclosedAction(t *testing.T) {
@@ -103,7 +105,7 @@ func TestStreamExtractorMultipleActions(t *testing.T) {
 	counter := 0
 	extractor := newStreamExtractor(out, func(p string) string {
 		counter++
-		return fmt.Sprintf("<tool>%d</tool>", counter)
+		return fmt.Sprintf("result%d", counter)
 	})
 
 	extractor.Feed("<action>a1</action> mid <action>a2</action>")
@@ -116,13 +118,14 @@ func TestStreamExtractorMultipleActions(t *testing.T) {
 	require.Equal("action", chunks[0].Type)
 	require.Equal("a1", chunks[0].Payload)
 	require.Equal("tool", chunks[1].Type)
-	require.Equal("<tool>1</tool>", chunks[1].Text)
+	require.Equal("result1", chunks[1].Text)
 	require.Equal("tts", chunks[2].Type)
 	require.Equal(" mid ", chunks[2].Text)
 	require.Equal("action", chunks[3].Type)
 	require.Equal("a2", chunks[3].Payload)
 	require.Equal("tool", chunks[4].Type)
-	require.Equal("<tool>2</tool>", chunks[4].Text)
+	require.Equal("result2", chunks[4].Text)
+	require.Equal([]string{"result1", "result2"}, extractor.toolResults)
 }
 
 func TestStreamExtractorActionCallback(t *testing.T) {
@@ -130,7 +133,7 @@ func TestStreamExtractorActionCallback(t *testing.T) {
 	var payloads []string
 	extractor := newStreamExtractor(out, func(p string) string {
 		payloads = append(payloads, p)
-		return "<tool>ok</tool>"
+		return "ok"
 	})
 
 	extractor.Feed("<action>update_requirements|topic:math</action>")
@@ -155,7 +158,7 @@ func TestStreamExtractorHistoryPlainText(t *testing.T) {
 
 func TestStreamExtractorHistorySingleAction(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "<tool>all fields are updated</tool>" })
+	extractor := newStreamExtractor(out, func(p string) string { return "all fields are updated" })
 
 	extractor.Feed("ok ")
 	extractor.Feed("<action>")
@@ -165,35 +168,38 @@ func TestStreamExtractorHistorySingleAction(t *testing.T) {
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "ok <action>update_requirements|topic:math</action><tool>all fields are updated</tool> done", extractor.history.String())
+	assert.Equal(t, "ok <action>update_requirements|topic:math</action> done", extractor.history.String())
+	assert.Equal(t, []string{"all fields are updated"}, extractor.toolResults)
 }
 
 func TestStreamExtractorHistoryMultipleActions(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(p string) string {
 		if p == "a1" {
-			return "<tool>result1</tool>"
+			return "result1"
 		}
-		return "<tool>result2</tool>"
+		return "result2"
 	})
 
 	extractor.Feed("<action>a1</action> mid <action>a2</action>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "<action>a1</action><tool>result1</tool> mid <action>a2</action><tool>result2</tool>", extractor.history.String())
+	assert.Equal(t, "<action>a1</action> mid <action>a2</action>", extractor.history.String())
+	assert.Equal(t, []string{"result1", "result2"}, extractor.toolResults)
 }
 
 func TestStreamExtractorHistorySplitActionTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "<tool>done</tool>" })
+	extractor := newStreamExtractor(out, func(p string) string { return "done" })
 
 	extractor.Feed("hello <act")
 	extractor.Feed("ion>data</action>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "hello <action>data</action><tool>done</tool>", extractor.history.String())
+	assert.Equal(t, "hello <action>data</action>", extractor.history.String())
+	assert.Equal(t, []string{"done"}, extractor.toolResults)
 }
 
 func TestStreamExtractorHistoryUnclosedAction(t *testing.T) {
