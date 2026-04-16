@@ -135,7 +135,7 @@ export function useConversation() {
       // Always preserve only the actually spoken text plus complete action tags.
       // Do NOT include unplayed post-action TTS that arrived after the interrupt.
       const actionTags = streamContent.match(/<action>.*?<\/action>/gs) || []
-      const tail = actionTags.join(' ')
+      const tail = actionTags.join('')
       assistantContent = (spokenText + ' ' + tail).trim()
     }
 
