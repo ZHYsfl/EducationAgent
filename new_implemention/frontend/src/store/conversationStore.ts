@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import type {
   ConversationStatus,
   ConversationMessage,
-  Requirements,
   ConfirmPayload,
   PPTMessage,
   SSEChunk,

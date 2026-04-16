@@ -2,9 +2,9 @@ import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
 // Polyfill for MediaRecorder and Web Audio API
-global.navigator.mediaDevices = {
+;(global.navigator as any).mediaDevices = {
   getUserMedia: vi.fn(),
-} as unknown as MediaDevices
+}
 
 global.MediaRecorder = vi.fn(() => ({
   start: vi.fn(),

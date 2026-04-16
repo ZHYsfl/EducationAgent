@@ -16,7 +16,6 @@ export type TTSState = 'idle' | 'speaking' | 'paused'
 export class TTSEngine {
   private queue: string[] = []
   private state: TTSState = 'idle'
-  private utterance: SpeechSynthesisUtterance | null = null
   private options: TTSOptions = { rate: 1, pitch: 1, lang: 'zh-CN' }
   private onStateChange: ((state: TTSState) => void) | null = null
   private onSentenceStart: ((text: string) => void) | null = null
@@ -61,7 +60,6 @@ export class TTSEngine {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel()
     }
-    this.utterance = null
     if (this.state !== 'idle') {
       this.state = 'idle'
       this.emitState()
@@ -129,7 +127,6 @@ export class TTSEngine {
       this.onSentenceEnd?.(text)
       this.playNext()
     }
-    this.utterance = u
     window.speechSynthesis.speak(u)
   }
 }
