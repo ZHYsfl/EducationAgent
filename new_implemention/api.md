@@ -51,12 +51,26 @@ frontend behavior after response:
 call this right after vad_end.
 
 request body:
+
+when `vad_start` returned `interrupt: false`:
 ```json
 {
     "audio": "base64-encoded audio from vad_start to vad_end",
     "format": "pcm"
 }
 ```
+
+when `vad_start` returned `interrupt: true`:
+```json
+{
+    "audio": "base64-encoded audio from vad_start to vad_end",
+    "format": "pcm",
+    "needs_interrupted_prefix": true,
+    "interrupted_assistant_text": "新版 PPT 已经"
+}
+```
+- `needs_interrupted_prefix`: decided by the frontend. `true` only when the assistant was still playing TTS text to the user when the interrupt happened.
+- `interrupted_assistant_text`: the truncated assistant text that had already been spoken before the interrupt. the backend appends it to the conversation history before starting the new inference so the LLM context stays consistent. empty string when there is no truncated text to sync.
 
 backend processing:
 1. run local asr on the full audio segment. this asr can start in parallel with the short asr from `vad_start` because the audio is just a prefix extension. the two asr jobs are cascaded (they may share the same session state) but the full asr does not need to wait for the fast check to finish.
@@ -78,12 +92,13 @@ streamed response format (server-sent events or websocket chunks):
 
 | chunk type | example | meaning |
 |------------|---------|---------|
+| user_transcript | `{"type": "user_transcript", "text": "</interrupted>\\n<status>not empty</status>\\n<user>xxxxx</user>"}` | the fully formatted user message for this turn, emitted first so the frontend can append it to history. |
 | tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to the tts engine |
 | action | `{"type": "action", "payload": "update_requirements|topic:数学"}` | a parsed action extracted from the llm stream |
 | tool | `{"type": "tool", "text": "all fields are updated"}` | the synchronous result of the action just emitted. inserted into the conversation history as an independent `tool` message after the assistant turn ends. |
 | turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
 
-note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. **after all actions are emitted, the assistant may output additional tts text to report the action results, but no further actions are allowed after that.** the tool result is a plain string (no xml wrapper) and is stored as a separate `tool` role message in history, following the `assistant` message that emitted the corresponding `<action>`.
+note: the backend executes every action synchronously. the stream order is `user_transcript` → `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → **[optional] `tts`** → `turn_end`. **after all actions are emitted, the assistant may output additional tts text to report the action results, but no further actions are allowed after that.** the tool result is a plain string (no xml wrapper). in history, it is stored as a separate `tool` role message following the `assistant` message that emitted the corresponding `<action>`. **if there is post-action tts, it becomes a second, independent `assistant` message placed after all `tool` messages—not merged into the first assistant message.**
 
 ### module 1: voice agent
 
@@ -751,13 +766,12 @@ when vad_start fires, the frontend does the following in order:
    - tell the backend to cancel: the backend aborts the ongoing llm inference.
    - buffer the new audio locally until vad_end. do not append anything to the llm context yet.
    - wait if action has started: if the backend stream has already emitted the opening `<` of the first `<action`, the frontend must let that goroutine run until the **full action sequence** is complete. actions are silent, so the user will not feel "the machine is still talking".
-   - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr. however, the voice agent llm inference cannot start until both (1) the action sequence is fully resolved and (2) the full asr transcript is ready.
+   - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end` together with `needs_interrupted_prefix: true | false`. **this flag is decided by the frontend**: it is `true` only when the assistant was still playing **tts text** to the user (i.e. the tts queue was not empty or the stream had not yet emitted any `<action>`). if the tts had already finished and the assistant had entered the silent action phase, the flag is `false`.
+   - the backend runs full asr and calls the voice agent llm. it prepends `</interrupted>\n` to the user message **only when `needs_interrupted_prefix` is `true`**.
    - decide what goes into history:
-     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** (`<action>...</action>`) in order. if the stream was cancelled before any `<` was emitted, there is no action.
+     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** (`<action>...</action>`) in order.
      - tool messages (role = `tool`): for each action that was emitted, append its synchronous execution result as a plain string. these follow the assistant message.
-     - user message (role = `user`):
-       - if the assistant was still streaming when vad_start fires: `{"role": "user", "content": "</interrupted>\n<status>...</status>\n<user>...</user>"}`
-       - if the assistant had already finished its turn (tts fully played, stream ended) and the user simply spoke again: `{"role": "user", "content": "<status>...</status>\n<user>...</user>"}` (no `</interrupted>`)
-   - send the rebuilt context to the llm: assistant message first, then any tool messages, then the user message.
+     - user message (role = `user`): the backend emits a `user_transcript` SSE chunk containing the fully formatted user message. the frontend appends it to the local history as `role: 'user'`.
+   - the overall turn order appended to history is: `assistant` (truncated spoken text + complete action sequence) → `tool` messages → `[optional] assistant` (post-action TTS if the model produced any). **the post-action TTS is a separate assistant message, not merged into the first assistant message.**
 
 edge case: if the backend stream hangs abnormally, the frontend may truncate any trailing incomplete action before appending the cached user input.

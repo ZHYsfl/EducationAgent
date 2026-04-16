@@ -45,6 +45,8 @@ export interface VADStartData {
 export interface VADEndRequest {
   audio: string
   format: 'pcm'
+  needs_interrupted_prefix?: boolean
+  interrupted_assistant_text?: string
 }
 
 export interface VADEndIgnoredData {
@@ -55,7 +57,7 @@ export interface VADEndIgnoredData {
 // SSE Stream
 // ---------------------------------------------------------------------------
 
-export type SSEChunkType = 'tts' | 'action' | 'tool' | 'turn_end'
+export type SSEChunkType = 'user_transcript' | 'tts' | 'action' | 'tool' | 'turn_end'
 
 export interface SSEChunk {
   type: SSEChunkType

@@ -88,7 +88,7 @@ func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.
 
 		out := make(chan model.SSEChunk, 32)
 		go func() {
-			_ = voiceAgent.StreamTurn(c.Request.Context(), st, transcript, wasInterrupt, out)
+			_ = voiceAgent.StreamTurn(c.Request.Context(), st, transcript, req.NeedsInterruptedPrefix, req.InterruptedAssistantText, out)
 		}()
 
 		for chunk := range out {

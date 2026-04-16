@@ -157,7 +157,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   // SSE handler
   handleSSEChunk: (chunk) => {
-    if (chunk.type === 'tts') {
+    if (chunk.type === 'user_transcript') {
+      get().appendHistory({ role: 'user', content: chunk.text ?? '' })
+    } else if (chunk.type === 'tts') {
       const text = chunk.text ?? ''
       get().appendToBuffer(text)
       // In a real implementation the pending text would be accumulated
@@ -175,10 +177,24 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       set((state) => ({ toolBuffer: [...state.toolBuffer, toolText] }))
     } else if (chunk.type === 'turn_end') {
       const buffer = get().assistantBuffer
-      if (buffer) {
-        get().appendHistory({ role: 'assistant', content: buffer })
+      const actionMatch = buffer.match(/<\/action>/g)
+      if (actionMatch && actionMatch.length > 0) {
+        const lastActionEnd = buffer.lastIndexOf('</action>') + '</action>'.length
+        const pre = buffer.slice(0, lastActionEnd)
+        const post = buffer.slice(lastActionEnd)
+        if (pre) {
+          get().appendHistory({ role: 'assistant', content: pre })
+        }
+        get().flushToolBuffer()
+        if (post) {
+          get().appendHistory({ role: 'assistant', content: post })
+        }
+      } else {
+        if (buffer) {
+          get().appendHistory({ role: 'assistant', content: buffer })
+        }
+        get().flushToolBuffer()
       }
-      get().flushToolBuffer()
       get().resetBuffer()
       set({ status: 'idle' })
     }
