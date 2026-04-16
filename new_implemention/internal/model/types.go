@@ -129,8 +129,10 @@ type VADStartData struct {
 }
 
 type VADEndRequest struct {
-	Audio  string `json:"audio"`  // base64-encoded audio
-	Format string `json:"format"` // e.g. "pcm"
+	Audio                    string `json:"audio"`  // base64-encoded audio
+	Format                   string `json:"format"` // e.g. "pcm"
+	NeedsInterruptedPrefix   bool   `json:"needs_interrupted_prefix,omitempty"`
+	InterruptedAssistantText string `json:"interrupted_assistant_text,omitempty"`
 }
 
 type VADEndIgnoredData struct {
@@ -141,7 +143,7 @@ type VADEndIgnoredData struct {
 // It is used whenever the backend streams a voice turn back to the frontend
 // (e.g. during vad_end full processing).
 type SSEChunk struct {
-	Type    string `json:"type"`              // "tts" | "action" | "tool" | "turn_end"
+	Type    string `json:"type"`              // "user_transcript" | "tts" | "action" | "tool" | "turn_end"
 	Text    string `json:"text,omitempty"`    // for type="tts" or type="tool"
 	Payload string `json:"payload,omitempty"` // for type="action"
 }

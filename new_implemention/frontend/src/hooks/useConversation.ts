@@ -32,12 +32,16 @@ export function useConversation() {
   const fastCheckPromiseRef = useRef<Promise<{ interrupt: boolean }> | null>(null)
   const fastCheckSentRef = useRef<boolean>(false)
   const interruptPendingRef = useRef<boolean>(false)
-  const actionStartedRef = useRef<boolean>(false)
   const fastCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ttsWasActiveRef = useRef<boolean>(false)
 
   // Accumulate raw SSE text so we can rebuild the exact assistant message.
   const streamHistoryRef = useRef<string>('')
   const pendingToolsRef = useRef<string[]>([])
+  // In the two-round architecture (fetch -> second inference), this marks the
+  // offset in streamHistoryRef right after the last action tag, separating
+  // round-1 assistant from round-2 assistant text.
+  const postActionOffsetRef = useRef<number>(0)
 
   // -------------------------------------------------------------------------
   // TTS helpers
@@ -59,7 +63,9 @@ export function useConversation() {
   // -------------------------------------------------------------------------
   const handleChunk = useCallback(
     (chunk: SSEChunk) => {
-      if (chunk.type === 'tts') {
+      if (chunk.type === 'user_transcript') {
+        store.appendHistory({ role: 'user', content: chunk.text ?? '' })
+      } else if (chunk.type === 'tts') {
         const text = chunk.text ?? ''
         streamHistoryRef.current += text
         store.appendToBuffer(text)
@@ -74,7 +80,6 @@ export function useConversation() {
           store.setTtsPendingText(sentences[sentences.length - 1] ?? '')
         }
       } else if (chunk.type === 'action') {
-        actionStartedRef.current = true
         store.markActionPhase()
         const actionTag = `<action>${chunk.payload ?? ''}</action>`
         streamHistoryRef.current += actionTag
@@ -83,19 +88,30 @@ export function useConversation() {
       } else if (chunk.type === 'tool') {
         const toolText = chunk.text ?? ''
         pendingToolsRef.current.push(toolText)
+        // Mark the boundary after the last action tag for round-2 detection.
+        postActionOffsetRef.current = streamHistoryRef.current.length
       } else if (chunk.type === 'turn_end') {
         flushTTS()
         const content = streamHistoryRef.current
-        if (content) {
+        if (postActionOffsetRef.current > 0) {
+          const pre = content.slice(0, postActionOffsetRef.current)
+          const post = content.slice(postActionOffsetRef.current)
+          if (pre) {
+            store.appendHistory({ role: 'assistant', content: pre })
+          }
+          for (const toolText of pendingToolsRef.current) {
+            store.appendHistory({ role: 'tool', content: toolText })
+          }
+          if (post) {
+            store.appendHistory({ role: 'assistant', content: post })
+          }
+        } else if (content) {
           store.appendHistory({ role: 'assistant', content })
-        }
-        for (const toolText of pendingToolsRef.current) {
-          store.appendHistory({ role: 'tool', content: toolText })
         }
         pendingToolsRef.current = []
         streamHistoryRef.current = ''
+        postActionOffsetRef.current = 0
         store.resetBuffer()
-        actionStartedRef.current = false
         interruptPendingRef.current = false
         store.setStatus('idle')
       }
@@ -115,58 +131,60 @@ export function useConversation() {
   // Interrupt handling
   // -------------------------------------------------------------------------
   const performInterrupt = useCallback(async () => {
-    // 1. Stop playback immediately.
+    // 1. Record whether TTS is still playing so we can decide later whether
+    //    to prepend </interrupted> even if ttsPendingText has been flushed.
+    ttsWasActiveRef.current = ttsRef.current?.isActive() ?? false
+    // 2. Stop playback immediately.
     clearTTSAndPlayback()
-    // 2. Abort the backend stream.
+    // 3. Abort the backend stream.
     sse.abort()
     interruptPendingRef.current = true
   }, [clearTTSAndPlayback, sse])
 
   const finalizeInterruptedTurn = useCallback(() => {
     // Called when vad_end arrives after an interrupt.
-    // Build the truncated assistant message from what was already spoken
-    // plus any complete action sequence.
     const spokenText = store.spokenText
     const streamContent = streamHistoryRef.current
-    const hadEnteredAction = actionStartedRef.current
+    const postActionOffset = postActionOffsetRef.current
+    let interruptedAssistantText = ''
 
-    let assistantContent = spokenText
-    if (hadEnteredAction && streamContent) {
-      // Always preserve only the actually spoken text plus complete action tags.
-      // Do NOT include unplayed post-action TTS that arrived after the interrupt.
-      const actionTags = streamContent.match(/<action>.*?<\/action>/gs) || []
-      const tail = actionTags.join('')
-      assistantContent = (spokenText + ' ' + tail).trim()
-    }
+    if (postActionOffset > 0) {
+      // There is at least one complete action tag. Split into round 1 and round 2.
+      const pre = streamContent.slice(0, postActionOffset)
 
-    if (assistantContent) {
-      const revIdx = [...store.history].reverse().findIndex((m) => m.role === 'assistant')
-      const lastAssistantIdx = revIdx >= 0 ? store.history.length - 1 - revIdx : -1
-      if (lastAssistantIdx >= 0) {
-        // Check whether the last assistant message in history corresponds
-        // to the current streaming turn. We treat it as the same turn if
-        // its content is a prefix of the stream content.
-        const last = store.history[lastAssistantIdx]
-        if (last?.role === 'assistant' && streamContent.startsWith(last.content)) {
-          store.replaceLastAssistant(assistantContent)
-        } else {
-          store.appendHistory({ role: 'assistant', content: assistantContent })
-        }
-      } else {
-        store.appendHistory({ role: 'assistant', content: assistantContent })
+      if (pre) {
+        store.appendHistory({ role: 'assistant', content: pre })
+      }
+      for (const toolText of pendingToolsRef.current) {
+        store.appendHistory({ role: 'tool', content: toolText })
+      }
+
+      // Round 2 (if any) only keeps what was actually spoken.
+      // spokenText contains raw audio text without action tags.
+      // We approximate the round-2 portion by stripping the round-1 text.
+      const preTextOnly = pre.replace(/<action>.*?\n?<\/action>/gs, '')
+      const round2Spoken = spokenText.startsWith(preTextOnly)
+        ? spokenText.slice(preTextOnly.length).trimStart()
+        : ''
+      if (round2Spoken) {
+        store.appendHistory({ role: 'assistant', content: round2Spoken })
+        interruptedAssistantText = round2Spoken
+      }
+    } else {
+      // No action tags: simple truncation to what was actually spoken.
+      if (spokenText) {
+        store.appendHistory({ role: 'assistant', content: spokenText })
+        interruptedAssistantText = spokenText
       }
     }
 
-    for (const toolText of pendingToolsRef.current) {
-      store.appendHistory({ role: 'tool', content: toolText })
-    }
     pendingToolsRef.current = []
-
     streamHistoryRef.current = ''
+    postActionOffsetRef.current = 0
     store.resetBuffer()
     store.setSpokenText('')
-    actionStartedRef.current = false
     interruptPendingRef.current = false
+    return interruptedAssistantText
   }, [store])
 
   // -------------------------------------------------------------------------
@@ -203,8 +221,8 @@ export function useConversation() {
     fastCheckSentRef.current = false
     fastCheckPromiseRef.current = null
     interruptPendingRef.current = false
-    actionStartedRef.current = false
     pendingToolsRef.current = []
+    ttsWasActiveRef.current = false
 
     if (fastCheckTimeoutRef.current) {
       clearTimeout(fastCheckTimeoutRef.current)
@@ -229,16 +247,31 @@ export function useConversation() {
 
     const fastResult = await (fastCheckPromiseRef.current ?? Promise.resolve({ interrupt: false }))
 
+    const needsPrefix = fastResult.interrupt && (store.ttsPendingText !== '' || ttsWasActiveRef.current)
+
+    let interruptedAssistantText = ''
+    if (fastResult.interrupt) {
+      // Interrupt path: finalize the truncated turn, then start the new SSE stream.
+      interruptedAssistantText = finalizeInterruptedTurn()
+    }
+
+    const req: import('@/types').VADEndRequest = {
+      audio: fullSegment.base64,
+      format: 'pcm',
+      needs_interrupted_prefix: needsPrefix,
+      interrupted_assistant_text: interruptedAssistantText,
+    }
+
     if (!fastResult.interrupt) {
       // Backend returns a plain JSON response; vadEnd will synthesise turn_end.
-      await sse.start(fullSegment.base64)
+      await sse.start(req)
       store.setStatus('idle')
+      ttsWasActiveRef.current = false
       return
     }
 
-    // Interrupt path: finalize the truncated turn, then start the new SSE stream.
-    finalizeInterruptedTurn()
-    await sse.start(fullSegment.base64)
+    await sse.start(req)
+    ttsWasActiveRef.current = false
   }, [sendFastCheck, sse, store, finalizeInterruptedTurn])
 
   // -------------------------------------------------------------------------
@@ -286,6 +319,7 @@ export function useConversation() {
     recorderRef.current = null
     ttsRef.current = null
     pendingToolsRef.current = []
+    postActionOffsetRef.current = 0
     store.setStatus('idle')
   }, [sse, store])
 

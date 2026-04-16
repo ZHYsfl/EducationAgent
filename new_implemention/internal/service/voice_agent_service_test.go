@@ -212,3 +212,15 @@ func TestStreamExtractorHistoryUnclosedAction(t *testing.T) {
 	_ = collectChunks(extractor, out)
 	assert.Equal(t, "text <action>unclosed", extractor.history.String())
 }
+
+func TestStreamExtractorActions(t *testing.T) {
+	out := make(chan model.SSEChunk, 10)
+	extractor := newStreamExtractor(out, func(string) string { return "ok" })
+	extractor.Feed("ok ")
+	extractor.Feed("<action>update_requirements|topic:math</action>")
+	extractor.Feed("<action>require_confirm</action>")
+	extractor.Flush()
+	_ = collectChunks(extractor, out)
+
+	assert.Equal(t, []string{"update_requirements|topic:math", "require_confirm"}, extractor.actions)
+}

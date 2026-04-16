@@ -16,8 +16,12 @@ import (
 // VoiceAgentService drives the finetuned voice agent LLM and streams the response.
 type VoiceAgentService interface {
 	// StreamTurn runs the voice agent on the user transcript and emits SSE chunks.
-	// The channel is closed when the turn ends or an error occurs.
-	StreamTurn(ctx context.Context, st *state.AppState, transcript string, interrupted bool, out chan<- model.SSEChunk) error
+	// needsInterruptedPrefix tells the backend whether to prepend </interrupted> to
+	// the user message. It is determined by the frontend based on TTS playback state.
+	// interruptedAssistant contains the truncated assistant text from a previous turn
+	// that was interrupted during TTS playback. The backend appends it to history
+	// before starting the new inference so the LLM context stays consistent.
+	StreamTurn(ctx context.Context, st *state.AppState, transcript string, needsInterruptedPrefix bool, interruptedAssistant string, out chan<- model.SSEChunk) error
 }
 
 // DefaultVoiceAgentService uses an LLM to generate the voice turn.
@@ -38,8 +42,20 @@ func NewVoiceAgentService(cfg toolcalling.LLMConfig, exec *voiceagent.Executor) 
 // forwards SSE chunks to out, and executes actions via the executor.
 // Action results are appended to voice history after the turn ends so the next
 // LLM turn can observe them.
-func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, interrupted bool, out chan<- model.SSEChunk) error {
+func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, needsInterruptedPrefix bool, interruptedAssistant string, out chan<- model.SSEChunk) error {
 	defer close(out)
+
+	// If the frontend interrupted an assistant turn during TTS playback, append
+	// the truncated spoken text to history so the backend context stays in sync.
+	if interruptedAssistant != "" {
+		st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(interruptedAssistant),
+				},
+			},
+		})
+	}
 
 	queueStatus := "empty"
 	if _, ok := st.PeekPPTMessageQueue(); ok {
@@ -47,12 +63,13 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	}
 
 	userContent := fmt.Sprintf("<status>%s</status>\n<user>%s</user>", queueStatus, transcript)
-	if interrupted {
+	if needsInterruptedPrefix {
 		userContent = "</interrupted>\n" + userContent
 	}
 
-	history := st.GetVoiceHistory()
-	history = append(history, openai.UserMessage(userContent))
+	// Emit the fully formatted user message first so the frontend can append it
+	// to the conversation history before the assistant turn starts.
+	out <- model.SSEChunk{Type: "user_transcript", Text: userContent}
 
 	sys := openai.SystemMessage(`You are a helpful voice assistant for a PPT generation app.
 Talk naturally with the user.
@@ -65,8 +82,12 @@ Available actions:
 - fetch_from_ppt_message_queue
 Do not output any explanation inside the action tag. Keep the tag concise.`)
 
+	// -------------------------------------------------------------------------
+	// Round 1: assistant generates TTS + action(s)
+	// -------------------------------------------------------------------------
+	history := st.GetVoiceHistory()
+	history = append(history, openai.UserMessage(userContent))
 	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
-
 	stream := s.agent.StreamChat(ctx, messages)
 
 	extractor := newStreamExtractor(out, func(payload string) string {
@@ -83,7 +104,6 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 	for token := range stream {
 		extractor.Feed(token)
 	}
-
 	extractor.Flush()
 
 	if ctx.Err() != nil {
@@ -92,19 +112,59 @@ Do not output any explanation inside the action tag. Keep the tag concise.`)
 		return ctx.Err()
 	}
 
-	// Save assistant turn and tool results into history.
-	// Voice Agent assistant message contains only TTS text + <action> tags.
-	// Tool results are stored as independent tool role messages in order.
+	// Persist round 1: user -> assistant -> tool(s)
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
-	st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
-		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-				OfString: openai.String(extractor.history.String()),
+	if assistantContent := extractor.history.String(); assistantContent != "" {
+		st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(assistantContent),
+				},
 			},
-		},
-	})
+		})
+	}
 	for _, tr := range extractor.toolResults {
 		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-action"))
+	}
+
+	// -------------------------------------------------------------------------
+	// Round 2 (conditional): if any action is fetch_from_ppt_message_queue,
+	// run a second inference so the model can report the tool results.
+	// -------------------------------------------------------------------------
+	hasFetch := false
+	for _, a := range extractor.actions {
+		if strings.HasPrefix(a, "fetch_from_ppt_message_queue") {
+			hasFetch = true
+			break
+		}
+	}
+
+	if hasFetch {
+		history = st.GetVoiceHistory()
+		messages = append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
+		stream2 := s.agent.StreamChat(ctx, messages)
+
+		var secondAssistant strings.Builder
+		for token := range stream2 {
+			if ctx.Err() != nil {
+				break
+			}
+			secondAssistant.WriteString(token)
+			out <- model.SSEChunk{Type: "tts", Text: token}
+		}
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if content := secondAssistant.String(); content != "" {
+			st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
+				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+					Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+						OfString: openai.String(content),
+					},
+				},
+			})
+		}
 	}
 
 	// Emit turn_end.
@@ -124,6 +184,7 @@ type streamExtractor struct {
 	out         chan<- model.SSEChunk
 	raw         strings.Builder
 	history     strings.Builder
+	actions     []string
 	toolResults []string
 	inAction    bool
 	onAction    func(payload string) string
@@ -149,6 +210,7 @@ func (e *streamExtractor) writeText(text string) {
 
 func (e *streamExtractor) writeAction(payload string) {
 	e.emit(model.SSEChunk{Type: "action", Payload: payload})
+	e.actions = append(e.actions, payload)
 	e.history.WriteString("<action>")
 	e.history.WriteString(payload)
 	e.history.WriteString("</action>")

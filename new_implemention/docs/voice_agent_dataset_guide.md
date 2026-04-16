@@ -91,6 +91,14 @@
 1. `user` 消息
 2. `assistant` 消息（包含该 turn 的所有 `<action>`）
 3. 按顺序排列的 `tool` 消息（每个 `<action>` 对应一个 `tool`）
+4. **如果该 turn 有汇报 TTS（post-action TTS），它是一个独立的 `assistant` 消息，紧跟在所有 `tool` 之后。**
+
+也就是说，标准的 Phase 2 汇报形态在历史中表现为：
+```json
+{ "role": "assistant", "content": "TTS + <action>...</action>" },
+{ "role": "tool", "content": "..." },
+{ "role": "assistant", "content": "汇报 TTS（可选，也可能没有）" }
+```
 
 **不需要 tool_call_id**。我们的自定义协议完全依赖顺序对齐。
 
@@ -145,25 +153,25 @@ Voice Agent 支持以下 action（`<action>` 标签内的格式）：
 
 打断时进入历史的 assistant 消息，其**文本部分必须是 TTS 已经播放给用户听的 `spoken text`**，而不是 LLM 已经生成但还没播放的内容。
 
-打断的临界点以 **`spoken text` 中是否出现了 `<` 字符** 为准：
+打断的临界点以 **TTS 是否已经播放完毕** 为准：
 
-1. **TTS 阶段被打断，且 `spoken text` 中 `<` 尚未出现**：  
+1. **TTS 阶段被打断，且 assistant 给用户的话还没播完**：  
    只保留**已经播放的 `spoken text`**（哪怕是一句完整的话在最后一个字之前被打断，也要截断）。未播放的部分全部丢弃。
 
-2. **`spoken text` 中 `<` 已经出现（即已进入 action 阶段）**：  
-   由于 action 是静默执行的，stream 会在后台继续跑完整个 action 序列直到结束。此时该 `assistant` 消息**不算被打断**，历史里应保留：**已播放的 `spoken text`（仅包含实际播放的部分）+ 完整的 `<action>` 序列**。
+2. **TTS 已经播放完毕（即使 action 标签还没有从 LLM 流里出来）**：  
+   由于 action 是静默执行的，stream 会在后台继续跑完整个 action 序列直到结束。此时该 turn **不算被打断**，历史里应保留：**已播放的 `spoken text`（即完整播完的话）+ 完整的 `<action>` 序列**。
 
 示例：
 - Assistant TTS 已播放到：`"好的，请问风格偏好是..."`（LLM 可能已在后台生成了更多内容，但 TTS 只播到这里）
 - 用户在 `"偏好是"` 之后打断，说 `"topic is math"`。
 - 历史中的 assistant 消息：
-  - 若 `spoken text` 中 `<` 还没出现：`好的，请问风格偏好是`（仅保留已播放的 spoken text，截断）
-  - 若 `spoken text` 中 `<` 已经出现（哪怕只是 `<action>` 标签刚开了个头，比如流式输出了 `<a`）：`好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>`（已播放文本 + 完整 action 序列）
+  - 若 TTS 还没播完：`好的，请问风格偏好是`（仅保留已播放的 spoken text，截断）
+  - 若 TTS 已经播完（哪怕 action 标签还在 stream 后面）：`好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>`（完整 spoken text + 完整 action 序列）
 
 ### 3.3 何时添加 `</interrupted>`
 
 `</interrupted>` **只在以下情况出现**：
-- 前一个 assistant 正在播放 **TTS 文本**（`spoken text` 中尚未出现 `<`），
+- 前一个 assistant **还没播完给用户的 TTS 话**（即用户听到的语音还在播放，或者 stream 尚未开始输出 action），
 - 且用户在此期间发声并触发了打断。
 
 此时下一个 `user` 消息的格式为：
@@ -172,9 +180,11 @@ Voice Agent 支持以下 action（`<action>` 标签内的格式）：
 </interrupted>\n<status>{empty | not empty}</status>\n<user>{用户说的话}</user>
 ```
 
-**如果前一个 assistant 的 `spoken text` 中 `<` 已经出现**（即已进入 action 阶段），即使后续用户说话了，也不算打断。此时下一个 `user` 消息**不要**加 `</interrupted>`，使用正常的 `status + user` 格式即可。
+**如果前一个 assistant 给用户的 TTS 话已经播放完毕**（即用户已经听不到 assistant 在说话），即使后续 stream 里还在输出 action 或者用户说话了，也不算打断。此时下一个 `user` 消息**不要**加 `</interrupted>`，使用正常的 `status + user` 格式即可。
 
-> **注意：action 执行与用户说话是并行的。** 系统必须等待 action 全部输出完且 tool 结果返回后，才将 `tool` 消息与用户的 `user` 消息按顺序拼入历史。基本顺序为：**`assistant` → （多个 `tool`）→ `user`**。
+> 一句话：是否算打断，取决于 **TTS 是否还在给用户播放**，而不是 stream 里是否已经有 `<action>` 字符出现。
+
+> **注意：action 执行与用户说话是并行的。** 系统必须等待 action 全部输出完且 tool 结果返回后，才将 `tool` 消息拼入历史。**一个完整 turn 的历史顺序为：`user` → `assistant`（含所有 TTS 与 action）→ 按顺序排列的 `tool` 消息 → [可选] 独立的 `assistant`（post-action 汇报 TTS）**。
 
 ---
 
@@ -475,7 +485,8 @@ Phase 2 需要覆盖多个维度的组合：
    - Phase 2：`fetch_from_ppt_message_queue` 允许 `TTS 文本 → action → [可选] TTS 文本` 的汇报形态；其他 action（如 `send_to_ppt_agent`）通常不跟汇报 TTS。**汇报文本之后不能再有新的 action**。
 5. **打断只发生在 TTS 阶段。** 不要构造 "action 执行到一半被打断" 的样本。
 6. **纯对话样本的 `status` 必须是 `empty`。`** 否则模型会尝试调用工具。
-7. **一个 turn 内允许连续多个 action。** 每个 action 对应一个独立的 `tool` 消息，按顺序排列在 `assistant` 之后。
+7. **一个 turn 内允许连续多个 action。** 每个 action 对应一个独立的 `tool` 消息，按顺序排列在第一个 `assistant` 之后。
+8. **Phase 2 的 post-action 汇报 TTS 必须是独立的 `assistant` 消息，紧跟在所有 `tool` 之后。** 不能把汇报文本和 action 标签塞在同一个 `assistant` 消息里。
 8. **`update_requirements` 和 `require_confirm` 在第一次 `send_to_ppt_agent` 之后永久消失。** Phase 2 不应再出现这两个 action。
 9. **Status 反映的是用户说完话瞬间（vad_end）的队列状态**，不是任意时刻的状态。
 10. **action 之前的 TTS 文本不要包含对执行结果的断言**（如"已经记录了"、"已更新"），应只提问题或做自然引导。Phase 2 中，`fetch_from_ppt_message_queue` 执行后可以用一段 TTS 向用户汇报结果（如"新版 PPT 已经生成完毕"）；`send_to_ppt_agent` 等其他 action 通常不跟汇报 TTS。
@@ -492,13 +503,14 @@ Phase 2 需要覆盖多个维度的组合：
 
 ---
 
-## 8. 快速自查清单
+## 9. 快速自查清单
 
 提交数据前，逐条检查每个样本：
 
 - [ ] 所有 `user` 消息都包含 `<status>` 和 `<user>` 标签，且两者之间有换行符。
 - [ ] 所有 `assistant` 消息都没有换行符。
-- [ ] 如果样本包含 action，则 `assistant` 之后有对应数量的 `tool` 消息。
+- [ ] 如果样本包含 action，则第一个 `assistant` 之后有对应数量的 `tool` 消息。
+- [ ] Phase 2 的汇报 TTS（如果有）是独立的 `assistant` 消息，位于所有 `tool` 之后，不和 action 标签混在一起。
 - [ ] 没有任何地方出现 `<tool>` 或 `</tool>` 标签。
 - [ ] 打断样本的 `user` 消息以 `</interrupted>\n` 开头。
 - [ ] 纯对话样本的 `status` 为 `empty`。
