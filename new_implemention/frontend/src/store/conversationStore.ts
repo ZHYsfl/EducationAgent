@@ -151,7 +151,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       set({ status: 'acting' })
     } else if (chunk.type === 'tool') {
       const toolText = chunk.text ?? ''
-      get().appendToBuffer(toolText)
+      get().appendHistory({ role: 'tool', content: toolText })
     } else if (chunk.type === 'turn_end') {
       const buffer = get().assistantBuffer
       if (buffer) {

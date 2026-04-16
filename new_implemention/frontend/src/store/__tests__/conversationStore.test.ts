@@ -46,12 +46,16 @@ describe('conversationStore', () => {
   it('handles action + tool + turn_end', () => {
     useConversationStore.getState().resetBuffer()
     useConversationStore.getState().handleSSEChunk({ type: 'action', payload: 'require_confirm' })
-    useConversationStore.getState().handleSSEChunk({ type: 'tool', text: '<tool>ok</tool>' })
+    useConversationStore.getState().handleSSEChunk({ type: 'tool', text: 'ok' })
     useConversationStore.getState().handleSSEChunk({ type: 'turn_end' })
     const history = useConversationStore.getState().history
+    expect(history.at(-2)).toEqual({
+      role: 'tool',
+      content: 'ok',
+    })
     expect(history.at(-1)).toEqual({
       role: 'assistant',
-      content: '<action>require_confirm</action><tool>ok</tool>',
+      content: '<action>require_confirm</action>',
     })
     expect(useConversationStore.getState().status).toBe('idle')
   })

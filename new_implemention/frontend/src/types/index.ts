@@ -67,18 +67,11 @@ export interface SSEChunk {
 // Conversation History
 // ---------------------------------------------------------------------------
 
-export type MessageRole = 'user' | 'assistant' | 'system'
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 
 export interface ConversationMessage {
   role: MessageRole
   content: string
-  /** Actions are only present for assistant messages in the custom voice-agent protocol. */
-  actions?: ActionRecord[]
-}
-
-export interface ActionRecord {
-  payload: string
-  toolResult: string
 }
 
 // ---------------------------------------------------------------------------

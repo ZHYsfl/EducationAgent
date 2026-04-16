@@ -80,10 +80,10 @@ streamed response format (server-sent events or websocket chunks):
 |------------|---------|---------|
 | tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to the tts engine |
 | action | `{"type": "action", "payload": "update_requirements|topic:数学"}` | a parsed action extracted from the llm stream |
-| tool | `{"type": "tool", "text": "<tool>all fields are updated</tool>"}` | the synchronous result of the action just emitted. appended to the same assistant message in history as `<tool>...</tool>`. |
+| tool | `{"type": "tool", "text": "all fields are updated"}` | the synchronous result of the action just emitted. inserted into the conversation history as an independent `tool` message after the assistant turn ends. |
 | turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
 
-note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. once an action is emitted, no more tts text follows in the same turn. the tool result is a plain string wrapped in `<tool>...</tool>`, and both `<action>` and `<tool>` are appended to the same assistant message in history in that exact order.
+note: the backend executes every action synchronously. the stream order is `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → `turn_end`. once an action is emitted, no more tts text follows in the same turn. the tool result is a plain string (no xml wrapper) and is stored as a separate `tool` role message in history, following the `assistant` message that emitted the corresponding `<action>`.
 
 ### module 1: voice agent
 
@@ -189,10 +189,10 @@ func update_requirements(ctx context.Context, requirements map[string]any) (stri
 }
 ```
 
-tool result examples (what goes inside `<tool>...</tool>`):
-- success (still missing fields): `<tool>we now still missing total_pages, audience</tool>`
-- success (complete): `<tool>all fields are updated</tool>`
-- failure: `<tool>failed to update the requirements,please try again</tool>`
+tool result examples (plain string returned by the backend):
+- success (still missing fields): `we now still missing total_pages, audience`
+- success (complete): `all fields are updated`
+- failure: `failed to update the requirements,please try again`
 
 LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> ask the user to provide the missing fields.
 if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
@@ -257,8 +257,8 @@ func require_confirm(ctx context.Context, requirements map[string]any) (string, 
 ```
 
 tool result examples:
-- success: `<tool>data is sent to the frontend successfully</tool>`
-- failure: `<tool>failed to send the data to the frontend</tool>`
+- success: `data is sent to the frontend successfully`
+- failure: `failed to send the data to the frontend`
 
 for instance:
 ```json
@@ -339,8 +339,8 @@ func send_to_ppt_agent(ctx context.Context, data string) (string, error) {
 ```
 
 tool result examples:
-- success: `<tool>data is sent to the ppt agent successfully</tool>`
-- failure: `<tool>failed to send the data to the ppt agent</tool>`
+- success: `data is sent to the ppt agent successfully`
+- failure: `failed to send the data to the ppt agent`
 
 for instance:
 ```json
@@ -431,9 +431,9 @@ func fetch_from_ppt_message_queue(ctx context.Context) (string, bool, error) {
 ```
 
 tool result examples:
-- success (has message): `<tool>the ppt message is the new version of the ppt is generated successfully</tool>`
-- success (empty): `<tool>queue is empty</tool>`
-- failure: `<tool>failed to fetch the data from the ppt message queue</tool>`
+- success (has message): `the ppt message is the new version of the ppt is generated successfully`
+- success (empty): `queue is empty`
+- failure: `failed to fetch the data from the ppt message queue`
 
 ---
 
@@ -753,10 +753,11 @@ when vad_start fires, the frontend does the following in order:
    - wait if action has started: if the backend stream has already emitted the opening `<` of the first `<action`, the frontend must let that goroutine run until the **full action sequence** is complete. actions are silent, so the user will not feel "the machine is still talking".
    - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr. however, the voice agent llm inference cannot start until both (1) the action sequence is fully resolved and (2) the full asr transcript is ready.
    - decide what goes into history:
-     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** including each `<action>...</action>` and its synchronous `<tool>...</tool>` result, in order. if the stream was cancelled before any `<` was emitted, there is no action.
+     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** (`<action>...</action>`) in order. if the stream was cancelled before any `<` was emitted, there is no action.
+     - tool messages (role = `tool`): for each action that was emitted, append its synchronous execution result as a plain string. these follow the assistant message.
      - user message (role = `user`):
        - if the assistant was still streaming when vad_start fires: `{"role": "user", "content": "</interrupted>\n<status>...</status>\n<user>...</user>"}`
        - if the assistant had already finished its turn (tts fully played, stream ended) and the user simply spoke again: `{"role": "user", "content": "<status>...</status>\n<user>...</user>"}` (no `</interrupted>`)
-   - send the rebuilt context to the llm: assistant message first, then the user message.
+   - send the rebuilt context to the llm: assistant message first, then any tool messages, then the user message.
 
 edge case: if the backend stream hangs abnormally, the frontend may truncate any trailing incomplete action before appending the cached user input.
