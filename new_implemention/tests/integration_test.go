@@ -62,7 +62,7 @@ type mockVoiceAgentSvc struct {
 	chunks []model.SSEChunk
 }
 
-func (m *mockVoiceAgentSvc) StreamTurn(ctx context.Context, st *state.AppState, transcript string, interrupted bool, out chan<- model.SSEChunk) error {
+func (m *mockVoiceAgentSvc) StreamTurn(ctx context.Context, st *state.AppState, transcript string, needsInterruptedPrefix bool, interruptedAssistant string, out chan<- model.SSEChunk) error {
 	for _, c := range m.chunks {
 		select {
 		case out <- c:

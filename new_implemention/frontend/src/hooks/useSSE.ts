@@ -1,6 +1,6 @@
 import { useRef, useCallback, useMemo } from 'react'
 import { vadEnd } from '@/api/client'
-import type { SSEChunk } from '@/types'
+import type { SSEChunk, VADEndRequest } from '@/types'
 
 export interface UseSSEOptions {
   onChunk: (chunk: SSEChunk) => void
@@ -22,7 +22,7 @@ export function useSSE(options: UseSSEOptions) {
   onChunkRef.current = options.onChunk
   onErrorRef.current = options.onError
 
-  const start = useCallback(async (audioBase64: string) => {
+  const start = useCallback(async (req: VADEndRequest) => {
     if (isRunningRef.current) {
       abortControllerRef.current?.abort('overrun')
     }
@@ -33,7 +33,7 @@ export function useSSE(options: UseSSEOptions) {
 
     try {
       await vadEnd(
-        { audio: audioBase64, format: 'pcm' },
+        req,
         onChunkRef.current,
         controller.signal,
       )
