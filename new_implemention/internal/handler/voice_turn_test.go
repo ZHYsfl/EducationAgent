@@ -139,6 +139,7 @@ func TestVADEndStreamsWhenInterruptTrue(t *testing.T) {
 		chunks: []model.SSEChunk{
 			{Type: "tts", Text: "ok"},
 			{Type: "action", Payload: "send_to_ppt_agent|data:make it bigger"},
+			{Type: "tool", Text: "data is sent to the ppt agent successfully"},
 			{Type: "turn_end"},
 		},
 	}
@@ -163,7 +164,7 @@ func TestVADEndStreamsWhenInterruptTrue(t *testing.T) {
 	}
 
 	// We expect SSE lines: data: {...}  and blank lines.
-	var foundTTS, foundAction, foundTurnEnd bool
+	var foundTTS, foundAction, foundTool, foundTurnEnd bool
 	for _, line := range lines {
 		if strings.HasPrefix(line, "data: ") {
 			payload := strings.TrimPrefix(line, "data: ")
@@ -177,6 +178,8 @@ func TestVADEndStreamsWhenInterruptTrue(t *testing.T) {
 					foundTTS = true
 				case "action":
 					foundAction = true
+				case "tool":
+					foundTool = true
 				case "turn_end":
 					foundTurnEnd = true
 				}
@@ -185,6 +188,7 @@ func TestVADEndStreamsWhenInterruptTrue(t *testing.T) {
 	}
 	assert.True(t, foundTTS, "expected tts chunk")
 	assert.True(t, foundAction, "expected action chunk")
+	assert.True(t, foundTool, "expected tool chunk")
 	assert.True(t, foundTurnEnd, "expected turn_end chunk")
 }
 

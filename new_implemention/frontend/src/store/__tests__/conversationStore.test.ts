@@ -13,6 +13,7 @@ describe('conversationStore', () => {
       isInterrupted: false,
       confirmPayload: null,
       pptMessages: [],
+      toolBuffer: [],
     })
   })
 
@@ -50,12 +51,12 @@ describe('conversationStore', () => {
     useConversationStore.getState().handleSSEChunk({ type: 'turn_end' })
     const history = useConversationStore.getState().history
     expect(history.at(-2)).toEqual({
-      role: 'tool',
-      content: 'ok',
-    })
-    expect(history.at(-1)).toEqual({
       role: 'assistant',
       content: '<action>require_confirm</action>',
+    })
+    expect(history.at(-1)).toEqual({
+      role: 'tool',
+      content: 'ok',
     })
     expect(useConversationStore.getState().status).toBe('idle')
   })
