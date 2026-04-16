@@ -1,0 +1,515 @@
+# Voice Agent 微调数据集构建文档
+
+> 本文档基于 2026-04-15/16 会议讨论内容编写，**与当前代码实现严格对齐**。  
+> 造数据前请务必通读本文档，尤其注意 **Phase 划分、消息格式、打断规则、tool 角色处理** 四部分。
+
+---
+
+## 1. 概述与目标
+
+本数据集用于 **Supervised Fine-Tuning (SFT)** 我们的 Voice Agent LLM。Voice Agent 是一个语音交互助手，负责：
+
+- **Phase 1**：收集用户的 PPT 需求（topic、style、total_pages、audience）。
+- **Phase 2**：在 PPT 生成过程中，作为用户与 PPT Agent 之间的沟通桥梁（传递反馈、获取 PPT Agent 的消息）。
+
+数据集需要覆盖 **正常流程** 和 **打断流程** 两类场景，确保模型能学会：
+1. 自然对话（TTS 文本生成）。
+2. 在合适的时机输出 `<action>...</action>` 动作标签。
+3. 正确理解队列状态（`empty` / `not empty`）并决定下一步动作。
+4. 处理用户打断时的上下文截断与恢复。
+
+---
+
+## 2. 全局格式规则（与代码严格对齐）
+
+### 2.1 角色（Role）
+
+对话历史使用以下 4 种角色：
+
+| 角色 | 说明 |
+|------|------|
+| `system` | 系统提示，定义当前阶段的行为规范。由脚本统一拼接，**造数据时不需要写**。 |
+| `user` | 用户输入。格式固定为 `<status>...</status>\n<user>...</user>`。 |
+| `assistant` | 模型输出。**只包含说话文本 + `<action>` 标签**，不包含工具结果。 |
+| `tool` | 工具执行结果。**独立的消息**，紧跟在对应的 `assistant` 消息之后。 |
+
+**⚠️ 重要**：当前协议已完全移除 `<tool>...</tool>` XML 包装。`tool` 是一个独立的 `role`，不是 `assistant` 内容的一部分。
+
+### 2.2 `user` 消息格式
+
+```text
+<status>{empty | not empty}</status>
+<user>{用户说的话}</user>
+```
+
+- `status` 表示 **用户说完话瞬间（vad_end）** PPT Message Queue 的状态。
+  - `empty`：队列为空。
+  - `not empty`：队列中有 PPT Agent 发来的消息（如新版本完成、问题、冲突等）。
+- 必须包含换行符 `\n` 分隔 `<status>` 和 `<user>`。
+- 如果当前 turn 是**打断**触发的，需在开头加 `</interrupted>`：
+
+```text
+</interrupted>
+<status>{empty | not empty}</status>
+<user>{用户说的话}</user>
+```
+
+### 2.3 `assistant` 消息格式
+
+`assistant` 消息**只能是以下两种形态之一**：
+
+**A. 纯对话（无 action）**
+```text
+好的，我明白了。
+```
+
+**B. 对话 + action 标签**
+```text
+好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>
+```
+
+规则：
+- `assistant` 的**说话文本中不允许出现换行符**（`\n`）。
+- 所有 TTS 文本必须在 `<action>` 标签**之前**输出完毕。
+- 一个 turn 内允许出现**多个 action**，直接拼接：
+  ```text
+  <action>fetch_from_ppt_message_queue</action><action>send_to_ppt_agent|data:用户觉得字体太小了</action>
+  ```
+- **没有 action 时，绝对不能写空 action 标签**。
+
+### 2.4 `tool` 消息格式
+
+`tool` 是**独立的消息**，`content` 为纯文本结果，无 XML 包装。
+
+```json
+{
+  "role": "tool",
+  "content": "all fields are updated"
+}
+```
+
+历史顺序规则：
+1. `user` 消息
+2. `assistant` 消息（包含该 turn 的所有 `<action>`）
+3. 按顺序排列的 `tool` 消息（每个 `<action>` 对应一个 `tool`）
+
+**不需要 tool_call_id**。我们的自定义协议完全依赖顺序对齐。
+
+### 2.5 Action 空间
+
+Voice Agent 支持以下 action（`<action>` 标签内的格式）：
+
+| Action | 格式 | 出现阶段 |
+|--------|------|----------|
+| `update_requirements` | `<action>update_requirements\|topic:...\|style:...\|total_pages:...\|audience:...</action>` | Phase 1 |
+| `require_confirm` | `<action>require_confirm</action>` | Phase 1 |
+| `send_to_ppt_agent` | `<action>send_to_ppt_agent\|data:...</action>` | Phase 1 & 2 |
+| `fetch_from_ppt_message_queue` | `<action>fetch_from_ppt_message_queue</action>` | Phase 1 & 2 |
+
+注意：
+- `update_requirements` 和 `require_confirm` 在**第一次调用 `send_to_ppt_agent` 之后永久消失**。
+- Action 参数顺序不强制，但建议按 `topic|style|total_pages|audience` 书写。
+
+### 2.6 Tool 返回值规范（与代码对齐）
+
+每个 action 被同步执行后，都会产生一个 `role: "tool"` 的消息。`content` 为**纯文本结果**，格式如下：
+
+| Action | 情况 | Tool `content` 示例 |
+|--------|------|---------------------|
+| `update_requirements` | 成功，还有缺失字段 | `we now still missing style, total_pages, audience` |
+| `update_requirements` | 成功，字段已完整 | `all fields are updated` |
+| `update_requirements` | 失败 | `failed to update the requirements,please try again` |
+| `require_confirm` | 成功 | `data is sent to the frontend successfully` |
+| `require_confirm` | 失败 | `failed to send the data to the frontend` |
+| `send_to_ppt_agent` | 成功 | `data is sent to the ppt agent successfully` |
+| `send_to_ppt_agent` | 失败 | `failed to send the data to the ppt agent` |
+| `fetch_from_ppt_message_queue` | 成功，队列有消息 | `the ppt message is the new version of the ppt is generated successfully` |
+| `fetch_from_ppt_message_queue` | 成功，队列为空 | `queue is empty` |
+| `fetch_from_ppt_message_queue` | 失败 | `failed to fetch the data from the ppt message queue` |
+
+造数据时，**优先使用成功返回值**；失败场景占比可以少一些，但必须有。`fetch_from_ppt_message_queue` 的非空消息内容建议覆盖三种类型：**新版本完成**、**向用户提问**、**冲突/疑问**。
+
+---
+
+## 3. 打断规则（核心机制）
+
+### 3.1 打断只能发生在 TTS 阶段
+
+这是本系统最重要的设计约束：
+
+- **用户只能在 assistant "说话"（输出 TTS 文本）时打断。**
+- **一旦 `<action>` 标签开始输出，该 action 序列必须执行到结束，不可能被打断。**
+
+为什么？因为 action 执行是"静音"的（不播放语音），即使用户此时在说话，action 也可以在后台安全跑完。
+
+### 3.2 打断后的历史构造
+
+打断时进入历史的 assistant 消息，其**文本部分必须是 TTS 已经播放给用户听的 `spoken text`**，而不是 LLM 已经生成但还没播放的内容。
+
+打断的临界点以 **`spoken text` 中是否出现了 `<` 字符** 为准：
+
+1. **TTS 阶段被打断，且 `spoken text` 中 `<` 尚未出现**：  
+   只保留**已经播放的 `spoken text`**（哪怕是一句完整的话在最后一个字之前被打断，也要截断）。未播放的部分全部丢弃。
+
+2. **`spoken text` 中 `<` 已经出现（即已进入 action 阶段）**：  
+   由于 action 是静默执行的，stream 会在后台继续跑完整个 action 序列直到结束。此时该 `assistant` 消息**不算被打断**，历史里应保留：**已播放的 `spoken text`（仅包含实际播放的部分）+ 完整的 `<action>` 序列**。
+
+示例：
+- Assistant TTS 已播放到：`"好的，请问风格偏好是..."`（LLM 可能已在后台生成了更多内容，但 TTS 只播到这里）
+- 用户在 `"偏好是"` 之后打断，说 `"topic is math"`。
+- 历史中的 assistant 消息：
+  - 若 `spoken text` 中 `<` 还没出现：`好的，请问风格偏好是`（仅保留已播放的 spoken text，截断）
+  - 若 `spoken text` 中 `<` 已经出现（哪怕只是 `<action>` 标签刚开了个头，比如流式输出了 `<a`）：`好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>`（已播放文本 + 完整 action 序列）
+
+### 3.3 何时添加 `</interrupted>`
+
+`</interrupted>` **只在以下情况出现**：
+- 前一个 assistant 正在播放 **TTS 文本**（`spoken text` 中尚未出现 `<`），
+- 且用户在此期间发声并触发了打断。
+
+此时下一个 `user` 消息的格式为：
+
+```text
+</interrupted>
+<status>{empty | not empty}</status>
+<user>{用户说的话}</user>
+```
+
+**如果前一个 assistant 的 `spoken text` 中 `<` 已经出现**（即已进入 action 阶段），即使后续用户说话了，也不算打断。此时下一个 `user` 消息**不要**加 `</interrupted>`，使用正常的 `status + user` 格式即可。
+
+---
+
+## 4. Phase 1：需求收集阶段
+
+### 4.1 阶段说明
+
+Phase 1 从对话开始到 **第一次 `send_to_ppt_agent` 成功调用** 为止。  
+该阶段 Voice Agent 的核心任务是收集并确认 4 个需求字段：
+- `topic`
+- `style`
+- `total_pages`
+- `audience`
+
+**注意：Phase 1 期间 PPT Agent 尚未启动，因此所有 `user` 消息的 `status` 必须是 `empty`。**
+
+### 4.2 数据类别与配比
+
+**Phase 1 数据（仅指包含 action 的数据）占总数据量的 30%。**
+
+内部对半分：
+
+| 子类别 | 占比 | 说明 |
+|--------|------|------|
+| 有 action，未打断 | 15% | 正常收集需求、确认、发送的标准流程 |
+| 有 action，打断 | 15% | 用户在 assistant 说话时打断，多样性要丰富 |
+
+### 4.3 Phase 1 示例
+
+#### 示例 A：未打断，逐步收集需求
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>我想做一个关于数学的 PPT</user>" },
+  { "role": "assistant", "content": "好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>" },
+  { "role": "tool", "content": "we now still missing style, total_pages, audience" },
+  { "role": "user", "content": "<status>empty</status>\n<user>风格要简洁优雅，15页，面向中学生</user>" },
+  { "role": "assistant", "content": "好的，请确认以下需求是否正确。<action>update_requirements|style:简洁优雅|total_pages:15|audience:中学生</action><action>require_confirm</action>" },
+  { "role": "tool", "content": "all fields are updated" },
+  { "role": "tool", "content": "data is sent to the frontend successfully" },
+  { "role": "user", "content": "<status>empty</status>\n<user>确认</user>" },
+  { "role": "assistant", "content": "好的，开始为您生成 PPT。<action>send_to_ppt_agent|data:topic:数学, style:简洁优雅, total_pages:15, audience:中学生</action>" },
+  { "role": "tool", "content": "data is sent to the ppt agent successfully" }
+]
+```
+
+#### 示例 B：打断发生在 TTS 阶段（话说到一半）
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>我想做一个 PPT</user>" },
+  { "role": "assistant", "content": "好的，请问主题是什" },
+  { "role": "user", "content": "</interrupted>\n<status>empty</status>\n<user>主题是数学</user>" },
+  { "role": "assistant", "content": "请问风格偏好是什么？<action>update_requirements|topic:数学</action>" },
+  { "role": "tool", "content": "we now still missing style, total_pages, audience" }
+]
+```
+
+#### 示例 C：延迟调用 action（连续打断导致 action 延迟多轮）
+
+assistant 每轮都准备说完 TTS 并调用 `update_requirements`，但用户连续在 TTS 阶段打断，导致 action 一直发不出去。直到最后一轮终于不再打断，才把之前累积应调用的 action 补齐。
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>我想做一个 PPT</user>" },
+  { "role": "assistant", "content": "好" },
+  { "role": "user", "content": "</interrupted>\n<status>empty</status>\n<user>物理方面的</user>" },
+  { "role": "assistant", "content": "请问总页数" },
+  { "role": "user", "content": "</interrupted>\n<status>empty</status>\n<user>十五页</user>" },
+  { "role": "assistant", "content": "请问面向的受众是谁？<action>update_requirements|topic:物理|total_pages:15</action>" },
+  { "role": "tool", "content": "we now still missing style, audience" }
+]
+```
+
+---
+
+## 5. 纯对话示例（无 action）
+
+纯对话数据占总数据量的 30%，可以出现在 Phase 1 或 Phase 2 的 system prompt 下。唯一硬性约束是 `status` 必须为空。
+
+**纯对话里，打断和不打断各占一半。** 打断时同样只保留已播放的 `spoken text`。
+
+#### 未打断的纯对话
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>你好</user>" },
+  { "role": "assistant", "content": "你好！我是你的 PPT 助手，请问需要我帮你做什么主题的演示文稿呢？" },
+  { "role": "user", "content": "<status>empty</status>\n<user>我先随便看看</user>" },
+  { "role": "assistant", "content": "没问题，随时告诉我你的需求即可。" }
+]
+```
+
+也可以完全跳出 PPT 业务，进行生活化的闲聊，只要 `status` 为空且没有 action 即可：
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>今天天气不错啊</user>" },
+  { "role": "assistant", "content": "是啊，阳光明媚，适合出去走走。" },
+  { "role": "user", "content": "<status>empty</status>\n<user>周末有什么推荐的户外活动吗</user>" },
+  { "role": "assistant", "content": "可以去公园骑行或者爬山，既能放松又能锻炼身体。" }
+]
+```
+
+#### 打断的纯对话
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>empty</status>\n<user>最近有什么好看的电影</user>" },
+  { "role": "assistant", "content": "最近上映的科幻片口碑挺" },
+  { "role": "user", "content": "</interrupted>\n<status>empty</status>\n<user>我不太喜欢科幻片</user>" },
+  { "role": "assistant", "content": "那悬疑片怎么样？最近有一部评分很高的。" }
+]
+```
+
+---
+
+## 6. Phase 2：反馈与通信阶段
+
+### 6.1 阶段说明
+
+Phase 2 从 **第一次 `send_to_ppt_agent` 调用之后** 开始。  
+此时需求已确认并发送给 PPT Agent，Voice Agent 的职责变为：
+
+1. **与用户闲聊/解释进度**（纯对话）。
+2. **从 PPT Message Queue 拉取消息**（`fetch_from_ppt_message_queue`）。
+3. **将用户反馈转发给 PPT Agent**（`send_to_ppt_agent|data:...`）。
+
+### 6.2 关键状态：队列空 vs 不空
+
+Phase 2 的 `status` 可以是 `empty` 或 `not empty`，这取决于用户说完话时 PPT Message Queue 的状态：
+
+- **`empty`**：队列里没有新消息。通常不需要 `fetch`。
+- **`not empty`**：队列里有消息。通常下一步需要 `fetch_from_ppt_message_queue`。
+
+**PPT Message Queue 中可能出现的消息类型**：
+
+| 消息类型 | 示例内容 |
+|----------|----------|
+| 新版本完成 | `the new version of the ppt is generated successfully` |
+| 向用户提问 | `questions for user: 请问封面的主色调有什么偏好吗？` |
+| 冲突/疑问 | `conflict: 用户要求的 5 页与之前确认的 15 页不一致，请确认` |
+
+### 6.3 数据类别与配比
+
+**Phase 2 数据占总数据量的 40%。**
+
+内部需要考虑：
+
+- **是否打断**：未打断 / 打断（仅发生在 TTS 阶段）。
+- **队列状态**：`empty` / `not empty`。
+- **动作组合**：纯对话 / 只 fetch / 只 send / **fetch+send 混合（重点场景）**。
+- **PPT 消息类型**：新版本完成 / 提问 / 冲突。
+- **延迟 fetch**：用户连续多次打断且队列一直 `not empty` 时，后续 turn 可能需要一次补齐多个 `fetch` 动作。
+
+### 6.4 Phase 2 示例
+
+#### 示例 D：队列不空，拉取消息后反馈给用户
+
+```json
+[
+  { "role": "system", "content": "You are a helpful voice assistant..." },
+  { "role": "user", "content": "<status>not empty</status>\n<user>PPT 做得怎么样了</user>" },
+  { "role": "assistant", "content": "我去帮您看看进度。<action>fetch_from_ppt_message_queue</action>" },
+  { "role": "tool", "content": "the ppt message is the new version of the ppt is generated successfully" },
+  { "role": "assistant", "content": "新版 PPT 已经生成完毕，您需要我展示出来吗？" }
+]
+```
+
+#### 示例 E：用户有反馈，转发给 PPT Agent
+
+```json
+[
+  { "role": "user", "content": "<status>empty</status>\n<user>我觉得字体太小了，颜色也不够鲜艳</user>" },
+  { "role": "assistant", "content": "好的，我把您的反馈转达给 PPT Agent。<action>send_to_ppt_agent|data:用户觉得字体太小，颜色不够鲜艳</action>" },
+  { "role": "tool", "content": "data is sent to the ppt agent successfully" },
+  { "role": "assistant", "content": "已经发送，正在处理中。" }
+]
+```
+
+#### 示例 F：混合动作（fetch + send）
+
+```json
+[
+  { "role": "user", "content": "<status>not empty</status>\n<user>有什么消息吗</user>" },
+  { "role": "assistant", "content": "我先看看队列里有什么。<action>fetch_from_ppt_message_queue</action>" },
+  { "role": "tool", "content": "the ppt message is conflict: 用户要求 10 页，但之前确认的是 15 页，请确认最终页数" },
+  { "role": "assistant", "content": "PPT Agent 有一个疑问：您之前确认的是 15 页，但刚才提到 10 页，请问最终按多少页来？" },
+  { "role": "user", "content": "<status>empty</status>\n<user>就按 10 页吧</user>" },
+  { "role": "assistant", "content": "收到。<action>send_to_ppt_agent|data:用户确认最终页数为 10 页</action>" },
+  { "role": "tool", "content": "data is sent to the ppt agent successfully" }
+]
+```
+
+#### 示例 G：Phase 2 中的打断（TTS 阶段被打断）
+
+```json
+[
+  { "role": "user", "content": "<status>empty</status>\n<user>PPT 怎么样了</user>" },
+  { "role": "assistant", "content": "正在为您查询最新" },
+  { "role": "user", "content": "</interrupted>\n<status>not empty</status>\n<user>不用查了，直接告诉我结果</user>" },
+  { "role": "assistant", "content": "好的，我这就去拉取队列消息。<action>fetch_from_ppt_message_queue</action>" },
+  { "role": "tool", "content": "the ppt message is the new version of the ppt is generated successfully" },
+  { "role": "assistant", "content": "已经生成完毕！" }
+]
+```
+
+#### 示例 H：已进入 action 阶段后用户说话（不加 `<interrupted>`）
+
+```json
+[
+  { "role": "user", "content": "<status>empty</status>\n<user>PPT 怎么样了</user>" },
+  { "role": "assistant", "content": "我去帮您看看进度。<action>fetch_from_ppt_message_queue</action>" },
+  { "role": "tool", "content": "the ppt message is the new version of the ppt is generated successfully" },
+  { "role": "user", "content": "<status>empty</status>\n<user>帮我放大字体</user>" },
+  { "role": "assistant", "content": "收到。<action>send_to_ppt_agent|data:用户要求放大字体</action>" },
+  { "role": "tool", "content": "data is sent to the ppt agent successfully" }
+]
+```
+
+#### 示例 I：多次打断导致的 "延迟 fetch"
+
+如果队列连续有消息（`not empty`），但用户每次都在 TTS 阶段打断，assistant 一直没能 fetch。等用户终于不再打断时，assistant 应把累积的 fetch 动作一次补齐。
+
+```json
+[
+  { "role": "user", "content": "<status>not empty</status>\n<user>PPT 怎么样了</user>" },
+  { "role": "assistant", "content": "我去看" },
+  { "role": "user", "content": "</interrupted>\n<status>not empty</status>\n<user>等一下再说</user>" },
+  { "role": "assistant", "content": "好的，那我" },
+  { "role": "user", "content": "</interrupted>\n<status>not empty</status>\n<user>算了你说吧</user>" },
+  { "role": "assistant", "content": "那我先拉取消息。<action>fetch_from_ppt_message_queue</action><action>fetch_from_ppt_message_queue</action>" },
+  { "role": "tool", "content": "the ppt message is the new version of the ppt is generated successfully" },
+  { "role": "tool", "content": "the ppt message is questions for user: 请问封面的主色调有什么偏好吗？" },
+  { "role": "assistant", "content": "新版 PPT 已经生成完毕。另外 PPT Agent 问您封面主色调有偏好吗？" }
+]
+```
+
+---
+
+## 7. 数据量与任务分配（参考）
+
+会议上确定的目标总量为 **6,000 条**。三大块配比为：
+
+| 数据块 | 占比 | 数量 | 备注 |
+|--------|------|------|------|
+| Phase 1（有 action） | 30% | 1,800 条 | 需求收集阶段，包含 action |
+| Phase 2 | 40% | 2,400 条 | 反馈与通信阶段 |
+| 纯对话（无 action） | 30% | 1,800 条 | 仅聊天，无 action，`status` 必须 `empty` |
+
+### Phase 1 细分（1,800 条）
+
+| 子类别 | 占比 | 数量 | 说明 |
+|--------|------|------|------|
+| 有 action，未打断 | 15% | 900 条 | 标准需求收集、确认、发送流程 |
+| 有 action，打断 | 15% | 900 条 | TTS 阶段被打断，多样性要丰富 |
+
+### Phase 2 细分（2,400 条）
+
+Phase 2 需要覆盖多个维度的组合：
+
+| 维度 | 组合说明 |
+|------|----------|
+| 打断 | 未打断 / 打断（仅发生在 TTS 阶段） |
+| 队列状态 | `empty` / `not empty` |
+| 动作组合 | 纯对话 / 只 fetch / 只 send / fetch+send 混合 |
+| PPT 消息类型 | 新版本完成 / 向用户提问 / 冲突 |
+
+### 纯对话细分（1,800 条）
+
+- 可以混合使用 Phase 1 和 Phase 2 的 system prompt（由脚本统一处理）。
+- 所有样本的 `status` **必须是 `empty`**。
+- 分配参考：4 人 × 450 条。
+
+---
+
+## 8. 造数据注意事项（Do's and Don'ts）
+
+### ✅ 必须遵守
+
+1. **`<tool>` 标签已死，不要再出现。** `tool` 必须是独立的 `role: "tool"` 消息。
+2. **Assistant 文本中不要换行。** 所有 TTS 文本应在一行内。
+3. **User 消息格式固定：** `<status>...</status>\n<user>...</user>`，status 和 user 之间必须换行。
+4. **Action 必须在所有 TTS 文本之后输出。** 不允许 "说一半话，插一个 action，再继续说话"。
+5. **打断只发生在 TTS 阶段。** 不要构造 "action 执行到一半被打断" 的样本。
+6. **纯对话样本的 `status` 必须是 `empty`。`** 否则模型会尝试调用工具。
+7. **一个 turn 内允许连续多个 action。** 每个 action 对应一个独立的 `tool` 消息，按顺序排列在 `assistant` 之后。
+8. **`update_requirements` 和 `require_confirm` 在第一次 `send_to_ppt_agent` 之后永久消失。** Phase 2 不应再出现这两个 action。
+9. **Status 反映的是用户说完话瞬间（vad_end）的队列状态**，不是任意时刻的状态。
+10. **在输出 action 的 turn 中，assistant 的 TTS 文本不要包含对 action 执行结果的断言**（如"已经记录了"、"已更新"）。应只提问题或做自然引导。执行结果的确认应放在 tool 返回后的下一个 turn（如果需要）。
+11. **打断场景的多样性（entropy）要尽可能大。** 不要只造一两种打断模板，要覆盖各种打断时机、打断话术和上下文。
+
+### ❌ 禁止出现
+
+- 在 `assistant` 内容里写 `<tool>...</tool>`。
+- 空 action 标签（如 `<action></action>`）。
+- action 标签内出现换行符。
+- "说话 → action → 继续说话" 的序列。
+- Phase 2 中出现 `update_requirements` 或 `require_confirm`。
+- 打断发生在 `<action>` 已经输出之后。
+
+---
+
+## 8. 快速自查清单
+
+提交数据前，逐条检查每个样本：
+
+- [ ] 所有 `user` 消息都包含 `<status>` 和 `<user>` 标签，且两者之间有换行符。
+- [ ] 所有 `assistant` 消息都没有换行符。
+- [ ] 如果样本包含 action，则 `assistant` 之后有对应数量的 `tool` 消息。
+- [ ] 没有任何地方出现 `<tool>` 或 `</tool>` 标签。
+- [ ] 打断样本的 `user` 消息以 `</interrupted>\n` 开头。
+- [ ] 纯对话样本的 `status` 为 `empty`。
+- [ ] Phase 2 样本不包含 `update_requirements` 或 `require_confirm`。
+- [ ] 每个样本整体逻辑通顺，上下文连贯。
+
+---
+
+## 附录：动作标签速查表
+
+```text
+<action>update_requirements|topic:数学|style:简洁|total_pages:15|audience:中学生</action>
+<action>require_confirm</action>
+<action>send_to_ppt_agent|data:用户确认需求为 topic:数学, style:简洁, total_pages:15, audience:中学生</action>
+<action>fetch_from_ppt_message_queue</action>
+```
+
+---
+
+*文档版本：v1.0*  
+*对齐代码版本：2026-04-16（独立 tool role 协议已落地）*
