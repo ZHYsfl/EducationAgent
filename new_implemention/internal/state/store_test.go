@@ -129,14 +129,14 @@ func TestPeekPPTMessageQueue(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "msg1", msg)
 
-	// Fetch should remove it.
+	// Fetch should drain all messages.
 	msg, err := s.FetchFromPPTMessageQueue()
 	assert.NoError(t, err)
-	assert.Equal(t, "msg1", msg)
+	assert.Equal(t, "msg1 | msg2", msg)
 
 	msg, ok = s.PeekPPTMessageQueue()
-	assert.True(t, ok)
-	assert.Equal(t, "msg2", msg)
+	assert.False(t, ok)
+	assert.Equal(t, "", msg)
 }
 
 func TestVoiceHistory(t *testing.T) {

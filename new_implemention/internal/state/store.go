@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"educationagent/internal/model"
@@ -171,17 +172,18 @@ func (s *AppState) SendToVoiceAgent(data string) {
 	s.pptMessageQueue = append(s.pptMessageQueue, data)
 }
 
-// FetchFromPPTMessageQueue dequeues the oldest message from the ppt message queue.
-// It returns the message, or an empty string if the queue is empty.
+// FetchFromPPTMessageQueue drains all messages from the ppt message queue and
+// returns them concatenated with " | ", or an empty string if the queue is empty.
 func (s *AppState) FetchFromPPTMessageQueue() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.pptMessageQueue) == 0 {
 		return "", nil
 	}
-	msg := s.pptMessageQueue[0]
-	s.pptMessageQueue = s.pptMessageQueue[1:]
-	return msg, nil
+	msgs := make([]string, len(s.pptMessageQueue))
+	copy(msgs, s.pptMessageQueue)
+	s.pptMessageQueue = s.pptMessageQueue[:0]
+	return strings.Join(msgs, " | "), nil
 }
 
 // PeekPPTMessageQueue returns the oldest ppt message without removing it.
