@@ -130,7 +130,7 @@ Voice Agent 支持以下 action（`<action>` 标签内的格式）：
 | `require_confirm` | 失败 | `failed to send the data to the frontend` |
 | `send_to_ppt_agent` | 成功 | `data is sent to the ppt agent successfully` |
 | `send_to_ppt_agent` | 失败 | `failed to send the data to the ppt agent` |
-| `fetch_from_ppt_message_queue` | 成功，队列有消息 | `the ppt message is: the new version of the ppt is generated successfully` |
+| `fetch_from_ppt_message_queue` | 成功，队列有消息 | `the ppt message is: the new version of the ppt is generated successfully | questions for user: 请问封面的主色调有什么偏好吗？ | conflict: 用户要求插入视频，但当前模板不支持，是否换模板？ | notification: PPT 已自动保存到云端` |
 | `fetch_from_ppt_message_queue` | 成功，队列为空 | `queue is empty` |
 | `fetch_from_ppt_message_queue` | 失败 | `failed to fetch the data from the ppt message queue` |
 
