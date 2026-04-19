@@ -3,7 +3,6 @@
 
 server
 .env.example
-.env.smoke.example
 /scripts
 .smoke_logs
 log.txt
