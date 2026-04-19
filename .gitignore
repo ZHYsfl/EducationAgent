@@ -242,3 +242,12 @@ models/
 **/.gocache/
 
 node_modules/
+
+.claude/
+
+.cursor/
+.specstory/
+
+.vscode
+.claudeignore
+
