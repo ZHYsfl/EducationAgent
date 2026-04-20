@@ -108,6 +108,7 @@ def chat(
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},  # 关 thinking
     )
     return resp.choices[0].message.content
 
@@ -121,6 +122,30 @@ def demo():
         {
             "role": "user",
             "content": build_user_message("empty", "你好，帮我做一个介绍人工智能的PPT"),
+        },
+        {
+            "role": "assistant",
+            "content": "好的，关于人工智能的介绍PPT。您希望采用什么样的视觉风格呢？",
+        },
+        {
+            "role": "user",
+            "content": build_user_message("empty", "我喜欢简约风格，不要太多花哨的元素"),
+        },
+        {
+            "role": "assistant",
+            "content": "简约风格很适合科技主题。那您希望这个PPT有多少页？",
+        },
+        {
+            "role": "user",
+            "content": build_user_message("empty", "我希望总页数是10页"),
+        },
+        {
+            "role": "assistant",
+            "content": "好的，10页。请问这份PPT主要是面向哪类听众？",
+        },
+        {
+            "role": "user",
+            "content": build_user_message("empty", "主要是面向大学生"),
         },
     ]
 
