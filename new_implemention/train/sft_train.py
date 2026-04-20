@@ -9,8 +9,19 @@ Install dependencies before running:
     pip install unsloth trl datasets transformers accelerate
 """
 
-import json
+# screen -dmS train bash -c 'source /root/.venv/bin/activate && cd /root/autodl-tmp && exec python -u train.py > /root/autodl-tmp/log.txt 2>&1'
+
 import os
+
+# 仅使用本地文件，避免从 Hugging Face 拉取（须在 import transformers/unsloth 之前）
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# 长时挂机：降低显存碎片导致的偶发 OOM（需 PyTorch 2.0+）
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+import unsloth  # noqa: F401 — 必须在 transformers / trl / peft 之前，以启用 unsloth 优化
+
+import json
 import torch
 from datasets import Dataset
 from transformers import TrainingArguments
@@ -18,20 +29,22 @@ from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTTrainer
 from unsloth import FastLanguageModel
 
-# ===================== 请根据实际环境修改 =====================
-MODEL_NAME = ""          # e.g. "Qwen/Qwen3.5-4B-Instruct" 或本地绝对路径
-DATA_PATH  = ""          # e.g. "/path/to/final.jsonl"
-OUTPUT_DIR = ""          # e.g. "./outputs/qwen-voice-sft"
+# ===================== 路径（数据盘，本地已有模型与数据） =====================
+_ROOT = "/root/autodl-tmp"
+MODEL_NAME = os.path.join(_ROOT, "train")           # 本地底座模型目录（含 config、权重等）
+DATA_PATH = os.path.join(_ROOT, "data", "final.jsonl")
+OUTPUT_DIR = os.path.join(_ROOT, "output")
 # ============================================================
 
-# ---------- 保守训练超参（4090 32 GB 单卡） ----------
-MAX_SEQ_LENGTH = 2048               # 保守序列长度，降低显存峰值
+# ---------- 挂机稳态优先（显存留余量 + 控磁盘） ----------
+# 2048 时约 23GB+ 显存偏满；降到 1536 可明显降压，降低夜间 OOM/碎片风险
+MAX_SEQ_LENGTH = 1536
 DTYPE = torch.bfloat16              # Ampere 架构原生支持，训练更稳
 LOAD_IN_4BIT = True                 # QLoRA：4-bit 量化底座 + LoRA
 
-# LoRA 参数
-LORA_R = 16
-LORA_ALPHA = 16
+# LoRA 略减小 rank，进一步省显存与优化器状态，仍足够 SFT
+LORA_R = 8
+LORA_ALPHA = 16                     # 保持 alpha=2r 的常见比例
 LORA_DROPOUT = 0                    # 0 即可，unsloth 对 dropout 优化有限
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
@@ -84,18 +97,18 @@ def load_jsonl_dataset(path: str, tokenizer) -> Dataset:
 
 
 def main():
-    assert MODEL_NAME, "请在脚本顶部填写 MODEL_NAME（HF ID 或本地模型路径）"
-    assert DATA_PATH,  "请在脚本顶部填写 DATA_PATH（final.jsonl 路径）"
-    assert OUTPUT_DIR, "请在脚本顶部填写 OUTPUT_DIR（输出目录）"
+    assert os.path.isdir(MODEL_NAME), f"本地模型目录不存在: {MODEL_NAME}"
+    assert os.path.isfile(DATA_PATH), f"训练数据不存在: {DATA_PATH}"
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # 1) 加载底座模型 + Tokenizer（unsloth 自动优化权重加载）
+    # 1) 加载底座模型 + Tokenizer（仅本地；local_files_only 禁止联网解析/下载）
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
         max_seq_length=MAX_SEQ_LENGTH,
         dtype=DTYPE,
         load_in_4bit=LOAD_IN_4BIT,
+        local_files_only=True,
     )
 
     # 2) 附加 LoRA（保守标准配置）
