@@ -1,8 +1,15 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
 )
 
 // ASRService transcribes audio into text.
@@ -10,20 +17,119 @@ type ASRService interface {
 	Transcribe(ctx context.Context, audioBase64 string) (string, error)
 }
 
-// StubASRService is a non-functional placeholder for the MVP.
-// In production this would call a local Whisper model or similar.
+// DefaultASRService calls an external ASR endpoint via an OpenAI-compatible HTTP API.
+type DefaultASRService struct {
+	client   *http.Client
+	baseURL  string
+	modelID  string
+	apiKey   string
+}
+
+// NewASRService creates the real ASR client from environment variables.
+func NewASRService() ASRService {
+	baseURL := strings.TrimSpace(os.Getenv("ASR_OPENAI_BASE_URL"))
+	if baseURL == "" {
+		baseURL = "http://localhost:6006/v1"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	modelID := strings.TrimSpace(os.Getenv("ASR_MODEL_ID"))
+	if modelID == "" {
+		modelID = "/root/autodl-tmp/asr"
+	}
+
+	apiKey := strings.TrimSpace(os.Getenv("ASR_API_KEY"))
+	if apiKey == "" {
+		apiKey = "EMPTY"
+	}
+
+	return &DefaultASRService{
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		baseURL: baseURL,
+		modelID: modelID,
+		apiKey:  apiKey,
+	}
+}
+
+// Transcribe sends the base64 audio payload to the ASR endpoint and returns the transcript.
+func (s *DefaultASRService) Transcribe(ctx context.Context, audioBase64 string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	// Build OpenAI-compatible chat completion request with inline audio data URL.
+	payload := map[string]any{
+		"model": s.modelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "audio_url",
+						"audio_url": map[string]any{
+							"url": "data:audio/wav;base64," + audioBase64,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal asr request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create asr request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("asr request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read asr response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("asr service returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("unmarshal asr response: %w", err)
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("asr response has no choices")
+	}
+
+	return result.Choices[0].Message.Content, nil
+}
+
+// StubASRService is a non-functional placeholder for tests.
 type StubASRService struct {
-	// Override allows tests to inject arbitrary transcripts.
 	Override func(audioBase64 string) string
 }
 
-// NewASRService creates the default ASR stub.
-func NewASRService() ASRService {
+func NewStubASRService() ASRService {
 	return &StubASRService{}
 }
 
-// Transcribe returns a dummy transcript so the handler layer can be tested
-// without a real model. If Override is set, its result is used instead.
 func (s *StubASRService) Transcribe(ctx context.Context, audioBase64 string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -31,6 +137,5 @@ func (s *StubASRService) Transcribe(ctx context.Context, audioBase64 string) (st
 	if s.Override != nil {
 		return s.Override(audioBase64), nil
 	}
-	// Return a deterministic placeholder based on payload size.
 	return fmt.Sprintf("transcript_%d", len(audioBase64)), nil
 }

@@ -4,16 +4,23 @@ Voice Agent 推理客户端 (OpenAI SDK)
 依赖: pip install openai
 
 使用步骤:
-    1. 先启动 vLLM 服务 (start_server.sh)
-    2. 填写下方 BASE_URL / API_KEY / MODEL_NAME
+    1. 在 autodl-tmp 目录下执行 bash start_dual_voice_asr.sh（语音默认 6008，ASR 默认 6006）
+    2. 环境变量 VOICE_OPENAI_BASE_URL / VOICE_MODEL_NAME，或改下方默认值
     3. python inference.py
+
+流式输出: 客户端对 chat.completions.create 传 stream=True 即可，无需改服务端脚本。
+    见下方 chat_stream()。
+
+BASE_URL 必须以 /v1 结尾: SDK 请求的是 {base_url}/chat/completions，即 .../v1/chat/completions。
+若写成 https://host:8443 而漏掉 /v1，会变成 /chat/completions，vLLM 返回 404。
 """
+# cd /root/autodl-tmp && bash start_dual_voice_asr.sh screen
 
 import os
 from openai import OpenAI
 
 # TODO: 根据实际部署环境修改
-BASE_URL = "http://localhost:8000/v1"   # vLLM 服务地址
+BASE_URL = "https://uu781083-8452-039e3630.bjb1.seetacloud.com:8443/v1"   # vLLM 服务地址
 API_KEY = "dummy"                       # 若 server 没设 --api-key，可随便填
 MODEL_NAME = "voice-agent"              # 必须和 --lora-modules 里的 name 一致
 
@@ -119,7 +126,7 @@ def chat_stream(
     max_tokens: int = 512,
 ):
     """
-    流式调用：逐块 yield assistant 文本片段。服务端无需改 start_server.sh，OpenAI 兼容接口原生支持。
+    流式调用：逐块 yield assistant 文本片段。OpenAI 兼容接口原生支持，无需改 vLLM 启动参数。
 
     用法示例:
         for piece in chat_stream(messages):

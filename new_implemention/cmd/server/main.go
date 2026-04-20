@@ -76,6 +76,9 @@ func main() {
 		APIKey:  os.Getenv("VOICE_LLM_API_KEY"),
 		Model:   os.Getenv("VOICE_LLM_MODEL"),
 		BaseURL: os.Getenv("VOICE_LLM_BASE_URL"),
+		ExtraBody: map[string]any{
+			"chat_template_kwargs": map[string]any{"enable_thinking": false},
+		},
 	}, voiceActionExec)
 
 	handler.RegisterRoutes(r, appState, voiceSvc, pptSvc, kbSvc, searchSvc, asrSvc, interruptSvc, voiceAgentSvc)
