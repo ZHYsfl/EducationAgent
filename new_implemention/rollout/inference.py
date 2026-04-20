@@ -101,7 +101,7 @@ def chat(
     max_tokens: int = 512,
 ) -> str:
     """
-    调用 vLLM 服务，返回 assistant 的文本内容。
+    调用 vLLM 服务，返回 assistant 的文本内容（非流式）。
     """
     resp = client.chat.completions.create(
         model=MODEL_NAME,
@@ -111,6 +111,36 @@ def chat(
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},  # 关 thinking
     )
     return resp.choices[0].message.content
+
+
+def chat_stream(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 512,
+):
+    """
+    流式调用：逐块 yield assistant 文本片段。服务端无需改 start_server.sh，OpenAI 兼容接口原生支持。
+
+    用法示例:
+        for piece in chat_stream(messages):
+            print(piece, end="", flush=True)
+    """
+    stream = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+    for chunk in stream:
+        choice = chunk.choices[0]
+        delta = choice.delta
+        if delta is None:
+            continue
+        text = getattr(delta, "content", None)
+        if text:
+            yield text
 
 
 def demo():
@@ -150,8 +180,10 @@ def demo():
     ]
 
     print("[User]", messages[-1]["content"], "\n")
-    assistant_text = chat(messages, temperature=0.7, max_tokens=512)
-    print("[Assistant]", assistant_text)
+    assistant_text = chat_stream(messages, temperature=0.7, max_tokens=512)
+    for piece in assistant_text:
+        print(piece, end="", flush=True)
+    print()
 
 
 if __name__ == "__main__":
