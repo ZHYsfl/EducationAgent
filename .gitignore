@@ -252,3 +252,5 @@ node_modules/
 .claudeignore
 
 model/
+
+interrupt_detection_cot_lora/

@@ -44,7 +44,7 @@ func NewSearchService() SearchService {
 		searchAPI = defaultSearchAPIURL
 	}
 
-	llmModel := strings.TrimSpace(os.Getenv("SEARCH_SUMMARY_MODEL"))
+	llmModel := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
 	if llmModel == "" {
 		llmModel = defaultSearchLLMModel
 	}
