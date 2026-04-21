@@ -103,11 +103,12 @@ export class AudioRecorder {
     const endSample = Math.max(startSample, Math.floor(endMs / sampleDuration))
 
     const totalLength = this.audioBuffer.reduce((sum, buf) => sum + buf.length, 0)
-    if (endSample > totalLength) {
+    const clampedEndSample = Math.min(endSample, totalLength)
+    if (clampedEndSample <= startSample) {
       return null
     }
 
-    const segmentLength = endSample - startSample
+    const segmentLength = clampedEndSample - startSample
     const segment = new Float32Array(segmentLength)
 
     let copied = 0
@@ -116,20 +117,20 @@ export class AudioRecorder {
       const bufStart = sampleOffset
       const bufEnd = sampleOffset + buf.length
 
-      if (bufEnd > startSample && bufStart < endSample) {
+      if (bufEnd > startSample && bufStart < clampedEndSample) {
         const srcStart = Math.max(0, startSample - bufStart)
-        const srcEnd = Math.min(buf.length, endSample - bufStart)
-        const destStart = Math.max(0, bufStart - startSample)
+        const srcEnd = Math.min(buf.length, clampedEndSample - bufStart)
         const slice = buf.subarray(srcStart, srcEnd)
-        segment.set(slice, copied + destStart)
+        segment.set(slice, copied)
         copied += slice.length
       }
       sampleOffset += buf.length
-      if (sampleOffset >= endSample) break
+      if (sampleOffset >= clampedEndSample) break
     }
 
     const pcm16 = floatTo16BitPCM(segment)
-    const base64 = arrayBufferToBase64(pcm16.buffer)
+    const wav = addWavHeader(pcm16.buffer, this.sampleRate)
+    const base64 = arrayBufferToBase64(wav)
     return { base64, durationMs: endMs - startMs }
   }
 
@@ -137,9 +138,19 @@ export class AudioRecorder {
    * Get the full recording from start to now.
    */
   getFullSegment(): RecordedSegment | null {
-    if (!this.isRecordingFlag) return null
-    const elapsed = performance.now() - this.startedAt
-    return this.extractSegment(0, elapsed)
+    if (!this.isRecordingFlag || this.audioBuffer.length === 0) return null
+    const totalSamples = this.audioBuffer.reduce((s, b) => s + b.length, 0)
+    if (totalSamples === 0) return null
+    const combined = new Float32Array(totalSamples)
+    let offset = 0
+    for (const buf of this.audioBuffer) {
+      combined.set(buf, offset)
+      offset += buf.length
+    }
+    const pcm16 = floatTo16BitPCM(combined)
+    const wav = addWavHeader(pcm16.buffer, this.sampleRate)
+    const base64 = arrayBufferToBase64(wav)
+    return { base64, durationMs: (totalSamples / this.sampleRate) * 1000 }
   }
 
   /**
@@ -153,6 +164,11 @@ export class AudioRecorder {
   isRecording(): boolean {
     return this.isRecordingFlag
   }
+
+  resetBuffer() {
+    this.audioBuffer = []
+    this.startedAt = performance.now()
+  }
 }
 
 function floatTo16BitPCM(input: Float32Array): DataView {
@@ -160,9 +176,33 @@ function floatTo16BitPCM(input: Float32Array): DataView {
   const view = new DataView(buffer)
   for (let i = 0; i < input.length; i++) {
     const s = Math.max(-1, Math.min(1, input[i]))
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true) // little-endian
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
   }
   return view
+}
+
+function addWavHeader(pcmData: ArrayBuffer, sampleRate: number): ArrayBuffer {
+  const pcmBytes = pcmData.byteLength
+  const buffer = new ArrayBuffer(44 + pcmBytes)
+  const view = new DataView(buffer)
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + pcmBytes, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeStr(36, 'data')
+  view.setUint32(40, pcmBytes, true)
+  new Uint8Array(buffer).set(new Uint8Array(pcmData), 44)
+  return buffer
 }
 
 function arrayBufferToBase64(buffer: ArrayBufferLike): string {

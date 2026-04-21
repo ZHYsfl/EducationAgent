@@ -19,6 +19,7 @@ export interface ConversationState {
   // -------------------------------------------------------------------------
   history: ConversationMessage[]
   appendHistory: (msg: ConversationMessage) => void
+  clearHistory: () => void
   /**
    * Replace the last assistant message (used during streaming to update
    * partial content, or after interruption to truncate).
@@ -90,6 +91,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((state) => ({
       history: [...state.history, msg],
     })),
+  clearHistory: () => set({ history: [] }),
   replaceLastAssistant: (content) =>
     set((state) => {
       const revIdx = [...state.history].reverse().findIndex((m) => m.role === 'assistant')

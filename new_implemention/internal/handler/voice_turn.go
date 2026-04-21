@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 
 	"educationagent/internal/model"
@@ -27,13 +28,12 @@ func VoiceVADStart(st *state.AppState, asr service.ASRService, interrupt service
 			return
 		}
 
-		isInterrupt, err := interrupt.Check(c.Request.Context(), transcript)
-		if err != nil {
-			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "interrupt check failed"})
-			return
-		}
+		// Always treat any detected speech as an interrupt so the voice agent
+		// responds to every user turn. The VAD already filters out noise via
+		// minSpeechDurationMs, so a second LLM-based interrupt check is redundant.
+		isInterrupt := true
+		log.Printf("vad_start: historyLen=%d transcript=%q", st.VoiceHistoryLen(), transcript)
 
-		st.SetLastVADInterrupt(isInterrupt)
 		c.JSON(http.StatusOK, model.UniformResponse{
 			Code:    200,
 			Message: "success",
@@ -46,8 +46,6 @@ func VoiceVADStart(st *state.AppState, asr service.ASRService, interrupt service
 // It streams the response using Server-Sent Events.
 func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.VoiceAgentService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Ensure only one voice turn (including its full synchronous action sequence)
-		// runs at a time. If a previous turn is still executing actions, wait here.
 		st.LockVoiceTurn()
 		defer st.UnlockVoiceTurn()
 
@@ -57,24 +55,9 @@ func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.
 			return
 		}
 
-		// Look up cached interrupt result.
-		wasInterrupt, ok := st.GetLastVADInterrupt()
-		if !ok {
-			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "no prior vad_start found"})
-			return
-		}
-
-		if !wasInterrupt {
-			c.JSON(http.StatusOK, model.UniformResponse{
-				Code:    200,
-				Message: "success",
-				Data:    model.VADEndIgnoredData{Ignored: true},
-			})
-			return
-		}
-
 		// Full ASR.
 		transcript, err := asr.Transcribe(c.Request.Context(), req.Audio)
+		log.Printf("vad_end: audioLen=%d transcript=%q err=%v", len(req.Audio), transcript, err)
 		if err != nil {
 			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "asr failed"})
 			return

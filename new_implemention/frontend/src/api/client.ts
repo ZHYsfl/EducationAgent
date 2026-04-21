@@ -69,8 +69,14 @@ export async function fetchFromPPTMessageQueue(): Promise<UniformResponse<string
 // VAD APIs
 // ---------------------------------------------------------------------------
 
-export async function vadStart(req: VADStartRequest): Promise<UniformResponse<VADStartData>> {
-  return post<VADStartData>('/voice/vad_start', req)
+export async function vadStart(req: VADStartRequest, signal?: AbortSignal): Promise<UniformResponse<VADStartData>> {
+  const res = await fetch(`${API_BASE}/voice/vad_start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+    signal,
+  })
+  return res.json() as Promise<UniformResponse<VADStartData>>
 }
 
 export async function vadEnd(

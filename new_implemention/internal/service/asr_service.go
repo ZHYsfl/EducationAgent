@@ -59,6 +59,12 @@ func (s *DefaultASRService) Transcribe(ctx context.Context, audioBase64 string) 
 		return "", err
 	}
 
+	// Limit to ~30s of 16kHz 16-bit mono audio to stay within ASR context limits.
+	const maxBase64Len = 1_280_000
+	if len(audioBase64) > maxBase64Len {
+		audioBase64 = audioBase64[:maxBase64Len]
+	}
+
 	// Build OpenAI-compatible chat completion request with inline audio data URL.
 	payload := map[string]any{
 		"model": s.modelID,
@@ -118,7 +124,19 @@ func (s *DefaultASRService) Transcribe(ctx context.Context, audioBase64 string) 
 		return "", fmt.Errorf("asr response has no choices")
 	}
 
-	return result.Choices[0].Message.Content, nil
+	return extractASRText(result.Choices[0].Message.Content), nil
+}
+
+func extractASRText(raw string) string {
+	start := strings.Index(raw, "<asr_text>")
+	end := strings.Index(raw, "</asr_text>")
+	if start >= 0 && end > start {
+		return strings.TrimSpace(raw[start+10 : end])
+	}
+	if idx := strings.Index(raw, "<asr_text>"); idx >= 0 {
+		return strings.TrimSpace(raw[idx+10:])
+	}
+	return strings.TrimSpace(raw)
 }
 
 // StubASRService is a non-functional placeholder for tests.

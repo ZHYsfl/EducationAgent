@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"educationagent/internal/model"
 	"educationagent/internal/state"
@@ -144,7 +145,11 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	// -------------------------------------------------------------------------
 	// Round 1: assistant generates TTS + action(s)
 	// -------------------------------------------------------------------------
+	// Keep only the most recent turns to stay within the model's context window.
 	history := st.GetVoiceHistory()
+	if len(history) > 10 {
+		history = history[len(history)-10:]
+	}
 	history = append(history, openai.UserMessage(userContent))
 	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
 	stream := s.agent.StreamChat(ctx, messages)
@@ -247,6 +252,7 @@ type streamExtractor struct {
 	toolResults []string
 	inAction    bool
 	onAction    func(payload string) string
+	utf8Buf     []byte
 }
 
 func newStreamExtractor(out chan<- model.SSEChunk, onAction func(string) string) *streamExtractor {
@@ -261,10 +267,23 @@ func (e *streamExtractor) emit(chunk model.SSEChunk) {
 }
 
 func (e *streamExtractor) writeText(text string) {
-	if text != "" {
-		e.emit(model.SSEChunk{Type: "tts", Text: text})
-		e.history.WriteString(text)
+	if text == "" {
+		return
 	}
+	// Buffer incomplete UTF-8 sequences across token boundaries.
+	data := append(e.utf8Buf, []byte(text)...)
+	// Find the last valid UTF-8 boundary.
+	valid := len(data)
+	for valid > 0 && !utf8.Valid(data[:valid]) {
+		valid--
+	}
+	e.utf8Buf = data[valid:]
+	if valid == 0 {
+		return
+	}
+	safe := string(data[:valid])
+	e.emit(model.SSEChunk{Type: "tts", Text: safe})
+	e.history.WriteString(safe)
 }
 
 func (e *streamExtractor) writeAction(payload string) {
@@ -327,13 +346,16 @@ func (e *streamExtractor) Feed(token string) {
 // Flush drains any remaining text when the stream ends.
 func (e *streamExtractor) Flush() {
 	s := e.raw.String()
-	if s == "" {
-		return
-	}
 	if e.inAction {
-		// Unclosed action at EOF: treat it as plain text to avoid losing content.
 		e.writeText("<action>" + s)
-	} else {
+	} else if s != "" {
 		e.writeText(s)
+	}
+	// Flush any remaining incomplete UTF-8 bytes as-is.
+	if len(e.utf8Buf) > 0 {
+		safe := string(e.utf8Buf)
+		e.emit(model.SSEChunk{Type: "tts", Text: safe})
+		e.history.WriteString(safe)
+		e.utf8Buf = nil
 	}
 }

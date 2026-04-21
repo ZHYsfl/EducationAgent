@@ -30,6 +30,7 @@ export function useConversation() {
 
   const speechStartTimeRef = useRef<number>(0)
   const fastCheckPromiseRef = useRef<Promise<{ interrupt: boolean }> | null>(null)
+  const fastCheckAbortRef = useRef<AbortController | null>(null)
   const fastCheckSentRef = useRef<boolean>(false)
   const interruptPendingRef = useRef<boolean>(false)
   const fastCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -42,19 +43,25 @@ export function useConversation() {
   // offset in streamHistoryRef right after the last action tag, separating
   // round-1 assistant from round-2 assistant text.
   const postActionOffsetRef = useRef<number>(0)
+  const startCancelledRef = useRef<boolean>(false)
+  const activeRef = useRef<boolean>(false)
+
+  const ttsPendingRef = useRef<string>('')
 
   // -------------------------------------------------------------------------
   // TTS helpers
   // -------------------------------------------------------------------------
   const flushTTS = useCallback(() => {
-    const pending = store.ttsPendingText
+    const pending = ttsPendingRef.current
     if (!pending) return
     ttsRef.current?.enqueue(pending)
+    ttsPendingRef.current = ''
     store.setTtsPendingText('')
   }, [store])
 
   const clearTTSAndPlayback = useCallback(() => {
     ttsRef.current?.clear()
+    ttsPendingRef.current = ''
     store.setTtsPendingText('')
   }, [store])
 
@@ -63,21 +70,22 @@ export function useConversation() {
   // -------------------------------------------------------------------------
   const handleChunk = useCallback(
     (chunk: SSEChunk) => {
+      if (!activeRef.current) return
       if (chunk.type === 'user_transcript') {
         store.appendHistory({ role: 'user', content: chunk.text ?? '' })
       } else if (chunk.type === 'tts') {
         const text = chunk.text ?? ''
         streamHistoryRef.current += text
         store.appendToBuffer(text)
-        const nextPending = store.ttsPendingText + text
-        store.setTtsPendingText(nextPending)
-        // Sentence-level flush.
-        const sentences = splitSentences(nextPending)
+        ttsPendingRef.current += text
+        store.setTtsPendingText(ttsPendingRef.current)
+        const sentences = splitSentences(ttsPendingRef.current)
         if (sentences.length > 1) {
           for (let i = 0; i < sentences.length - 1; i++) {
             ttsRef.current?.enqueue(sentences[i])
           }
-          store.setTtsPendingText(sentences[sentences.length - 1] ?? '')
+          ttsPendingRef.current = sentences[sentences.length - 1] ?? ''
+          store.setTtsPendingText(ttsPendingRef.current)
         }
       } else if (chunk.type === 'action') {
         store.markActionPhase()
@@ -113,7 +121,7 @@ export function useConversation() {
         postActionOffsetRef.current = 0
         store.resetBuffer()
         interruptPendingRef.current = false
-        store.setStatus('idle')
+        if (activeRef.current) store.setStatus('listening')
       }
     },
     [store, flushTTS],
@@ -122,6 +130,7 @@ export function useConversation() {
   const sse = useSSE({
     onChunk: handleChunk,
     onError: (err) => {
+      if (!activeRef.current) return
       console.error('SSE error:', err)
       store.setStatus('idle')
     },
@@ -191,7 +200,11 @@ export function useConversation() {
   // VAD callbacks
   // -------------------------------------------------------------------------
   const sendFastCheck = useCallback(async () => {
-    if (fastCheckSentRef.current) return
+    if (fastCheckSentRef.current) {
+      // Already triggered by timeout; wait for the in-flight promise if any.
+      await (fastCheckPromiseRef.current ?? Promise.resolve())
+      return
+    }
     fastCheckSentRef.current = true
 
     const recorder = recorderRef.current
@@ -204,9 +217,12 @@ export function useConversation() {
     const segment = recorder.extractSegment(start, end)
     if (!segment) return
 
-    const promise = vadStart({ audio: segment.base64, format: 'pcm' }).then((res) => {
-      return res.data ?? { interrupt: false }
-    })
+    const abortController = new AbortController()
+    fastCheckAbortRef.current = abortController
+
+    const promise = vadStart({ audio: segment.base64, format: 'pcm' }, abortController.signal)
+      .then((res) => res.data ?? { interrupt: false })
+      .catch(() => ({ interrupt: false }))
 
     fastCheckPromiseRef.current = promise
 
@@ -217,6 +233,8 @@ export function useConversation() {
   }, [performInterrupt])
 
   const handleSpeechStart = useCallback(() => {
+    if (!activeRef.current || !recorderRef.current) return
+    store.setStatus('speaking')
     speechStartTimeRef.current = recorderRef.current?.getElapsedMs() ?? 0
     fastCheckSentRef.current = false
     fastCheckPromiseRef.current = null
@@ -230,56 +248,78 @@ export function useConversation() {
     fastCheckTimeoutRef.current = setTimeout(() => {
       sendFastCheck()
     }, VAD_FAST_CHECK_MS)
-  }, [sendFastCheck])
+  }, [sendFastCheck, store])
 
   const handleSpeechEnd = useCallback(async () => {
+    // User clicked Stop: ignore any delayed VAD callbacks.
+    if (!activeRef.current || !vadRef.current || !recorderRef.current) return
+
     store.setStatus('thinking')
 
-    if (!fastCheckSentRef.current) {
+    try {
       await sendFastCheck()
-    }
 
-    const recorder = recorderRef.current
-    if (!recorder) return
+      const recorder = recorderRef.current
+      if (!recorder) return
 
-    const fullSegment = recorder.getFullSegment()
-    if (!fullSegment) return
+      const fullSegment = recorder.getFullSegment()
+      if (!fullSegment) {
+        // No audio captured yet; treat as a no-op turn.
+        if (activeRef.current) store.setStatus('listening')
+        return
+      }
 
-    const fastResult = await (fastCheckPromiseRef.current ?? Promise.resolve({ interrupt: false }))
+      const fastResult = await (fastCheckPromiseRef.current ?? Promise.resolve({ interrupt: false }))
 
-    const needsPrefix = fastResult.interrupt && (store.ttsPendingText !== '' || ttsWasActiveRef.current)
+      // User may have clicked Stop while we were awaiting; abort if cleaned up.
+      if (!recorderRef.current) return
 
-    let interruptedAssistantText = ''
-    if (fastResult.interrupt) {
-      // Interrupt path: finalize the truncated turn, then start the new SSE stream.
-      interruptedAssistantText = finalizeInterruptedTurn()
-    }
+      const needsPrefix = fastResult.interrupt && (store.ttsPendingText !== '' || ttsWasActiveRef.current)
 
-    const req: import('@/types').VADEndRequest = {
-      audio: fullSegment.base64,
-      format: 'pcm',
-      needs_interrupted_prefix: needsPrefix,
-      interrupted_assistant_text: interruptedAssistantText,
-    }
+      let interruptedAssistantText = ''
+      if (fastResult.interrupt) {
+        // Interrupt path: finalize the truncated turn, then start the new SSE stream.
+        interruptedAssistantText = finalizeInterruptedTurn()
+      }
 
-    if (!fastResult.interrupt) {
-      // Backend returns a plain JSON response; vadEnd will synthesise turn_end.
+      const req: import('@/types').VADEndRequest = {
+        audio: fullSegment.base64,
+        format: 'pcm',
+        needs_interrupted_prefix: needsPrefix,
+        interrupted_assistant_text: interruptedAssistantText,
+      }
+
+      if (!fastResult.interrupt) {
+        await sse.start(req)
+        recorderRef.current?.resetBuffer()
+        if (activeRef.current) store.setStatus('listening')
+        ttsWasActiveRef.current = false
+        return
+      }
+
       await sse.start(req)
-      store.setStatus('idle')
+      recorderRef.current?.resetBuffer()
+      if (activeRef.current) store.setStatus('listening')
       ttsWasActiveRef.current = false
-      return
+    } catch (err) {
+      console.error('handleSpeechEnd error:', err)
+      if (activeRef.current) store.setStatus('listening')
     }
-
-    await sse.start(req)
-    ttsWasActiveRef.current = false
   }, [sendFastCheck, sse, store, finalizeInterruptedTurn])
 
   // -------------------------------------------------------------------------
   // Conversation lifecycle
   // -------------------------------------------------------------------------
   const start = useCallback(async () => {
+    startCancelledRef.current = false
+    activeRef.current = true
+    store.clearHistory()
+
+    try {
     const res = await apiStartConversation()
     if (res.code !== 200) {
+      activeRef.current = false
+      store.setStatus('idle')
       throw new Error(res.message || 'failed to start conversation')
     }
 
@@ -287,6 +327,10 @@ export function useConversation() {
 
     const recorder = new AudioRecorder()
     await recorder.start()
+    if (startCancelledRef.current) {
+      recorder.stop()
+      return
+    }
     recorderRef.current = recorder
 
     const tts = new TTSEngine()
@@ -296,21 +340,36 @@ export function useConversation() {
     ttsRef.current = tts
 
     const vad = new VADetector(
-      { thresholdDb: -40, minSpeechDurationMs: 200, minSilenceDurationMs: 500 },
+      { thresholdDb: -35, minSpeechDurationMs: 300, minSilenceDurationMs: 300 },
       {
         onSpeechStart: handleSpeechStart,
         onSpeechEnd: handleSpeechEnd,
       },
     )
     await vad.start()
+    if (startCancelledRef.current) {
+      vad.stop()
+      recorder.stop()
+      recorderRef.current = null
+      return
+    }
     vadRef.current = vad
+    } catch (err) {
+      activeRef.current = false
+      store.setStatus('idle')
+      throw err
+    }
   }, [handleSpeechEnd, handleSpeechStart, store])
 
   const stop = useCallback(() => {
+    activeRef.current = false
+    startCancelledRef.current = true
     if (fastCheckTimeoutRef.current) {
       clearTimeout(fastCheckTimeoutRef.current)
       fastCheckTimeoutRef.current = null
     }
+    fastCheckAbortRef.current?.abort()
+    fastCheckAbortRef.current = null
     sse.abort()
     ttsRef.current?.clear()
     vadRef.current?.stop()
@@ -319,7 +378,13 @@ export function useConversation() {
     recorderRef.current = null
     ttsRef.current = null
     pendingToolsRef.current = []
+    streamHistoryRef.current = ''
     postActionOffsetRef.current = 0
+    fastCheckSentRef.current = false
+    fastCheckPromiseRef.current = null
+    interruptPendingRef.current = false
+    ttsWasActiveRef.current = false
+    ttsPendingRef.current = ''
     store.setStatus('idle')
   }, [sse, store])
 

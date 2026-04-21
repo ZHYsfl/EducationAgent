@@ -2,7 +2,7 @@
 SFT Training Script for Voice Agent (Unsloth + QLoRA)
 ======================================================
 Environment: single RTX 4090 32 GB
-Base Model : Qwen3.5-4B (Instruct recommended)
+Base Model : Qwen/Qwen3-4B-Instruct-2507 (local snapshot under MODEL_NAME; use this Hub id in README / adapter_config when publishing)
 Dataset    : final.jsonl (OpenAI-style messages, one sample per line)
 
 Install dependencies before running:
@@ -31,7 +31,8 @@ from unsloth import FastLanguageModel
 
 # ===================== 路径（数据盘，本地已有模型与数据） =====================
 _ROOT = "/root/autodl-tmp"
-MODEL_NAME = os.path.join(_ROOT, "train")           # 本地底座模型目录（含 config、权重等）
+# 本地底座快照目录（与 Hub 上 Qwen/Qwen3-4B-Instruct-2507 对应；save_model 会写入该路径到 adapter_config，发 HF 前请改成 Hub id）
+MODEL_NAME = os.path.join(_ROOT, "train")
 DATA_PATH = os.path.join(_ROOT, "data", "final.jsonl")
 OUTPUT_DIR = os.path.join(_ROOT, "output")
 # ============================================================

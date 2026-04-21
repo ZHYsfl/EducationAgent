@@ -44,12 +44,12 @@ func (s *AppState) UpdateRequirements(req map[string]any) ([]string, error) {
 	}
 
 	if v, ok := req["topic"]; ok {
-		if str, ok := v.(string); ok {
+		if str, ok := v.(string); ok && str != "" {
 			s.req.Topic = &str
 		}
 	}
 	if v, ok := req["style"]; ok {
-		if str, ok := v.(string); ok {
+		if str, ok := v.(string); ok && str != "" {
 			s.req.Style = &str
 		}
 	}
@@ -71,7 +71,7 @@ func (s *AppState) UpdateRequirements(req map[string]any) ([]string, error) {
 		}
 	}
 	if v, ok := req["audience"]; ok {
-		if str, ok := v.(string); ok {
+		if str, ok := v.(string); ok && str != "" {
 			s.req.Audience = &str
 		}
 	}
@@ -224,11 +224,18 @@ func (s *AppState) SetPPTHistory(history []openai.ChatCompletionMessageParamUnio
 // Conversation lifecycle
 // ---------------------------------------------------------------------------
 
-// MarkConversationStarted records that the conversation has begun.
-func (s *AppState) MarkConversationStarted() {
+// ResetConversation clears all state for a fresh conversation.
+func (s *AppState) ResetConversation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.voiceHistory = nil
+	s.lastVADInterrupt = nil
 	s.conversationStarted = true
+	s.req = model.Requirements{}
+	s.requirementsFinalized = false
+	s.pptHistory = nil
+	s.pptMessageQueue = s.pptMessageQueue[:0]
+	s.voiceMessageQueue = s.voiceMessageQueue[:0]
 }
 
 // IsConversationStarted reports whether the conversation has begun.
