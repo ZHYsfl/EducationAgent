@@ -15,13 +15,21 @@ import (
 // PPTLogStream handles GET /api/v1/ppt/log-stream (SSE).
 func PPTLogStream(st *state.AppState) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ch := st.SubscribePPTLog()
+		ch, replay := st.SubscribePPTLog()
 		defer st.UnsubscribePPTLog(ch)
 
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.WriteHeader(http.StatusOK)
+
+		for _, msg := range replay {
+			data, _ := json.Marshal(msg)
+			c.Writer.Write([]byte("data: "))
+			c.Writer.Write(data)
+			c.Writer.Write([]byte("\n\n"))
+			c.Writer.Flush()
+		}
 
 		for {
 			select {

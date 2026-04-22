@@ -22,8 +22,9 @@ type AppState struct {
 	pptWorkDir            string
 
 	// PPT agent activity log broadcast
-	pptLogMu   sync.RWMutex
-	pptLogSubs []chan string
+	pptLogMu      sync.Mutex
+	pptLogSubs    []chan string
+	pptLogRecent  []string // ring buffer for late SSE subscribers
 
 	// Voice turn state
 	conversationStarted bool
@@ -336,12 +337,16 @@ func (s *AppState) GetPPTWorkDir() string {
 // PPT log broadcast (fan-out to SSE subscribers)
 // ---------------------------------------------------------------------------
 
-func (s *AppState) SubscribePPTLog() chan string {
-	ch := make(chan string, 256)
+const pptLogRecentMax = 500
+
+// SubscribePPTLog registers a subscriber and returns buffered lines already broadcast (for SSE replay).
+func (s *AppState) SubscribePPTLog() (ch chan string, replay []string) {
+	ch = make(chan string, 256)
 	s.pptLogMu.Lock()
+	replay = append([]string(nil), s.pptLogRecent...)
 	s.pptLogSubs = append(s.pptLogSubs, ch)
 	s.pptLogMu.Unlock()
-	return ch
+	return ch, replay
 }
 
 func (s *AppState) UnsubscribePPTLog(ch chan string) {
@@ -357,9 +362,14 @@ func (s *AppState) UnsubscribePPTLog(ch chan string) {
 }
 
 func (s *AppState) BroadcastPPTLog(msg string) {
-	s.pptLogMu.RLock()
-	defer s.pptLogMu.RUnlock()
-	for _, ch := range s.pptLogSubs {
+	s.pptLogMu.Lock()
+	s.pptLogRecent = append(s.pptLogRecent, msg)
+	if len(s.pptLogRecent) > pptLogRecentMax {
+		s.pptLogRecent = s.pptLogRecent[len(s.pptLogRecent)-pptLogRecentMax:]
+	}
+	subs := append([]chan string(nil), s.pptLogSubs...)
+	s.pptLogMu.Unlock()
+	for _, ch := range subs {
 		select {
 		case ch <- msg:
 		default:

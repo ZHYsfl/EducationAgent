@@ -38,6 +38,28 @@ func WriteFile(ctx context.Context, path string, content string) error {
 	return nil
 }
 
+// AppendFile appends content to a file, creating it (and parent dirs) if needed.
+func AppendFile(ctx context.Context, path string, content string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file for append: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		return fmt.Errorf("failed to append to file: %w", err)
+	}
+	return nil
+}
+
 // ReadFile reads the entire content of a file.
 func ReadFile(ctx context.Context, path string) (string, error) {
 	content, err := os.ReadFile(path)

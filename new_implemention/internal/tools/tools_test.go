@@ -25,6 +25,17 @@ func TestWriteAndReadFile(t *testing.T) {
 	assert.Equal(t, "hello world", content)
 }
 
+func TestAppendFile(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "a.txt")
+	ctx := context.Background()
+	require.NoError(t, AppendFile(ctx, path, "one"))
+	require.NoError(t, AppendFile(ctx, path, "two"))
+	content, err := ReadFile(ctx, path)
+	require.NoError(t, err)
+	assert.Equal(t, "onetwo", content)
+}
+
 func TestEditFile(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "test.txt")

@@ -14,6 +14,23 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+const (
+	voiceHistoryPhase1Max = 10
+	// Phase 2: short tail so small local LLMs (~1.5k ctx) stay within limits; round 2 also uses this cap.
+	voiceHistoryPhase2Max = 5
+)
+
+func trimVoiceHistoryTail(h []openai.ChatCompletionMessageParamUnion, phase2 bool) []openai.ChatCompletionMessageParamUnion {
+	max := voiceHistoryPhase1Max
+	if phase2 {
+		max = voiceHistoryPhase2Max
+	}
+	if len(h) <= max {
+		return h
+	}
+	return h[len(h)-max:]
+}
+
 const phase1SystemPrompt = `你是一个专注于帮助用户制作 PPT 的语音助手，当前处于需求收集阶段（Phase 1）。PPT Agent 尚未启动。
 
 任务目标：
@@ -151,14 +168,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	// Round 1: assistant generates TTS + action(s)
 	// -------------------------------------------------------------------------
 	// Keep only the most recent turns to stay within the model's context window.
-	history := st.GetVoiceHistory()
-	maxHistory := 10
-	if st.IsRequirementsFinalized() {
-		maxHistory = 5
-	}
-	if len(history) > maxHistory {
-		history = history[len(history)-maxHistory:]
-	}
+	history := trimVoiceHistoryTail(st.GetVoiceHistory(), st.IsRequirementsFinalized())
 	history = append(history, openai.UserMessage(userContent))
 	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
 	stream := s.agent.StreamChat(ctx, messages)
@@ -214,7 +224,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	}
 
 	if hasFetch {
-		history = st.GetVoiceHistory()
+		history = trimVoiceHistoryTail(st.GetVoiceHistory(), st.IsRequirementsFinalized())
 		messages = append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
 		stream2 := s.agent.StreamChat(ctx, messages)
 

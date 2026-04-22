@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"educationagent/internal/handler"
 	"educationagent/internal/service"
@@ -75,19 +80,44 @@ func main() {
 		return fmt.Sprintf("the ppt message is: %s", msg), nil
 	})
 
-	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{
+	voiceLLMCfg := toolcalling.LLMConfig{
 		APIKey:  os.Getenv("VOICE_LLM_API_KEY"),
 		Model:   os.Getenv("VOICE_LLM_MODEL"),
 		BaseURL: os.Getenv("VOICE_LLM_BASE_URL"),
 		ExtraBody: map[string]any{
 			"chat_template_kwargs": map[string]any{"enable_thinking": false},
 		},
-	}, voiceActionExec)
+	}
+	if v := strings.TrimSpace(os.Getenv("VOICE_LLM_MAX_TOKENS")); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			voiceLLMCfg.StreamMaxTokens = n
+		}
+	}
+	voiceAgentSvc := service.NewVoiceAgentService(voiceLLMCfg, voiceActionExec)
 
 	handler.RegisterRoutes(r, appState, voiceSvc, pptSvc, kbSvc, searchSvc, asrSvc, interruptSvc, voiceAgentSvc)
 
-	log.Println("Server listening on :8080")
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("failed to run server: %v", err)
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
+
+	go func() {
+		log.Println("Server listening on :8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("failed to run server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	pptSvc.ReleaseSlidevPreviewPort()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown: %v", err)
 	}
 }

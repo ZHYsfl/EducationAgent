@@ -83,6 +83,14 @@ func VoiceFetchFromPPTQueue(voiceSvc *service.VoiceService) gin.HandlerFunc {
 	}
 }
 
+// ReleaseSlidevPreview handles POST /api/v1/release_slidev_preview — frees TCP 6008 (Slidev / Vite preview).
+func ReleaseSlidevPreview(pptSvc *service.PPTService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		pptSvc.ReleaseSlidevPreviewPort()
+		middleware.OK(c, nil)
+	}
+}
+
 // StartConversation handles POST /api/v1/start_conversation
 func StartConversation(st *state.AppState, pptSvc *service.PPTService) gin.HandlerFunc {
 	return func(c *gin.Context) {

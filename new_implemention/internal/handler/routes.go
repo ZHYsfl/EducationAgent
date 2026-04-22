@@ -24,6 +24,7 @@ func RegisterRoutes(
 	r.POST("/api/v1/send_to_ppt_agent", VoiceSendToPPTAgent(voiceSvc, pptSvc))
 	r.GET("/api/v1/fetch_from_ppt_message_queue", VoiceFetchFromPPTQueue(voiceSvc))
 	r.POST("/api/v1/start_conversation", StartConversation(st, pptSvc))
+	r.POST("/api/v1/release_slidev_preview", ReleaseSlidevPreview(pptSvc))
 	r.POST("/api/v1/send_to_voice_agent", PPTSendToVoiceAgent(pptSvc))
 	r.POST("/api/v1/kb/query-chunks", KBQueryChunks(kbSvc))
 	r.POST("/api/v1/search/query", SearchQuery(searchSvc))

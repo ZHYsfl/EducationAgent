@@ -159,6 +159,20 @@ func TestStartConversation(t *testing.T) {
 	assert.True(t, st.IsConversationStarted())
 }
 
+func TestReleaseSlidevPreview(t *testing.T) {
+	r, _, _, _ := setupRouter()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/release_slidev_preview", bytes.NewReader([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(200), resp["code"])
+}
+
 func TestKBQueryChunks(t *testing.T) {
 	r, _, _, _ := setupRouter()
 

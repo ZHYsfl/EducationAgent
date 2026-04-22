@@ -15,6 +15,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/shared"
 )
 
@@ -27,6 +28,9 @@ type LLMConfig struct {
 	Model     string
 	BaseURL   string
 	ExtraBody map[string]any
+	// StreamMaxTokens caps streaming chat completion length (e.g. voice). vLLM reserves this from
+	// the model context for output, so max input ≈ context − StreamMaxTokens. If 0, StreamChat uses 512.
+	StreamMaxTokens int64
 }
 
 type ToolFunc func(ctx context.Context, args map[string]any) (string, error)
@@ -404,9 +408,15 @@ func (a *Agent) StreamChat(
 	go func() {
 		defer close(ch)
 
+		maxOut := a.config.StreamMaxTokens
+		if maxOut <= 0 {
+			// Default for ~1536-token local models: vLLM sets max_input = ctx − max_tokens (e.g. 1536−512=1024).
+			maxOut = 512
+		}
 		params := openai.ChatCompletionNewParams{
-			Model:    openai.ChatModel(a.config.Model),
-			Messages: messages,
+			Model:     openai.ChatModel(a.config.Model),
+			Messages:  messages,
+			MaxTokens: param.NewOpt[int64](maxOut),
 		}
 		if a.config.ExtraBody != nil {
 			params.SetExtraFields(a.config.ExtraBody)

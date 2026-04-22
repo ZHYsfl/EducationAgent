@@ -100,6 +100,56 @@ func estimatePPTHistoryTokens(msgs []openai.ChatCompletionMessageParamUnion) int
 	return n
 }
 
+// pptHistoryToolSuffixValid reports whether msgs[from:] is safe to send after msgs[0] (system):
+// no orphan leading tool message, and every assistant message with tool_calls is immediately
+// followed by the matching number of tool role messages. Required by OpenAI/DeepSeek APIs.
+func pptHistoryToolSuffixValid(msgs []openai.ChatCompletionMessageParamUnion, from int) bool {
+	if from < 1 || from >= len(msgs) {
+		return true
+	}
+	if msgs[from].OfTool != nil {
+		return false
+	}
+	i := from
+	for i < len(msgs) {
+		tcs := msgs[i].GetToolCalls()
+		if len(tcs) > 0 {
+			need := len(tcs)
+			if i+need >= len(msgs) {
+				return false
+			}
+			for j := 1; j <= need; j++ {
+				if msgs[i+j].OfTool == nil {
+					return false
+				}
+			}
+			i += 1 + need
+			continue
+		}
+		if msgs[i].OfTool != nil {
+			return false
+		}
+		i++
+	}
+	return true
+}
+
+// pptHistoryAlignToolCallStart returns the smallest index start >= minStart such that
+// msgs[start:] satisfies pptHistoryToolSuffixValid, by including earlier messages if needed.
+func pptHistoryAlignToolCallStart(msgs []openai.ChatCompletionMessageParamUnion, minStart int) int {
+	start := minStart
+	if start < 1 {
+		start = 1
+	}
+	if start >= len(msgs) {
+		return start
+	}
+	for start > 1 && !pptHistoryToolSuffixValid(msgs, start) {
+		start--
+	}
+	return start
+}
+
 func (s *PPTService) compressPPTHistoryOnce(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, bool) {
 	if s.agent == nil || len(history) < 3 {
 		return history, false
@@ -109,6 +159,10 @@ func (s *PPTService) compressPPTHistoryOnce(ctx context.Context, history []opena
 		tailN = 1
 	}
 	midEnd := len(history) - tailN
+	if midEnd <= 1 {
+		return history, false
+	}
+	midEnd = pptHistoryAlignToolCallStart(history, midEnd)
 	if midEnd <= 1 {
 		return history, false
 	}
@@ -159,11 +213,16 @@ func (s *PPTService) compressPPTHistoryIfNeeded(ctx context.Context, history []o
 		))
 	}
 	if estimatePPTHistoryTokens(history) > pptCompressTokenThreshold && len(history) > pptCompressTailMessages+1 {
+		start := len(history) - pptCompressTailMessages
+		if start < 1 {
+			start = 1
+		}
+		start = pptHistoryAlignToolCallStart(history, start)
 		history = append(
 			[]openai.ChatCompletionMessageParamUnion{history[0]},
-			history[len(history)-pptCompressTailMessages:]...,
+			history[start:]...,
 		)
-		s.state.BroadcastPPTLog("[memory] token budget fallback: kept system + last messages only")
+		s.state.BroadcastPPTLog("[memory] token budget fallback: kept system + last messages only (tool-call aligned)")
 	}
 	return history
 }

@@ -22,3 +22,34 @@ func TestEstimatePPTHistoryTokens_UserMessage(t *testing.T) {
 	n := estimatePPTHistoryTokens(msgs)
 	assert.Greater(t, n, 0)
 }
+
+func TestPptHistoryAlignToolCallStart_IncludesAssistantAndTools(t *testing.T) {
+	asst := openai.ChatCompletionMessageParamUnion{
+		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+			ToolCalls: []openai.ChatCompletionMessageToolCallUnionParam{
+				{
+					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+						ID: "call_1",
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+							Name:      "read_file",
+							Arguments: "{}",
+						},
+					},
+				},
+			},
+		},
+	}
+	tool := openai.ToolMessage(`{"ok":true}`, "call_1")
+	msgs := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage("sys"),
+		openai.UserMessage("u1"),
+		asst,
+		tool,
+		openai.UserMessage("u2"),
+	}
+	// Tail slice starting at lone tool message is invalid for APIs.
+	assert.False(t, pptHistoryToolSuffixValid(msgs, 3))
+	start := pptHistoryAlignToolCallStart(msgs, 3)
+	assert.Equal(t, 2, start)
+	assert.True(t, pptHistoryToolSuffixValid(msgs, start))
+}

@@ -175,11 +175,7 @@ func TestPPTServiceFetchFromVoiceMessageQueueTool(t *testing.T) {
 
 	res, err := ps.fetchFromVoiceMessageQueueTool(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "hello", res)
-
-	res, err = ps.fetchFromVoiceMessageQueueTool(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "world", res)
+	assert.Equal(t, "hello | world", res)
 
 	res, err = ps.fetchFromVoiceMessageQueueTool(context.Background())
 	require.NoError(t, err)
