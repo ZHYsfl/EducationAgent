@@ -19,6 +19,11 @@ type AppState struct {
 	pptMessageQueue       []string
 	voiceMessageQueue     []string
 	pptHistory            []openai.ChatCompletionMessageParamUnion
+	pptWorkDir            string
+
+	// PPT agent activity log broadcast
+	pptLogMu   sync.RWMutex
+	pptLogSubs []chan string
 
 	// Voice turn state
 	conversationStarted bool
@@ -309,4 +314,55 @@ func (s *AppState) LockVoiceTurn() {
 // UnlockVoiceTurn releases the voice turn lock.
 func (s *AppState) UnlockVoiceTurn() {
 	s.voiceTurnMu.Unlock()
+}
+
+// ---------------------------------------------------------------------------
+// PPT workdir
+// ---------------------------------------------------------------------------
+
+func (s *AppState) SetPPTWorkDir(dir string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pptWorkDir = dir
+}
+
+func (s *AppState) GetPPTWorkDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pptWorkDir
+}
+
+// ---------------------------------------------------------------------------
+// PPT log broadcast (fan-out to SSE subscribers)
+// ---------------------------------------------------------------------------
+
+func (s *AppState) SubscribePPTLog() chan string {
+	ch := make(chan string, 256)
+	s.pptLogMu.Lock()
+	s.pptLogSubs = append(s.pptLogSubs, ch)
+	s.pptLogMu.Unlock()
+	return ch
+}
+
+func (s *AppState) UnsubscribePPTLog(ch chan string) {
+	s.pptLogMu.Lock()
+	defer s.pptLogMu.Unlock()
+	subs := s.pptLogSubs[:0]
+	for _, sub := range s.pptLogSubs {
+		if sub != ch {
+			subs = append(subs, sub)
+		}
+	}
+	s.pptLogSubs = subs
+}
+
+func (s *AppState) BroadcastPPTLog(msg string) {
+	s.pptLogMu.RLock()
+	defer s.pptLogMu.RUnlock()
+	for _, ch := range s.pptLogSubs {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
 }

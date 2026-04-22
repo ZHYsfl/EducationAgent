@@ -74,6 +74,9 @@ export interface ConversationState {
   pptMessages: PPTMessage[]
   addPPTMessage: (content: string) => void
 
+  isPhase2: boolean
+  setPhase2: (v: boolean) => void
+
   // -------------------------------------------------------------------------
   // SSE chunk handler
   // -------------------------------------------------------------------------
@@ -156,6 +159,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         { id: crypto.randomUUID(), content, receivedAt: Date.now() },
       ],
     })),
+
+  isPhase2: false,
+  setPhase2: (v) => set({ isPhase2: v }),
 
   // SSE handler
   handleSSEChunk: (chunk) => {

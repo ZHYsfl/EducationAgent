@@ -133,6 +133,7 @@ type VADEndRequest struct {
 	Format                   string `json:"format"` // e.g. "pcm"
 	NeedsInterruptedPrefix   bool   `json:"needs_interrupted_prefix,omitempty"`
 	InterruptedAssistantText string `json:"interrupted_assistant_text,omitempty"`
+	Text                     string `json:"text,omitempty"` // skip ASR if provided
 }
 
 type VADEndIgnoredData struct {

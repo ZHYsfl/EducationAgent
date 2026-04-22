@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"educationagent/internal/model"
@@ -94,8 +95,31 @@ func (s *PPTService) IsRuntimeRunning() bool {
 	return s.runtime.IsRunning()
 }
 
+// logTool wraps a tool function to broadcast call/result to PPT log subscribers.
+func (s *PPTService) logTool(name string, fn toolcalling.ToolFunc) toolcalling.ToolFunc {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		argsJSON, _ := json.Marshal(args)
+		s.state.BroadcastPPTLog(fmt.Sprintf("[tool] %s %s", name, string(argsJSON)))
+		result, err := fn(ctx, args)
+		if err != nil {
+			s.state.BroadcastPPTLog(fmt.Sprintf("[tool_error] %s: %v", name, err))
+		} else {
+			s.state.BroadcastPPTLog(fmt.Sprintf("[tool_result] %s: %s", name, result))
+		}
+		s.state.BroadcastPPTLog("[thinking]")
+		return result, err
+	}
+}
+
 // registerTools wires all PPT agent tools into the underlying agent.
 func (s *PPTService) registerTools() {
+	resolvePath := func(path string) string {
+		if len(path) > 0 && path[0] == '/' {
+			return path
+		}
+		return s.state.GetPPTWorkDir() + "/" + path
+	}
+
 	s.agent.AddTool(toolcalling.Tool{
 		Name:        "send_to_voice_agent",
 		Description: "Send a message to the voice agent.",
@@ -106,10 +130,10 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"data"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("send_to_voice_agent", func(ctx context.Context, args map[string]any) (string, error) {
 			data, _ := args["data"].(string)
 			return s.sendToVoiceAgentTool(ctx, data)
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -119,9 +143,9 @@ func (s *PPTService) registerTools() {
 			"type":       "object",
 			"properties": map[string]any{},
 		},
-		Function: func(ctx context.Context, _ map[string]any) (string, error) {
+		Function: s.logTool("fetch_from_voice_message_queue", func(ctx context.Context, _ map[string]any) (string, error) {
 			return s.fetchFromVoiceMessageQueueTool(ctx)
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -136,15 +160,15 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"path", "old_string", "new_string"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("edit_file", func(ctx context.Context, args map[string]any) (string, error) {
 			path, _ := args["path"].(string)
 			oldStr, _ := args["old_string"].(string)
 			newStr, _ := args["new_string"].(string)
-			if err := tools.EditFile(ctx, path, oldStr, newStr); err != nil {
+			if err := tools.EditFile(ctx, resolvePath(path), oldStr, newStr); err != nil {
 				return "", err
 			}
 			return "file edited successfully", nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -158,14 +182,14 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"path", "content"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("write_file", func(ctx context.Context, args map[string]any) (string, error) {
 			path, _ := args["path"].(string)
 			content, _ := args["content"].(string)
-			if err := tools.WriteFile(ctx, path, content); err != nil {
+			if err := tools.WriteFile(ctx, resolvePath(path), content); err != nil {
 				return "", err
 			}
 			return "file written successfully", nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -178,14 +202,10 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"path"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("read_file", func(ctx context.Context, args map[string]any) (string, error) {
 			path, _ := args["path"].(string)
-			content, err := tools.ReadFile(ctx, path)
-			if err != nil {
-				return "", err
-			}
-			return content, nil
-		},
+			return tools.ReadFile(ctx, resolvePath(path))
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -198,15 +218,15 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"path"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("list_dir", func(ctx context.Context, args map[string]any) (string, error) {
 			path, _ := args["path"].(string)
-			entries, err := tools.ListDir(ctx, path)
+			entries, err := tools.ListDir(ctx, resolvePath(path))
 			if err != nil {
 				return "", err
 			}
 			b, _ := json.Marshal(entries)
 			return string(b), nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -220,14 +240,14 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"src", "dst"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("move_file", func(ctx context.Context, args map[string]any) (string, error) {
 			src, _ := args["src"].(string)
 			dst, _ := args["dst"].(string)
-			if err := tools.MoveFile(ctx, src, dst); err != nil {
+			if err := tools.MoveFile(ctx, resolvePath(src), resolvePath(dst)); err != nil {
 				return "", err
 			}
 			return "file moved successfully", nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -241,15 +261,18 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"command"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("execute_command", func(ctx context.Context, args map[string]any) (string, error) {
 			cmd, _ := args["command"].(string)
 			workdir, _ := args["workdir"].(string)
+			if workdir == "" {
+				workdir = s.state.GetPPTWorkDir()
+			}
 			stdout, _, err := tools.ExecuteCommand(ctx, cmd, workdir)
 			if err != nil {
 				return "", err
 			}
 			return stdout, nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -262,18 +285,15 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"query"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("query_chunks", func(ctx context.Context, args map[string]any) (string, error) {
 			query, _ := args["query"].(string)
 			chunks, total, err := s.kbService.QueryChunks(ctx, query)
 			if err != nil {
 				return "", err
 			}
-			out, _ := json.Marshal(map[string]any{
-				"chunks": chunks,
-				"total":  total,
-			})
+			out, _ := json.Marshal(map[string]any{"chunks": chunks, "total": total})
 			return string(out), nil
-		},
+		}),
 	})
 
 	s.agent.AddTool(toolcalling.Tool{
@@ -286,14 +306,10 @@ func (s *PPTService) registerTools() {
 			},
 			"required": []any{"query"},
 		},
-		Function: func(ctx context.Context, args map[string]any) (string, error) {
+		Function: s.logTool("search_web", func(ctx context.Context, args map[string]any) (string, error) {
 			query, _ := args["query"].(string)
-			result, err := s.searchService.SearchWeb(ctx, query)
-			if err != nil {
-				return "", err
-			}
-			return result, nil
-		},
+			return s.searchService.SearchWeb(ctx, query)
+		}),
 	})
 }
 
@@ -318,8 +334,13 @@ func (s *PPTService) buildSystemMessage() openai.ChatCompletionMessageParamUnion
 	}
 	content := fmt.Sprintf(
 		"You are a PPT generation agent. Use the available tools to create the presentation. "+
-			"You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax, "+
-			"then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF. "+
+			"You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax. "+
+			"IMPORTANT: Always use `theme: default` in the frontmatter — never use any other theme. "+
+			"IMPORTANT: If the content contains Chinese characters, add the following to the frontmatter to avoid garbled text in PDF: "+
+			"`fonts:\\n  sans: 'Noto Sans SC'\\n  serif: 'Noto Serif SC'\\n  mono: 'Fira Code'`. "+
+			"Before exporting, run `npm init -y && npm install @slidev/cli @slidev/theme-default` to ensure dependencies are installed. " +
+			"Also run `apt-get install -y libgbm1 libasound2 2>/dev/null || true` to ensure system libraries are available. "+
+			"Then run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF. "+
 			"After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent. "+
 			"Current voice message queue status: %s. "+
 			"If the queue has messages, call fetch_from_voice_message_queue to consume them.",
@@ -339,6 +360,26 @@ func (s *PPTService) refreshSystemMessageInHistory() []openai.ChatCompletionMess
 }
 
 func (s *PPTService) startRuntime(req model.Requirements, initialData string) {
+	// Set workdir based on topic
+	topic := "ppt"
+	if req.Topic != nil && *req.Topic != "" {
+		topic = strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r > 127 {
+				return r
+			}
+			if r == ' ' {
+				return '-'
+			}
+			return -1
+		}, *req.Topic)
+		if topic == "" {
+			topic = "ppt"
+		}
+	}
+	workDir := "/root/autodl-tmp/workspace/" + topic
+	s.state.SetPPTWorkDir(workDir)
+	_ = os.MkdirAll(workDir, 0755)
+
 	data := initialData
 	if data == "" {
 		data = fmt.Sprintf(
@@ -382,6 +423,11 @@ func (s *PPTService) runPPTAgentLoop(skipFirstRefresh bool) {
 				history = s.refreshSystemMessageInHistory()
 			}
 
+			// Truncate to keep system message + last 20 turns to avoid context overflow.
+			if len(history) > 21 {
+				history = append(history[:1], history[len(history)-20:]...)
+			}
+
 			s.runChatMu.RLock()
 			fn := s.runChatFn
 			s.runChatMu.RUnlock()
@@ -391,6 +437,17 @@ func (s *PPTService) runPPTAgentLoop(skipFirstRefresh bool) {
 				return
 			}
 			s.state.SetPPTHistory(msgs)
+
+			// Broadcast the latest assistant text to log subscribers.
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].OfAssistant != nil {
+					text := msgs[i].OfAssistant.Content.OfString
+					if text.Valid() && text.Value != "" {
+						s.state.BroadcastPPTLog("[agent] " + text.Value)
+					}
+					break
+				}
+			}
 
 			// Keep the runtime alive as long as the queue is not empty,
 			// so the agent can decide on its own when to fetch.

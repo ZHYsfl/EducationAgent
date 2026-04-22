@@ -46,9 +46,8 @@ export function useConversation() {
   const startCancelledRef = useRef<boolean>(false)
   const activeRef = useRef<boolean>(false)
 
-  const ttsPendingRef = useRef<string>('')
-
-  // -------------------------------------------------------------------------
+  const spokenTextRef = useRef<string>('')
+  const ttsPendingRef = useRef<string>('')  // -------------------------------------------------------------------------
   // TTS helpers
   // -------------------------------------------------------------------------
   const flushTTS = useCallback(() => {
@@ -95,6 +94,16 @@ export function useConversation() {
         store.setStatus('acting')
       } else if (chunk.type === 'tool') {
         const toolText = chunk.text ?? ''
+        store.hideConfirm()
+        if (toolText.startsWith('require_confirm:')) {
+          try {
+            const req = JSON.parse(toolText.slice('require_confirm:'.length))
+            store.showConfirm({ requirements: req })
+          } catch {}
+        }
+        if (toolText.includes('data is sent to the ppt agent successfully')) {
+          store.setPhase2(true)
+        }
         pendingToolsRef.current.push(toolText)
         // Mark the boundary after the last action tag for round-2 detection.
         postActionOffsetRef.current = streamHistoryRef.current.length
@@ -120,8 +129,8 @@ export function useConversation() {
         streamHistoryRef.current = ''
         postActionOffsetRef.current = 0
         store.resetBuffer()
-        interruptPendingRef.current = false
-        if (activeRef.current) store.setStatus('listening')
+        spokenTextRef.current = ''
+        store.setSpokenText('')
       }
     },
     [store, flushTTS],
@@ -163,6 +172,7 @@ export function useConversation() {
 
       if (pre) {
         store.appendHistory({ role: 'assistant', content: pre })
+        interruptedAssistantText = pre
       }
       for (const toolText of pendingToolsRef.current) {
         store.appendHistory({ role: 'tool', content: toolText })
@@ -182,7 +192,7 @@ export function useConversation() {
     } else {
       // No action tags: simple truncation to what was actually spoken.
       if (spokenText) {
-        store.appendHistory({ role: 'assistant', content: spokenText })
+        store.appendHistory({ role: 'assistant', content: spokenText + ' ✂' })
         interruptedAssistantText = spokenText
       }
     }
@@ -191,6 +201,7 @@ export function useConversation() {
     streamHistoryRef.current = ''
     postActionOffsetRef.current = 0
     store.resetBuffer()
+    spokenTextRef.current = ''
     store.setSpokenText('')
     interruptPendingRef.current = false
     return interruptedAssistantText
@@ -314,6 +325,7 @@ export function useConversation() {
     startCancelledRef.current = false
     activeRef.current = true
     store.clearHistory()
+    store.setPhase2(false)
 
     try {
     const res = await apiStartConversation()
@@ -335,7 +347,8 @@ export function useConversation() {
 
     const tts = new TTSEngine()
     tts.setOnSentenceEnd((text) => {
-      store.setSpokenText(store.spokenText + text)
+      spokenTextRef.current += text
+      store.setSpokenText(spokenTextRef.current)
     })
     ttsRef.current = tts
 
@@ -388,6 +401,50 @@ export function useConversation() {
     store.setStatus('idle')
   }, [sse, store])
 
+  const sendText = useCallback(async (text: string) => {
+    if (!activeRef.current) return
+    store.setStatus('thinking')
+
+    const ttsActive = ttsRef.current?.isActive() ?? false
+    const needsPrefix = ttsActive || store.ttsPendingText !== ''
+    let interruptedAssistantText = ''
+
+    if (ttsActive || interruptPendingRef.current) {
+      // TTS was playing — do a proper interrupt with history truncation.
+      ttsWasActiveRef.current = ttsActive
+      clearTTSAndPlayback()
+      sse.abort()
+      interruptedAssistantText = finalizeInterruptedTurn()
+    } else {
+      // No TTS playing — just abort any in-flight SSE and discard its buffer.
+      sse.abort()
+      streamHistoryRef.current = ''
+      postActionOffsetRef.current = 0
+      pendingToolsRef.current = []
+      store.resetBuffer()
+      spokenTextRef.current = ''
+      store.setSpokenText('')
+    }
+
+    streamHistoryRef.current = ''
+    postActionOffsetRef.current = 0
+    pendingToolsRef.current = []
+
+    const req: import('@/types').VADEndRequest = {
+      audio: '',
+      format: 'pcm',
+      text,
+      needs_interrupted_prefix: needsPrefix,
+      interrupted_assistant_text: interruptedAssistantText,
+    }
+    try {
+      await sse.start(req)
+    } catch (err) {
+      console.error('sendText error:', err)
+    }
+    if (activeRef.current) store.setStatus('listening')
+  }, [sse, store, clearTTSAndPlayback, finalizeInterruptedTurn])
+
   const stopRef = useRef(stop)
   stopRef.current = stop
 
@@ -400,6 +457,7 @@ export function useConversation() {
   return {
     start,
     stop,
+    sendText,
     status: store.status,
     history: store.history,
     confirmPayload: store.confirmPayload,

@@ -20,6 +20,7 @@ export class TTSEngine {
   private onStateChange: ((state: TTSState) => void) | null = null
   private onSentenceStart: ((text: string) => void) | null = null
   private onSentenceEnd: ((text: string) => void) | null = null
+  private cleared = false
 
   constructor(options?: TTSOptions) {
     this.options = { ...this.options, ...options }
@@ -46,6 +47,7 @@ export class TTSEngine {
    */
   enqueue(text: string) {
     if (!text.trim()) return
+    this.cleared = false
     this.queue.push(text.trim())
     if (this.state === 'idle') {
       this.playNext()
@@ -57,6 +59,7 @@ export class TTSEngine {
    */
   clear() {
     this.queue = []
+    this.cleared = true
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel()
     }
@@ -120,11 +123,11 @@ export class TTSEngine {
     u.pitch = this.options.pitch ?? 1
     u.lang = this.options.lang ?? 'zh-CN'
     u.onend = () => {
-      this.onSentenceEnd?.(text)
+      if (!this.cleared) this.onSentenceEnd?.(text)
       this.playNext()
     }
     u.onerror = () => {
-      this.onSentenceEnd?.(text)
+      if (!this.cleared) this.onSentenceEnd?.(text)
       this.playNext()
     }
     window.speechSynthesis.speak(u)

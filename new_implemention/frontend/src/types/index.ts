@@ -47,6 +47,7 @@ export interface VADEndRequest {
   format: 'pcm'
   needs_interrupted_prefix?: boolean
   interrupted_assistant_text?: string
+  text?: string
 }
 
 export interface VADEndIgnoredData {

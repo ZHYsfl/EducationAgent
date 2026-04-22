@@ -147,8 +147,12 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	// -------------------------------------------------------------------------
 	// Keep only the most recent turns to stay within the model's context window.
 	history := st.GetVoiceHistory()
-	if len(history) > 10 {
-		history = history[len(history)-10:]
+	maxHistory := 10
+	if st.IsRequirementsFinalized() {
+		maxHistory = 5
+	}
+	if len(history) > maxHistory {
+		history = history[len(history)-maxHistory:]
 	}
 	history = append(history, openai.UserMessage(userContent))
 	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
@@ -208,19 +212,28 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 		messages = append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
 		stream2 := s.agent.StreamChat(ctx, messages)
 
-		var secondAssistant strings.Builder
+		extractor2 := newStreamExtractor(out, func(payload string) string {
+			if s.executor == nil {
+				return "no executor registered"
+			}
+			res, err := s.executor.Execute(ctx, payload)
+			if err != nil && res == "" {
+				res = err.Error()
+			}
+			return res
+		})
 		for token := range stream2 {
 			if ctx.Err() != nil {
 				break
 			}
-			secondAssistant.WriteString(token)
-			out <- model.SSEChunk{Type: "tts", Text: token}
+			extractor2.Feed(token)
 		}
+		extractor2.Flush()
 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if content := secondAssistant.String(); content != "" {
+		if content := extractor2.history.String(); content != "" {
 			st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
 				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 					Content: openai.ChatCompletionAssistantMessageParamContentUnion{

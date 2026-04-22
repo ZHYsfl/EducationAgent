@@ -1,25 +1,28 @@
+import { useState, useEffect, useRef } from 'react'
 import { useConversation } from '@/hooks/useConversation'
+import { useConversationStore } from '@/store/conversationStore'
 import { ConfirmTable } from './ConfirmTable'
-import { PPTMessages } from './PPTMessages'
+import { PPTAgentPanel } from './PPTAgentPanel'
 
-/**
- * Main chat interface.
- *
- * Renders the conversation history, status indicator, start/stop controls,
- * the requirements confirmation table, and PPT agent messages.
- */
 export function Chat() {
-  const { start, stop, status, history, confirmPayload, pptMessages } = useConversation()
+  const { start, stop, sendText, status, history, confirmPayload } = useConversation()
+  const isPhase2 = useConversationStore((s) => s.isPhase2)
+  const [input, setInput] = useState('')
+  const historyEndRef = useRef<HTMLDivElement>(null)
 
-  return (
-    <div className="chat-container" data-testid="chat-container">
-      <header className="chat-header">
-        <h1>Education Agent</h1>
-        <div className="status-badge" data-testid="status-badge" data-status={status}>
-          {status}
-        </div>
-      </header>
+  useEffect(() => {
+    historyEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [history])
 
+  const handleSend = () => {
+    const text = input.trim()
+    if (!text || status === 'idle') return
+    setInput('')
+    sendText(text)
+  }
+
+  const voicePanel = (
+    <div className="chat-voice-panel">
       <section className="chat-history" data-testid="chat-history">
         {history.length === 0 && (
           <div className="empty-state">Press Start to begin the conversation.</div>
@@ -30,27 +33,29 @@ export function Chat() {
             <pre>{msg.content}</pre>
           </div>
         ))}
+        <div ref={historyEndRef} />
       </section>
-
       {confirmPayload && (
         <section className="confirm-section">
-          <ConfirmTable
-            requirements={confirmPayload.requirements}
-            onConfirm={() => {
-              // In a real app this might send a voice command or API call.
-              // For now it is a no-op because the voice agent handles confirmation
-              // through natural language.
-            }}
-            onDeny={() => {
-              // Same as above: the voice agent handles denial via speech.
-            }}
-          />
+          <ConfirmTable requirements={confirmPayload.requirements} />
         </section>
       )}
+    </div>
+  )
 
-      <section className="ppt-section">
-        <PPTMessages messages={pptMessages} />
-      </section>
+  return (
+    <div className="chat-container" data-testid="chat-container">
+      <header className="chat-header">
+        <h1>Education Agent</h1>
+        <div className="status-badge" data-testid="status-badge" data-status={status}>
+          {status}
+        </div>
+      </header>
+
+      <div className={`chat-main ${isPhase2 ? 'phase2' : ''}`}>
+        {voicePanel}
+        {isPhase2 && <PPTAgentPanel />}
+      </div>
 
       <footer className="chat-controls">
         <button onClick={start} disabled={status !== 'idle'} data-testid="start-btn">
@@ -58,6 +63,17 @@ export function Chat() {
         </button>
         <button onClick={stop} disabled={status === 'idle'} data-testid="stop-btn">
           Stop
+        </button>
+        <input
+          className="text-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="Type message..."
+          disabled={status === 'idle'}
+        />
+        <button onClick={handleSend} disabled={status === 'idle' || !input.trim()}>
+          Send
         </button>
       </footer>
     </div>

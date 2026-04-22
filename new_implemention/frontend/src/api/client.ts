@@ -152,3 +152,78 @@ export async function vadEnd(
 export function isIgnoredResponse(data: unknown): data is VADEndIgnoredData {
   return typeof data === 'object' && data !== null && 'ignored' in data
 }
+
+// ---------------------------------------------------------------------------
+// PPT agent panel APIs
+// ---------------------------------------------------------------------------
+
+export interface FSEntry {
+  name: string
+  path: string
+  isDir: boolean
+}
+
+export async function fsList(): Promise<FSEntry[]> {
+  const res = await fetch(`${API_BASE}/fs/list`)
+  return res.json() as Promise<FSEntry[]>
+}
+
+export async function fsRead(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(path)}`)
+  const json = (await res.json()) as { content: string }
+  return json.content
+}
+
+export async function textInput(
+  text: string,
+  onChunk: (chunk: SSEChunk) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/voice/text_input`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(`text_input failed: ${res.status}`)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      if (signal?.aborted) { reader.cancel(); throw signal.reason }
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data: ')) continue
+        const payload = trimmed.slice(6).trim()
+        if (payload === '[DONE]') return
+        if (!payload) continue
+        try { onChunk(JSON.parse(payload) as SSEChunk) } catch {}
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {})
+  }
+}
+
+export function fsDownloadUrl(path: string): string {
+  return `${API_BASE}/fs/download?path=${encodeURIComponent(path)}`
+}
+
+export function subscribePPTLog(onLine: (line: string) => void, signal: AbortSignal): void {
+  const es = new EventSource(`${API_BASE}/ppt/log-stream`)
+  signal.addEventListener('abort', () => es.close())
+  es.onmessage = (e) => {
+    try {
+      onLine(JSON.parse(e.data) as string)
+    } catch {
+      onLine(e.data)
+    }
+  }
+}

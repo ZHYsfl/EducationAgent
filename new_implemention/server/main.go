@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -52,7 +53,9 @@ func main() {
 		if err := voiceSvc.RequireConfirm(); err != nil {
 			return "", err
 		}
-		return "data is sent to the frontend successfully", nil
+		req := appState.GetRequirements()
+		b, _ := json.Marshal(req)
+		return "require_confirm:" + string(b), nil
 	})
 	voiceActionExec.Register("send_to_ppt_agent", func(ctx context.Context, args map[string]string) (string, error) {
 		data := args["data"]

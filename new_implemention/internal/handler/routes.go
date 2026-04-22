@@ -29,4 +29,9 @@ func RegisterRoutes(
 	r.POST("/api/v1/search/query", SearchQuery(searchSvc))
 	r.POST("/api/v1/voice/vad_start", VoiceVADStart(st, asr, interrupt))
 	r.POST("/api/v1/voice/vad_end", VoiceVADEnd(st, asr, voiceAgent))
+	r.POST("/api/v1/voice/text_input", VoiceTextInput(st, voiceAgent))
+	r.GET("/api/v1/ppt/log-stream", PPTLogStream(st))
+	r.GET("/api/v1/fs/list", FSList(st))
+	r.GET("/api/v1/fs/read", FSRead(st))
+	r.GET("/api/v1/fs/download", FSDownload(st))
 }

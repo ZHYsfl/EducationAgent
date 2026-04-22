@@ -54,15 +54,23 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   justify-content: center;
   padding: 32px 24px;
+  overflow: hidden;
 }
 
 .app {
   width: 100%;
   max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app:has(.chat-main.phase2) {
+  max-width: 100%;
 }
 
 /* ---------------------------------------------------------------------------
@@ -75,7 +83,7 @@ body {
   box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
-  min-height: 80vh;
+  flex: 1;
   overflow: hidden;
   border: 1px solid var(--border-light);
 }
@@ -349,4 +357,244 @@ body {
 
 .chat-controls button:last-child:hover:not(:disabled) {
   background: var(--accent-rose-hover);
+}
+
+/* ---------------------------------------------------------------------------
+   Phase 2 dual-panel layout
+   --------------------------------------------------------------------------- */
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-voice-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-main.phase2 .chat-voice-panel {
+  width: 480px;
+  flex: none;
+  border-right: 1px solid var(--border-light);
+}
+
+.chat-main.phase2 .chat-history {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* PPT Agent Panel */
+.ppt-panel {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 0.92rem;
+}
+
+.ppt-panel-left {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #333;
+  overflow: hidden;
+}
+
+.ppt-filetree {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ppt-filetree h3 {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+  font-weight: 500;
+}
+
+.filetree-entry {
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filetree-entry.file {
+  cursor: pointer;
+}
+
+.filetree-entry.file:hover {
+  background: #2a2a2a;
+}
+
+.filetree-entry.active {
+  background: #2d3f5c;
+}
+
+.ppt-file-content {
+  border-top: 1px solid #333;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.file-content-header {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #888;
+  border-bottom: 1px solid #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ppt-file-content pre {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  font-size: 0.82rem;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  flex: 1;
+  color: #d4d4d4;
+}
+
+.ppt-panel-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 20px;
+}
+
+.ppt-panel-right h3 {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+  font-weight: 500;
+}
+
+.ppt-log {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.log-line {
+  padding: 1px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-tool    { color: #569cd6; }
+.log-error   { color: #f48771; }
+.log-result  { color: #6a9955; }
+.log-text    { color: #d4d4d4; }
+.log-agent   { color: #dcdcaa; }
+
+/* Context menu */
+.ctx-menu {
+  position: fixed;
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 4px;
+  z-index: 1000;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.ctx-menu-item {
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: #d4d4d4;
+}
+
+.ctx-menu-item:hover {
+  background: #3a3a3a;
+}
+
+/* PDF preview */
+.pdf-preview {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
+
+/* Log rows */
+.log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  line-height: 1.5;
+}
+
+.log-icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.log-tool      { color: #569cd6; }
+.log-tool .log-tool-name { font-weight: 600; }
+.log-tool .log-tool-args { color: #888; font-size: 0.78rem; }
+.log-result    { color: #6a9955; }
+.log-error     { color: #f48771; }
+.log-agent     { color: #dcdcaa; }
+.log-thinking  { color: #888; font-style: italic; }
+
+.log-thinking-text { display: flex; align-items: baseline; gap: 1px; }
+
+.thinking-dots span {
+  animation: blink 1.2s infinite;
+  opacity: 0;
+}
+.thinking-dots span:nth-child(1) { animation-delay: 0s; }
+.thinking-dots span:nth-child(2) { animation-delay: 0.3s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.6s; }
+
+@keyframes blink {
+  0%, 100% { opacity: 0; }
+  50%       { opacity: 1; }
+}
+
+/* Text input */
+.chat-controls .text-input {
+  flex: 2;
+  padding: 11px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: var(--bg-warm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.chat-controls .text-input:focus {
+  border-color: var(--accent-sage);
+}
+
+.chat-controls .text-input:disabled {
+  opacity: 0.45;
 }
