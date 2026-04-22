@@ -388,10 +388,28 @@ body {
 }
 
 /* PPT Agent Panel */
+.ppt-panel-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ppt-backend-banner {
+  flex: none;
+  padding: 8px 12px;
+  background: #5a2d2d;
+  color: #ffcccc;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #333;
+}
+
 .ppt-panel {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
   background: #1e1e1e;
   color: #d4d4d4;
   font-size: 0.92rem;
@@ -589,6 +607,120 @@ body {
   background: var(--bg-warm);
   color: var(--text-primary);
   outline: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Open-source links (footer strip)
+   --------------------------------------------------------------------------- */
+
+.open-source-links {
+  padding: 18px 24px 22px;
+  border-top: 1px solid var(--border-light);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.015) 0%, var(--bg-card) 40%);
+  flex-shrink: 0;
+}
+
+.open-source-links-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.open-source-links-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.open-source-links-hint {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  opacity: 0.85;
+}
+
+.open-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.open-source-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.open-source-card:hover {
+  border-color: #c5d4e0;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
+  background: var(--bg-warm);
+}
+
+.open-source-card-title {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  flex: 1;
+  min-width: 0;
+}
+
+.open-source-card-arrow {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.open-source-card:hover .open-source-card-arrow {
+  opacity: 1;
+  color: var(--text-secondary);
+}
+
+.open-source-badge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  border-radius: 6px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.open-source-badge--gh {
+  background: #24292f;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.open-source-badge--hf {
+  background: linear-gradient(120deg, #ffd21e 0%, #ff9d00 100%);
+  color: #3d2800;
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .chat-controls .text-input:focus {

@@ -3,6 +3,7 @@ import { useConversation } from '@/hooks/useConversation'
 import { useConversationStore } from '@/store/conversationStore'
 import { ConfirmTable } from './ConfirmTable'
 import { PPTAgentPanel } from './PPTAgentPanel'
+import { OpenSourceLinks } from './OpenSourceLinks'
 
 export function Chat() {
   const { start, stop, sendText, status, history, confirmPayload } = useConversation()
@@ -11,7 +12,7 @@ export function Chat() {
   const historyEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    historyEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    historyEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [history])
 
   const handleSend = () => {
@@ -76,6 +77,8 @@ export function Chat() {
           Send
         </button>
       </footer>
+
+      <OpenSourceLinks />
     </div>
   )
 }

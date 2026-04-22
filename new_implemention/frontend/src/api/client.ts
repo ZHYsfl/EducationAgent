@@ -33,6 +33,11 @@ export async function startConversation(): Promise<UniformResponse<null>> {
   return post<null>('/start_conversation', { from: 'frontend', to: 'voice_agent' })
 }
 
+/** Frees Slidev preview TCP 6008 (called when user stops the session or server exits). */
+export async function releaseSlidevPreview(): Promise<UniformResponse<null>> {
+  return post<null>('/release_slidev_preview', {})
+}
+
 export async function updateRequirements(
   requirements: Partial<Requirements>,
 ): Promise<UniformResponse<UpdateRequirementsData>> {
@@ -163,13 +168,19 @@ export interface FSEntry {
   isDir: boolean
 }
 
-export async function fsList(): Promise<FSEntry[]> {
-  const res = await fetch(`${API_BASE}/fs/list`)
+export async function fsList(signal?: AbortSignal): Promise<FSEntry[]> {
+  const res = await fetch(`${API_BASE}/fs/list`, { signal })
+  if (!res.ok) {
+    throw new Error(`fs/list HTTP ${res.status}`)
+  }
   return res.json() as Promise<FSEntry[]>
 }
 
 export async function fsRead(path: string): Promise<string> {
   const res = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(path)}`)
+  if (!res.ok) {
+    throw new Error(`fs/read HTTP ${res.status}`)
+  }
   const json = (await res.json()) as { content: string }
   return json.content
 }

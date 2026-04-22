@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   startConversation,
+  releaseSlidevPreview,
   updateRequirements,
   requireConfirm,
   sendToPPTAgent,
@@ -27,6 +28,18 @@ describe('API client', () => {
     expect(mockFetch).toHaveBeenCalledWith('/api/v1/start_conversation', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ from: 'frontend', to: 'voice_agent' }),
+    }))
+  })
+
+  it('releaseSlidevPreview posts empty JSON body', async () => {
+    mockFetch.mockResolvedValueOnce({
+      json: async () => ({ code: 200, message: 'success', data: null }),
+    })
+    const res = await releaseSlidevPreview()
+    expect(res.code).toBe(200)
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/release_slidev_preview', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({}),
     }))
   })
 

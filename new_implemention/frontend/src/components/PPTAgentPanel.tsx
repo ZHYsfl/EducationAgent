@@ -165,6 +165,7 @@ export function PPTAgentPanel() {
   const [files, setFiles] = useState<FSEntry[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string>('')
+  const [backendStatus, setBackendStatus] = useState<'ok' | 'down'>('ok')
   const logEndRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
@@ -187,10 +188,28 @@ export function PPTAgentPanel() {
   }, [])
 
   useEffect(() => {
-    const refresh = () => fsList().then(setFiles).catch(() => {})
-    refresh()
-    const id = setInterval(refresh, 3000)
-    return () => clearInterval(id)
+    const ac = new AbortController()
+    let timeoutId = 0
+
+    const poll = () => {
+      fsList(ac.signal)
+        .then((entries) => {
+          setFiles(entries)
+          setBackendStatus('ok')
+          timeoutId = window.setTimeout(poll, 3000)
+        })
+        .catch(() => {
+          if (ac.signal.aborted) return
+          setBackendStatus('down')
+          timeoutId = window.setTimeout(poll, 15000)
+        })
+    }
+
+    poll()
+    return () => {
+      ac.abort()
+      window.clearTimeout(timeoutId)
+    }
   }, [])
 
   const [isPdf, setIsPdf] = useState(false)
@@ -217,6 +236,13 @@ export function PPTAgentPanel() {
   const tree = useMemo(() => buildTree(files), [files])
 
   return (
+    <div className="ppt-panel-wrap">
+      {backendStatus === 'down' && (
+        <div className="ppt-backend-banner">
+          无法连接 API（代理目标 127.0.0.1:8080）。请先启动 Go 后端：<code>cd service &amp;&amp; export $(grep -v &apos;^#&apos; .env | xargs) &amp;&amp; ./bin/server</code>
+          ，再刷新本页。轮询已降为每 15s 一次以减少日志刷屏。
+        </div>
+      )}
     <div className="ppt-panel">
       <div className="ppt-panel-left">
         <div className="ppt-filetree">
@@ -240,6 +266,7 @@ export function PPTAgentPanel() {
           <div ref={logEndRef} />
         </div>
       </div>
+    </div>
     </div>
   )
 }

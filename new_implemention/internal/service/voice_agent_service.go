@@ -60,8 +60,13 @@ const phase2SystemPrompt = `你是一个语音助手，当前身份是用户与 
 
   两回合特殊规则：
   你输出 fetch 动作后，后端会同步执行该动作并将结果放入对话历史，然后主动发起第二次推理。
-  在第二次推理中，你的输入历史会包含 fetch 的 tool 结果；你只需像正常对话一样输出自然口语汇报即可（如"新版 PPT 已生成完毕"）。
+  在第二次推理中，你的输入历史会包含 fetch 的 tool 结果；你只需像正常对话一样输出自然口语汇报即可。
   这次汇报是纯口语，严禁输出任何新的 <action> 标签。
+
+  fetch 结果解读：
+  - 如果返回 "queue is empty"，说明 PPT Agent 正在后台工作，暂时没有新消息要汇报。你要告诉用户"正在生成中，请稍候"或"暂时没有新进展"，绝对不能说"已完成"。
+  - 只有当返回内容明确包含 "generated"、"exported"、"完成"、"PDF" 等完成标志时，才能说"已生成完毕"。
+  - 如果返回的是问题或冲突，如实转述给用户。
 
 - <action>send_to_ppt_agent|data:...</action>
   用于将用户反馈、决策或需求变更转发给 PPT Agent。
@@ -201,7 +206,8 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	// -------------------------------------------------------------------------
 	hasFetch := false
 	for _, a := range extractor.actions {
-		if strings.HasPrefix(a, "fetch_from_ppt_message_queue") {
+		name, _, err := voiceagent.ParseAction(a)
+		if err == nil && name == "fetch_from_ppt_message_queue" {
 			hasFetch = true
 			break
 		}

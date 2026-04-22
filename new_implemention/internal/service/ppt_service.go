@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -267,8 +268,11 @@ func (s *PPTService) registerTools() {
 			if workdir == "" {
 				workdir = s.state.GetPPTWorkDir()
 			}
-			stdout, _, err := tools.ExecuteCommand(ctx, cmd, workdir)
+			stdout, stderr, err := tools.ExecuteCommand(ctx, cmd, workdir)
 			if err != nil {
+				if stderr != "" {
+					return "", fmt.Errorf("%w\nstderr: %s", err, stderr)
+				}
 				return "", err
 			}
 			return stdout, nil
@@ -334,14 +338,18 @@ func (s *PPTService) buildSystemMessage() openai.ChatCompletionMessageParamUnion
 	}
 	content := fmt.Sprintf(
 		"You are a PPT generation agent. Use the available tools to create the presentation. "+
-			"You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax. "+
+			"Before writing the first slides.md, read `/root/autodl-tmp/workspace/skills/slidev/SKILL.md` and `/root/autodl-tmp/workspace/skills/slidev/references/core-syntax.md`. "+
+			"SKILL.md is the index into `/root/autodl-tmp/workspace/skills/slidev/references/`; explore that directory and any linked files as needed—there is no need to limit yourself to a minimal subset. "+
+			"For how reference files are grouped and named, see `/root/autodl-tmp/workspace/skills/GENERATION.md`. "+
+			"IMPORTANT: The deck MUST include at least one click-driven or step-through interaction (not static-only); choose approaches by reading the relevant references you discover via SKILL.md. "+
 			"IMPORTANT: Always use `theme: default` in the frontmatter — never use any other theme. "+
 			"IMPORTANT: If the content contains Chinese characters, add the following to the frontmatter to avoid garbled text in PDF: "+
 			"`fonts:\\n  sans: 'Noto Sans SC'\\n  serif: 'Noto Serif SC'\\n  mono: 'Fira Code'`. "+
-			"Before exporting, run `npm init -y && npm install @slidev/cli @slidev/theme-default` to ensure dependencies are installed. " +
+			"Before exporting, run `npm install` in the workdir to ensure dependencies are installed. "+
 			"Also run `apt-get install -y libgbm1 libasound2 2>/dev/null || true` to ensure system libraries are available. "+
 			"Then run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF. "+
 			"After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent. "+
+			"When stuck on Slidev behavior, return to SKILL.md and follow links into references/. "+
 			"Current voice message queue status: %s. "+
 			"If the queue has messages, call fetch_from_voice_message_queue to consume them.",
 		queueStatus,
@@ -379,6 +387,21 @@ func (s *PPTService) startRuntime(req model.Requirements, initialData string) {
 	workDir := "/root/autodl-tmp/workspace/" + topic
 	s.state.SetPPTWorkDir(workDir)
 	_ = os.MkdirAll(workDir, 0755)
+
+	// Pre-seed a valid package.json so npm never needs to guess the package name
+	// from the (possibly Chinese) directory name, which npm rejects.
+	_ = os.WriteFile(filepath.Join(workDir, "package.json"), []byte(`{
+  "name": "math-presentation",
+  "version": "1.0.0",
+  "scripts": {
+    "export": "slidev export slides.md --output ppt.pdf"
+  },
+  "dependencies": {
+    "@slidev/cli": "latest",
+    "@slidev/theme-default": "latest",
+    "playwright-chromium": "latest"
+  }
+}`), 0644)
 
 	data := initialData
 	if data == "" {
@@ -423,10 +446,7 @@ func (s *PPTService) runPPTAgentLoop(skipFirstRefresh bool) {
 				history = s.refreshSystemMessageInHistory()
 			}
 
-			// Truncate to keep system message + last 20 turns to avoid context overflow.
-			if len(history) > 21 {
-				history = append(history[:1], history[len(history)-20:]...)
-			}
+			history = s.compressPPTHistoryIfNeeded(ctx, history)
 
 			s.runChatMu.RLock()
 			fn := s.runChatFn

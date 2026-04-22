@@ -4,7 +4,11 @@ import { AudioRecorder } from '@/audio/recorder'
 import { VADetector } from '@/audio/vad'
 import { TTSEngine } from '@/audio/tts'
 import { useSSE } from './useSSE'
-import { vadStart, startConversation as apiStartConversation } from '@/api/client'
+import {
+  vadStart,
+  startConversation as apiStartConversation,
+  releaseSlidevPreview,
+} from '@/api/client'
 import { splitSentences } from '@/utils/parser'
 import type { SSEChunk } from '@/types'
 
@@ -29,6 +33,7 @@ export function useConversation() {
   const ttsRef = useRef<TTSEngine | null>(null)
 
   const speechStartTimeRef = useRef<number>(0)
+  const asrStartTimeRef = useRef<number>(0)
   const fastCheckPromiseRef = useRef<Promise<{ interrupt: boolean }> | null>(null)
   const fastCheckAbortRef = useRef<AbortController | null>(null)
   const fastCheckSentRef = useRef<boolean>(false)
@@ -246,7 +251,9 @@ export function useConversation() {
   const handleSpeechStart = useCallback(() => {
     if (!activeRef.current || !recorderRef.current) return
     store.setStatus('speaking')
-    speechStartTimeRef.current = recorderRef.current?.getElapsedMs() ?? 0
+    const elapsed = recorderRef.current?.getElapsedMs() ?? 0
+    speechStartTimeRef.current = elapsed
+    asrStartTimeRef.current = Math.max(0, elapsed - 2000)
     fastCheckSentRef.current = false
     fastCheckPromiseRef.current = null
     interruptPendingRef.current = false
@@ -273,8 +280,10 @@ export function useConversation() {
       const recorder = recorderRef.current
       if (!recorder) return
 
-      const fullSegment = recorder.getFullSegment()
-      if (!fullSegment) {
+      const now = recorder.getElapsedMs()
+      const start = asrStartTimeRef.current
+      const segment = recorder.extractSegment(start, now)
+      if (!segment) {
         // No audio captured yet; treat as a no-op turn.
         if (activeRef.current) store.setStatus('listening')
         return
@@ -294,7 +303,7 @@ export function useConversation() {
       }
 
       const req: import('@/types').VADEndRequest = {
-        audio: fullSegment.base64,
+        audio: segment.base64,
         format: 'pcm',
         needs_interrupted_prefix: needsPrefix,
         interrupted_assistant_text: interruptedAssistantText,
@@ -314,6 +323,7 @@ export function useConversation() {
       ttsWasActiveRef.current = false
     } catch (err) {
       console.error('handleSpeechEnd error:', err)
+      recorderRef.current?.resetBuffer()
       if (activeRef.current) store.setStatus('listening')
     }
   }, [sendFastCheck, sse, store, finalizeInterruptedTurn])
@@ -399,6 +409,7 @@ export function useConversation() {
     ttsWasActiveRef.current = false
     ttsPendingRef.current = ''
     store.setStatus('idle')
+    void releaseSlidevPreview().catch(() => {})
   }, [sse, store])
 
   const sendText = useCallback(async (text: string) => {
