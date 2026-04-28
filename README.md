@@ -1,4 +1,4 @@
-# VoxFlow
+# VoxFlow（又名EducationAgent）
 
 <p align="center">
   <b>全双工语音对话驱动的 PPT 生成助手</b><br>
@@ -232,19 +232,12 @@ EducationAgent/
 │   │   └── redis/                  # Redis
 │   ├── workspace/                  # PPT Agent 工作区 + Slidev Skills
 │   │   └── skills/slidev/SKILL.md  # 面向 Agent 的 Slidev 速查手册
-│   └── docs/                       # 内部技术文档
-│       ├── voice_agent_protocol.md       # 协议规范（SSE / 两轮推理 / 打断）
-│       └── voice_agent_dataset_guide.md  # SFT 数据集构建指南
 ├── tool_calling_go/                # 独立 Go SDK（可单独使用）
 │   ├── agent.go                    # Agent：自动工具调用循环 + 流式
 │   ├── batch.go                    # Batch：信号量并发
 │   ├── race.go                     # BatchRace：竞速 + 级联终止
 │   ├── orchestrator.go             # 高层编排封装
 │   └── example/                    # 使用示例
-└── pic/                            # 数据集与实验报告
-    ├── interrupt_detection_cot_train.jsonl
-    ├── interrupt_detection_cot_val.jsonl
-    └── interrupt_detection_cot_test.jsonl
 ```
 
 ---
@@ -286,8 +279,6 @@ sequenceDiagram
 - **Round 2（条件触发）**：仅当 Round 1 包含 `fetch_from_ppt_message_queue` 时触发。后端将 tool 结果追加到历史，发起第二次 `StreamChat`，模型只输出汇报文本，**严禁再产生新 action**。
 
 这种设计确保：用户始终先听到语音反馈，PPT Agent 的异步结果在完成后通过第二轮自然汇报，不打断对话节奏。
-
-> 详细协议见 [`implementation/docs/voice_agent_protocol.md`](implementation/docs/voice_agent_protocol.md)。
 
 ### 实时打断机制
 
@@ -383,7 +374,7 @@ python sft_train.py
 | 数据集 | 5000 条（4000 train / 500 val / 500 test）|
 | 最佳指标 | Eval Loss 0.4512 @ step 700 |
 
-本地模型位于 `implementation/interrupt_detection_cot_lora/`。
+打断检测 LoRA 权重与数据集可在 HuggingFace 获取（见下方「开源生态」）。
 
 ---
 
@@ -397,7 +388,7 @@ VoxFlow 不是孤立项目，我们围绕它构建了一整套可复用的开源
 | **tool_calling_go** | 独立 Go SDK：LLM Agent、批量并发（Batch）、竞速编排（BatchRace）、级联终止 | 本仓库 [`tool_calling_go/`](tool_calling_go/) |
 | **zh-ppt-voice-agent-model-lora-support-interrupt** | Voice Agent QLoRA 微调权重，支持打断场景的中文语音助手对话 | [HuggingFace](https://huggingface.co/ZaneSFL/zh-ppt-voice-agent-model-lora-support-interrupt) |
 | **zh-ppt-voice-agent-interrupt-dialogues** | 6000+ 条中文语音助手打断对话 SFT 数据集（OpenAI messages 格式） | [HuggingFace Datasets](https://huggingface.co/datasets/ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues) |
-| **interrupt_detection_cot_lora** | 打断检测 LoRA 模型与 5000 条标注数据 | 本仓库 [`implementation/interrupt_detection_cot_lora/`](implementation/interrupt_detection_cot_lora/) |
+| **interrupt_detection_cot_lora** | 打断检测 LoRA 模型（Qwen3-0.6B + LoRA）与 5000 条标注数据 | 训练产出，与代码配套开源 |
 | **CS Knowledge Base** | 计算机领域核心知识库，支撑 PPT 内容生成 | 本仓库 [`implementation/data/`](implementation/data/) |
 
 ---
@@ -407,8 +398,6 @@ VoxFlow 不是孤立项目，我们围绕它构建了一整套可复用的开源
 | 文档 | 内容 |
 |------|------|
 | [`implementation/api.md`](implementation/api.md) | 完整后端 API 契约（Module 0-4 + 前端职责） |
-| [`implementation/docs/voice_agent_protocol.md`](implementation/docs/voice_agent_protocol.md) | Voice Agent 协议规范：两轮推理、SSE Chunk、打断语义 |
-| [`implementation/docs/voice_agent_dataset_guide.md`](implementation/docs/voice_agent_dataset_guide.md) | SFT 数据集构建指南：Phase 划分、消息格式、打断规则 |
 | [`tool_calling_go/README.md`](tool_calling_go/README.md) | tool_calling_go SDK 双语文档（Agent / Batch / BatchRace / 编排） |
 
 ---
