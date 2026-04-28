@@ -1,8 +1,0 @@
-go 1.26.1
-
-use (
-	./tool_calling_go
-	./voice_agent
-	./voice_agent_v2
-	./zcxppt
-)

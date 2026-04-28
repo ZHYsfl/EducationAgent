@@ -257,3 +257,14 @@ interrupt_detection_cot_lora/
 
 pic/
 scripts/
+
+.vscode/
+*.excalidraw
+meeting/
+
+go.sum
+go.mod
+
+implementation/docs/
+
+log_1.txt
