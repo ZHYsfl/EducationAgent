@@ -254,3 +254,6 @@ node_modules/
 model/
 
 interrupt_detection_cot_lora/
+
+pic/
+scripts/
