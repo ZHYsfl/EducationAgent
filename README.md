@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <video src="演示视频.mp4" controls width="80%" style="max-width: 900px; border-radius: 8px;"></video>
+  <a href="演示视频.mp4"><b>▶ 点击播放 / 下载观看演示视频（约 13 MB）</b></a>
 </p>
 
 ---
