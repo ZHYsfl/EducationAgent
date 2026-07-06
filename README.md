@@ -15,6 +15,10 @@
   <a href="https://huggingface.co/datasets/ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace-Dataset-yellow?style=flat-square" alt="HF Dataset"></a>
 </p>
 
+<p align="center">
+  <a href="演示视频.mp4"><b>▶ 点击观看演示视频</b></a>
+</p>
+
 ---
 
 ## 效果演示
