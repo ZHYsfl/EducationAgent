@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="演示视频.mp4"><b>▶ 点击观看演示视频</b></a>
+  <video src="演示视频.mp4" controls width="80%" style="max-width: 900px; border-radius: 8px;"></video>
 </p>
 
 ---
