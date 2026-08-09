@@ -15,14 +15,14 @@ func TestExecutorSuccess(t *testing.T) {
 		return "发送成功:" + args["content"], nil
 	})
 
-	res, err := e.Execute(context.Background(), "send_to_arm_agent:抓取 red 物块")
+	res, err := e.Execute(context.Background(), `{"name": "send_to_arm_agent", "arguments": {"content": "抓取 red 物块"}}`)
 	require.NoError(t, err)
 	assert.Equal(t, "发送成功:抓取 red 物块", res)
 }
 
 func TestExecutorUnknownTool(t *testing.T) {
 	e := NewExecutor()
-	_, err := e.Execute(context.Background(), "unknown_tool:x")
+	_, err := e.Execute(context.Background(), `{"name": "unknown_tool", "arguments": {"content": "x"}}`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
 }
@@ -33,7 +33,7 @@ func TestExecutorToolError(t *testing.T) {
 		return "", errors.New("boom")
 	})
 
-	_, err := e.Execute(context.Background(), "fail")
+	_, err := e.Execute(context.Background(), `{"name": "fail", "arguments": {}}`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
 }

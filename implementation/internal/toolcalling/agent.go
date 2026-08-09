@@ -370,6 +370,10 @@ func (a *Agent) Chat(
 // ---------------------------------------------------------------------------
 // ChatText  — simple non-streaming call that returns just the text content.
 // Skips the tool-calling loop; useful for classification / lightweight tasks.
+// Registered tools ARE declared in the request (the chat template renders
+// them into the system block's <tools> section, matching the fine-tuning
+// contract), so a finetuned model may still emit inline <tool_call> blocks
+// in the returned text — parsing them is the caller's job.
 // ---------------------------------------------------------------------------
 
 func (a *Agent) ChatText(
@@ -379,6 +383,9 @@ func (a *Agent) ChatText(
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(a.config.Model),
 		Messages: messages,
+	}
+	if tools := a.getTools(); len(tools) > 0 {
+		params.Tools = tools
 	}
 	if a.config.ExtraBody != nil {
 		params.SetExtraFields(a.config.ExtraBody)
@@ -417,6 +424,9 @@ func (a *Agent) StreamChat(
 			Model:     openai.ChatModel(a.config.Model),
 			Messages:  messages,
 			MaxTokens: param.NewOpt[int64](maxOut),
+		}
+		if tools := a.getTools(); len(tools) > 0 {
+			params.Tools = tools
 		}
 		if a.config.ExtraBody != nil {
 			params.SetExtraFields(a.config.ExtraBody)

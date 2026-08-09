@@ -123,34 +123,43 @@ func buildVoiceMessages(sys openai.ChatCompletionMessageParamUnion, st *state.Ap
 	return messages
 }
 
-// voiceSystemPrompt is the Voice Agent's only system prompt. Unlike the old
-// PPT system there is no remember/require_confirm pipeline: the human speaks
-// tasks directly, intent is clarified in dialogue, and once clear the task is
-// forwarded to the arm agent (async_dual_agent_system_design.md §5).
+// voiceSystemPrompt is the Voice Agent's only system prompt. It is
+// byte-identical to the system message embedded in the fine-tuning data
+// (训练数据/voice_agent), so the inference-time context prefix matches
+// training. Tools are declared via the API tools field (voiceToolSchemas),
+// not taught in the prompt. Unlike the old PPT system there is no
+// remember/require_confirm pipeline: the human speaks tasks directly, intent
+// is clarified in dialogue, and once clear the task is forwarded to the arm
+// agent (async_dual_agent_system_design.md §5).
 const voiceSystemPrompt = `你是异步双 agent 系统中的 Voice Agent，是人唯一的交互入口：你与人实时语音对话，理解任务意图，把任务下发给后台操作机械臂的 Arm Agent，并把 Arm Agent 上报的进度/结果语音转述给人。Arm Agent 不直接对人输出。
-
-可用工具（在回复最末尾以如下紧凑格式调用，每轮至多一个）：
-<tool_call>
-工具名:参数
-</tool_call>
-
-1. send_to_arm_agent:任务内容
-   把任务/变更/取消消息发给 Arm Agent，返回"发送成功"。
-   红线：人的任务意图不明确（缺颜色、缺位置等关键信息，或只是在闲聊/问进度）时不得调用，先通过对话问清楚再下发。
-2. get_message_from_arm_agent（无参数）
-   一次性消费 Arm Agent 上报的全部消息，返回"all_messages_from_arm_agent:消息1;消息2"或"当前没有新消息"。
-   仅当状态栏消息为 <queue_status>not empty</queue_status> 时才调用；empty 时不要调用。
-
-两回合特殊规则：
-你输出 get_message_from_arm_agent 后，后端会同步执行该工具并把结果放入对话历史，然后主动发起第二次推理。第二次推理时你只需把结果用口语如实转述给人（信息完整：结果是什么、需要人做什么），严禁输出任何新的 <tool_call> 标签。
 
 铁律：
 1. 每条人类 user 消息之后紧跟一条独立的 role=user 状态栏消息 <queue_status>empty/not empty</queue_status>，反映 Arm Agent 是否有未读消息；当工具结果、人类输入、状态栏同时出现时，顺序固定为：工具结果 → 人类输入 → 状态栏。
-2. 每轮回复必须先输出自然口语，再把 <tool_call> 标签放在最末尾，标签后不得再追加口语文本；本轮无需工具时只输出纯口语。
-3. 人的意图缺关键信息（抓什么颜色的物块、放到哪里）时，通过对话逐项问清，确认意图完整后再 send_to_arm_agent；content 要完整转述任务（动作+颜色+坐标），例如"抓取 red 物块并放到 (1.0,2.0,3.0)。"。
-4. 状态栏为 empty 且人催进度时，如实说"还没有新进展，有消息我第一时间告诉你"，不得谎称完成；只有消费到的消息明确包含完成/失败信息时才能如实转述。
+2. 每轮回复必须先输出自然口语，再调用工具；本轮无需工具时只输出纯口语。
+3. 人的意图缺关键信息（抓什么颜色的物块、放到哪里）时，通过对话逐项问清，确认意图完整后再 send_to_arm_agent；content 要完整转述任务（动作+颜色+坐标）。
+4. 仅当状态栏消息为 <queue_status>not empty</queue_status> 时才调用 get_message_from_arm_agent；empty 时不要调用。状态栏为 empty 且人催进度时，如实说"还没有新进展，有消息我第一时间告诉你"，不得谎称完成。
 5. 若 user 消息以 </interrupted> 开头，表示人在你上一轮播报过程中打断了你，自然地回应新输入即可，不要重复已说内容。
 6. 回复要口语化、简洁，适合语音播报；工具执行是静默的，即使用户在工具执行期间说话，工具仍会在后台完整执行完毕。`
+
+// voiceToolSchemas declares the two voice tools (finetuning_of_voice_agent.md
+// §2). They are registered on the LLM agent so the chat template renders them
+// into the system block's <tools> section — the same shape the model saw
+// during fine-tuning. Execution stays inline (streamExtractor + Executor), so
+// Function is nil here.
+var voiceToolSchemas = []toolcalling.Tool{
+	{
+		Name:        "send_to_arm_agent",
+		Description: "把任务/变更/取消消息发给后台操作机械臂的 Arm Agent，返回\"发送成功\"。红线：人的任务意图不明确（缺颜色、缺位置等关键信息，或只是在闲聊/问进度）时不得调用，先通过对话问清楚再下发。",
+		Parameters: map[string]any{"type": "object", "properties": map[string]any{
+			"content": map[string]any{"type": "string", "description": "完整转述的任务内容（动作+颜色+坐标），并注明完成后通过 send_to_voice_agent() 将结果返回给 voice agent"},
+		}, "required": []string{"content"}},
+	},
+	{
+		Name:        "get_message_from_arm_agent",
+		Description: "一次性消费 Arm Agent 上报的全部消息，返回 all_messages_from_arm_agent:消息1;消息2 或 当前没有新消息。仅当状态栏消息为 <queue_status>not empty</queue_status> 时才调用；empty 时不要调用。",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	},
+}
 
 // VoiceAgentService drives the finetuned voice agent LLM and streams the response.
 type VoiceAgentService interface {
@@ -171,16 +180,22 @@ type DefaultVoiceAgentService struct {
 
 // NewVoiceAgentService creates the voice agent from environment config.
 func NewVoiceAgentService(cfg toolcalling.LLMConfig, exec *voiceagent.Executor) VoiceAgentService {
+	agent := toolcalling.NewAgent(cfg)
+	for _, schema := range voiceToolSchemas {
+		agent.AddTool(schema)
+	}
 	return &DefaultVoiceAgentService{
-		agent:    toolcalling.NewAgent(cfg),
+		agent:    agent,
 		executor: exec,
 	}
 }
 
 // StreamTurn builds the context, calls the LLM stream, parses inline
-// <tool_call> tags, forwards SSE chunks to out, and executes tool calls via
-// the executor. Tool results are appended to voice history after the turn ends
-// (tool/user dual-role writeback) so the next LLM turn can observe them.
+// <tool_call> tags (Qwen3 native JSON payload), forwards SSE chunks to out,
+// and executes tool calls via the executor. Tool results are appended to
+// voice history after the turn ends as single role=tool messages (the chat
+// template wraps them into the user <tool_response> block — design §5) so
+// the next LLM turn can observe them.
 func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, needsInterruptedPrefix bool, interruptedAssistant string, out chan<- model.SSEChunk) error {
 	defer close(out)
 
@@ -247,8 +262,9 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 		return ctx.Err()
 	}
 
-	// Persist round 1: user -> status bar -> assistant -> tool result(s) with
-	// tool/user dual-role writeback (design §5).
+	// Persist round 1: user -> status bar -> assistant -> tool result(s) as
+	// single role=tool messages (design §5: the chat template wraps them into
+	// the user <tool_response> block, so no manual dual-role writeback).
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
 	st.AppendVoiceHistory(openai.UserMessage(statusBar))
 	if assistantContent := extractor.history.String(); assistantContent != "" {
@@ -256,7 +272,6 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	}
 	for _, tr := range extractor.toolResults {
 		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-tool"))
-		st.AppendVoiceHistory(openai.UserMessage(tr))
 	}
 
 	// -------------------------------------------------------------------------

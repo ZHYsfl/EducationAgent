@@ -171,16 +171,16 @@ func TestExecuteArmToolEmbodiedContracts(t *testing.T) {
 	ctx := context.Background()
 
 	assert.Equal(t, "我的坐标是0.0,0.0,0.0",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "get_current_coordinates"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "get_current_coordinates"}))
 	assert.Equal(t, "成功到达1.0,2.0,3.0",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "move_to_coordinates", RawArgs: "1.0,2.0,3.0"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "move_to_coordinates", Arguments: map[string]any{"x": "1.0", "y": "2.0", "z": "3.0"}}))
 	assert.Equal(t, "有这种颜色的物块，且夹取物块成功",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "grab_the_block", RawArgs: "red"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "grab_the_block", Arguments: map[string]any{"color": "red"}}))
 	assert.Equal(t, "成功释放物块",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "release_the_block"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "release_the_block"}))
 
-	// move_to_coordinates with wrong arity must surface an error, not call the gateway.
-	res := svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "move_to_coordinates", RawArgs: "1.0,2.0"})
+	// move_to_coordinates with a missing coordinate must surface an error, not call the gateway.
+	res := svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "move_to_coordinates", Arguments: map[string]any{"x": "1.0", "y": "2.0"}})
 	assert.True(t, strings.HasPrefix(res, "[EXEC_ERROR]"), res)
 }
 
@@ -191,23 +191,23 @@ func TestExecuteArmToolCommunicationContracts(t *testing.T) {
 
 	// Empty queue → fixed contract string.
 	assert.Equal(t, "当前没有新消息",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "get_message_from_voice_agent"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "get_message_from_voice_agent"}))
 
 	// Non-empty queue → drained, joined with ";".
 	st.SendToArmAgent("用户改主意了，请改抓 yellow 物块")
 	st.SendToArmAgent("目标位置不变")
 	assert.Equal(t, "all_messages_from_voice_agent:用户改主意了，请改抓 yellow 物块;目标位置不变",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "get_message_from_voice_agent"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "get_message_from_voice_agent"}))
 	assert.Equal(t, 0, st.VoiceMessageQueueLen())
 
 	// send_to_voice_agent enqueues into message_from_arm_agent_queue.
 	assert.Equal(t, "发送成功",
-		svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "send_to_voice_agent", RawArgs: "已到达目标位置，任务完成。"}))
+		svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "send_to_voice_agent", Arguments: map[string]any{"content": "已到达目标位置，任务完成。"}}))
 	msgs := st.DrainArmMessageQueue()
 	assert.Equal(t, []string{"已到达目标位置，任务完成。"}, msgs)
 
 	// Unknown tool → structured error marker.
-	res := svc.executeArmTool(ctx, toolcalling.CompactToolCall{Name: "fly"})
+	res := svc.executeArmTool(ctx, toolcalling.ToolCallBlock{Name: "fly"})
 	assert.True(t, strings.HasPrefix(res, "[NOT_FOUND]"), res)
 }
 
@@ -239,7 +239,9 @@ func llmStub(t *testing.T, contents ...string) *httptest.Server {
 
 // TestRunTurnQueueStatusInjection verifies the arm-side core mechanism
 // (design §4.3): after EVERY tool result, a role=user <queue_status> status
-// bar is appended, and tool results are written back with tool/user dual role.
+// bar is appended, and tool results are written back as single role=tool
+// messages (design §5: the chat template wraps them into the user
+// <tool_response> block).
 func TestRunTurnQueueStatusInjection(t *testing.T) {
 	st := state.NewAppState()
 	gw := gatewayStub(t, map[string]string{
@@ -247,7 +249,7 @@ func TestRunTurnQueueStatusInjection(t *testing.T) {
 	})
 	defer gw.Close()
 	llm := llmStub(t,
-		"我先确认当前坐标。\n<tool_call>\nget_current_coordinates:\n</tool_call>",
+		"我先确认当前坐标。\n<tool_call>\n{\"name\": \"get_current_coordinates\", \"arguments\": {}}\n</tool_call>",
 		"已确认坐标，开始执行。",
 	)
 	defer llm.Close()
@@ -262,9 +264,9 @@ func TestRunTurnQueueStatusInjection(t *testing.T) {
 	msgs, err := svc.runTurn(context.Background(), history)
 	require.NoError(t, err)
 
-	// Expected tail: assistant(tool_call) → tool result → user result (dual
-	// role) → user <queue_status> → assistant(final text).
-	require.GreaterOrEqual(t, len(msgs), len(history)+5)
+	// Expected tail: assistant(tool_call) → role=tool result → user
+	// <queue_status> → assistant(final text).
+	require.GreaterOrEqual(t, len(msgs), len(history)+4)
 	tail := msgs[len(history):]
 
 	require.NotNil(t, tail[0].OfAssistant)
@@ -274,13 +276,10 @@ func TestRunTurnQueueStatusInjection(t *testing.T) {
 	assert.Equal(t, "我的坐标是0.0,0.0,0.0", tail[1].OfTool.Content.OfString.Value)
 
 	require.NotNil(t, tail[2].OfUser)
-	assert.Equal(t, "我的坐标是0.0,0.0,0.0", tail[2].OfUser.Content.OfString.Value)
+	assert.Equal(t, "<queue_status>empty</queue_status>", tail[2].OfUser.Content.OfString.Value)
 
-	require.NotNil(t, tail[3].OfUser)
-	assert.Equal(t, "<queue_status>empty</queue_status>", tail[3].OfUser.Content.OfString.Value)
-
-	require.NotNil(t, tail[4].OfAssistant)
-	assert.Equal(t, "已确认坐标，开始执行。", tail[4].OfAssistant.Content.OfString.Value)
+	require.NotNil(t, tail[3].OfAssistant)
+	assert.Equal(t, "已确认坐标，开始执行。", tail[3].OfAssistant.Content.OfString.Value)
 }
 
 // TestRunTurnQueueStatusNotEmpty verifies that the status bar reports
@@ -293,8 +292,8 @@ func TestRunTurnQueueStatusNotEmpty(t *testing.T) {
 	})
 	defer gw.Close()
 	llm := llmStub(t,
-		"<tool_call>\nget_current_coordinates:\n</tool_call>",
-		"队列里有新消息，我先消费看看。\n<tool_call>\nget_message_from_voice_agent:\n</tool_call>",
+		"<tool_call>\n{\"name\": \"get_current_coordinates\", \"arguments\": {}}\n</tool_call>",
+		"队列里有新消息，我先消费看看。\n<tool_call>\n{\"name\": \"get_message_from_voice_agent\", \"arguments\": {}}\n</tool_call>",
 		"收到变更，改抓 yellow 物块。",
 	)
 	defer llm.Close()
@@ -313,15 +312,15 @@ func TestRunTurnQueueStatusNotEmpty(t *testing.T) {
 
 	var sawNotEmpty, sawConsumed bool
 	for _, m := range msgs {
-		if m.OfUser == nil {
-			continue
+		if m.OfUser != nil {
+			if m.OfUser.Content.OfString.Value == "<queue_status>not empty</queue_status>" {
+				sawNotEmpty = true
+			}
 		}
-		text := m.OfUser.Content.OfString.Value
-		if text == "<queue_status>not empty</queue_status>" {
-			sawNotEmpty = true
-		}
-		if text == "all_messages_from_voice_agent:用户改主意了，请改抓 yellow 物块" {
-			sawConsumed = true
+		if m.OfTool != nil {
+			if m.OfTool.Content.OfString.Value == "all_messages_from_voice_agent:用户改主意了，请改抓 yellow 物块" {
+				sawConsumed = true
+			}
 		}
 	}
 	assert.True(t, sawNotEmpty, "expected a not-empty status bar while the queue had a pending message")
@@ -329,22 +328,31 @@ func TestRunTurnQueueStatusNotEmpty(t *testing.T) {
 	assert.Equal(t, 0, st.VoiceMessageQueueLen())
 }
 
-func TestParseCompactToolCalls(t *testing.T) {
-	calls := toolcalling.ParseCompactToolCalls(
-		"收到。\n<tool_call>\nmove_to_coordinates:0.5,0.2,0.1\n</tool_call>")
+func TestParseToolCallBlocks(t *testing.T) {
+	calls := toolcalling.ParseToolCallBlocks(
+		"收到。\n<tool_call>\n{\"name\": \"move_to_coordinates\", \"arguments\": {\"x\": \"0.5\", \"y\": \"0.2\", \"z\": \"0.1\"}}\n</tool_call>")
 	require.Len(t, calls, 1)
 	assert.Equal(t, "move_to_coordinates", calls[0].Name)
-	assert.Equal(t, "0.5,0.2,0.1", calls[0].RawArgs)
-	assert.Equal(t, []string{"0.5", "0.2", "0.1"}, toolcalling.SplitCompactArgs(calls[0].RawArgs))
+	assert.Equal(t, "0.5", toolcalling.StringArg(calls[0].Arguments, "x"))
+	assert.Equal(t, "0.1", toolcalling.StringArg(calls[0].Arguments, "z"))
 
-	// Free-form content keeps commas/colons intact.
-	calls = toolcalling.ParseCompactToolCalls(
-		"<tool_call>\nsend_to_voice_agent:已到达 (1.0,2.0,3.0)，任务完成。\n</tool_call>")
+	// Free-form content keeps commas/colons intact (JSON string value).
+	calls = toolcalling.ParseToolCallBlocks(
+		"<tool_call>\n{\"name\": \"send_to_voice_agent\", \"arguments\": {\"content\": \"已到达 (1.0,2.0,3.0)，任务完成。\"}}\n</tool_call>")
 	require.Len(t, calls, 1)
 	assert.Equal(t, "send_to_voice_agent", calls[0].Name)
-	assert.Equal(t, "已到达 (1.0,2.0,3.0)，任务完成。", calls[0].RawArgs)
+	assert.Equal(t, "已到达 (1.0,2.0,3.0)，任务完成。", toolcalling.StringArg(calls[0].Arguments, "content"))
 
-	assert.Empty(t, toolcalling.ParseCompactToolCalls("纯文本，没有工具调用"))
+	// Missing "arguments" yields an empty map.
+	calls = toolcalling.ParseToolCallBlocks(
+		"<tool_call>\n{\"name\": \"release_the_block\"}\n</tool_call>")
+	require.Len(t, calls, 1)
+	assert.Equal(t, "release_the_block", calls[0].Name)
+	assert.Empty(t, calls[0].Arguments)
+
+	assert.Empty(t, toolcalling.ParseToolCallBlocks("纯文本，没有工具调用"))
+	// Malformed JSON payload → block skipped.
+	assert.Empty(t, toolcalling.ParseToolCallBlocks("<tool_call>not json</tool_call>"))
 }
 
 // TestSplitCompressionWindowBelowThreshold verifies that compression does not

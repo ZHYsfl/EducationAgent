@@ -39,7 +39,7 @@ func TestStreamExtractorSingleToolCall(t *testing.T) {
 
 	extractor.Feed("好的，")
 	extractor.Feed("<tool_call>")
-	extractor.Feed("\nsend_to_arm_agent:抓取 red 物块\n")
+	extractor.Feed("\n{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}\n")
 	extractor.Feed("</tool_call>")
 	extractor.Flush()
 
@@ -50,7 +50,7 @@ func TestStreamExtractorSingleToolCall(t *testing.T) {
 	require.Equal("tts", chunks[0].Type)
 	require.Equal("好的，", chunks[0].Text)
 	require.Equal("action", chunks[1].Type)
-	require.Equal("\nsend_to_arm_agent:抓取 red 物块\n", chunks[1].Payload)
+	require.Equal("\n{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}\n", chunks[1].Payload)
 	require.Equal("tool", chunks[2].Type)
 	require.Equal("发送成功", chunks[2].Text)
 	require.Equal([]string{"发送成功"}, extractor.toolResults)
@@ -133,13 +133,13 @@ func TestStreamExtractorToolCallCallback(t *testing.T) {
 		return "ok"
 	})
 
-	extractor.Feed("<tool_call>send_to_arm_agent:抓取 red 物块</tool_call>")
-	extractor.Feed("<tool_call>get_message_from_arm_agent:</tool_call>")
+	extractor.Feed("<tool_call>{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}</tool_call>")
+	extractor.Feed("<tool_call>{\"name\": \"get_message_from_arm_agent\", \"arguments\": {}}</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
 
-	assert.Equal(t, []string{"send_to_arm_agent:抓取 red 物块", "get_message_from_arm_agent:"}, payloads)
+	assert.Equal(t, []string{"{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}", "{\"name\": \"get_message_from_arm_agent\", \"arguments\": {}}"}, payloads)
 }
 
 func TestStreamExtractorHistoryPlainText(t *testing.T) {
@@ -159,12 +159,12 @@ func TestStreamExtractorHistorySingleToolCall(t *testing.T) {
 
 	extractor.Feed("好的，")
 	extractor.Feed("<tool_call>")
-	extractor.Feed("\nsend_to_arm_agent:抓取 red 物块\n")
+	extractor.Feed("\n{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}\n")
 	extractor.Feed("</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "好的，<tool_call>\nsend_to_arm_agent:抓取 red 物块\n</tool_call>", extractor.history.String())
+	assert.Equal(t, "好的，<tool_call>\n{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}\n</tool_call>", extractor.history.String())
 	assert.Equal(t, []string{"发送成功"}, extractor.toolResults)
 }
 
@@ -213,10 +213,10 @@ func TestStreamExtractorActions(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(string) string { return "ok" })
 	extractor.Feed("好的，")
-	extractor.Feed("<tool_call>send_to_arm_agent:抓取 red 物块</tool_call>")
-	extractor.Feed("<tool_call>get_message_from_arm_agent:</tool_call>")
+	extractor.Feed("<tool_call>{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}</tool_call>")
+	extractor.Feed("<tool_call>{\"name\": \"get_message_from_arm_agent\", \"arguments\": {}}</tool_call>")
 	extractor.Flush()
 	_ = collectChunks(extractor, out)
 
-	assert.Equal(t, []string{"send_to_arm_agent:抓取 red 物块", "get_message_from_arm_agent:"}, extractor.actions)
+	assert.Equal(t, []string{"{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}", "{\"name\": \"get_message_from_arm_agent\", \"arguments\": {}}"}, extractor.actions)
 }
