@@ -19,33 +19,32 @@ import (
 	"educationagent/internal/service"
 	"educationagent/internal/state"
 	"educationagent/internal/toolcalling"
+	"educationagent/internal/tools"
 )
 
-func setupIntegrationServer() (*gin.Engine, *state.AppState, *service.PPTService) {
+func setupIntegrationServer() (*gin.Engine, *state.AppState, *service.ArmService) {
 	gin.SetMode(gin.TestMode)
 	st := state.NewAppState()
-	voiceSvc := service.NewVoiceService(st)
 	agent := toolcalling.NewAgent(toolcalling.LLMConfig{})
-	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
+	armSvc := service.NewArmService(st, agent, tools.NewArmGateway("http://127.0.0.1:1"))
 	asrSvc := service.NewASRService()
 	interruptSvc := service.NewInterruptService(toolcalling.LLMConfig{})
 	voiceAgentSvc := service.NewVoiceAgentService(toolcalling.LLMConfig{}, nil)
 	r := gin.New()
-	handler.RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
-	return r, st, pptSvc
+	handler.RegisterRoutes(r, st, armSvc, asrSvc, interruptSvc, voiceAgentSvc)
+	return r, st, armSvc
 }
 
 func setupVADIntegrationServer() (*gin.Engine, *state.AppState, *service.StubASRService, *mockVoiceAgentSvc) {
 	gin.SetMode(gin.TestMode)
 	st := state.NewAppState()
-	voiceSvc := service.NewVoiceService(st)
 	agent := toolcalling.NewAgent(toolcalling.LLMConfig{})
-	pptSvc := service.NewPPTService(st, agent, service.NewKBService(), service.NewSearchService())
+	armSvc := service.NewArmService(st, agent, tools.NewArmGateway("http://127.0.0.1:1"))
 	asrSvc := &service.StubASRService{}
 	interruptSvc := &mockInterruptCheckSvc{result: true}
 	voiceAgentSvc := &mockVoiceAgentSvc{}
 	r := gin.New()
-	handler.RegisterRoutes(r, st, voiceSvc, pptSvc, service.NewKBService(), service.NewSearchService(), asrSvc, interruptSvc, voiceAgentSvc)
+	handler.RegisterRoutes(r, st, armSvc, asrSvc, interruptSvc, voiceAgentSvc)
 	return r, st, asrSvc, voiceAgentSvc
 }
 
@@ -85,14 +84,6 @@ func doPost(t *testing.T, r *gin.Engine, path string, body any) *httptest.Respon
 	return w
 }
 
-func doGet(t *testing.T, r *gin.Engine, path string) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", path, nil)
-	require.NoError(t, err)
-	r.ServeHTTP(w, req)
-	return w
-}
-
 func parseResp(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
@@ -100,8 +91,10 @@ func parseResp(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	return resp
 }
 
+// TestFullConversationFlow walks the async dual-agent chain end to end:
+// task dispatch → arm agent runtime → progress report → mid-task change.
 func TestFullConversationFlow(t *testing.T) {
-	r, st, pptSvc := setupIntegrationServer()
+	r, st, armSvc := setupIntegrationServer()
 
 	// 1. start conversation
 	w := doPost(t, r, "/api/v1/start_conversation", map[string]any{
@@ -112,87 +105,51 @@ func TestFullConversationFlow(t *testing.T) {
 	resp := parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
 
-	// 2. partial update requirements
-	w = doPost(t, r, "/api/v1/update_requirements", map[string]any{
-		"from": "frontend",
-		"to":   "voice_agent",
-		"requirements": map[string]any{
-			"topic": "math",
-			"style": "simple and elegant",
-		},
-	})
-	assert.Equal(t, 200, w.Code)
-	resp = parseResp(t, w)
-	data := resp["data"].(map[string]any)
-	missing := data["missing_fields"].([]any)
-	assert.Equal(t, []any{"total_pages", "audience"}, missing)
-
-	// 3. complete update requirements
-	w = doPost(t, r, "/api/v1/update_requirements", map[string]any{
-		"from": "voice_agent",
-		"to":   "frontend",
-		"requirements": map[string]any{
-			"total_pages": 15,
-			"audience":    "middle school students",
-		},
-	})
-	assert.Equal(t, 200, w.Code)
-	resp = parseResp(t, w)
-	data = resp["data"].(map[string]any)
-	require.Nil(t, data["missing_fields"])
-
-	// 4. require confirm
-	w = doPost(t, r, "/api/v1/require_confirm", map[string]any{
-		"from": "voice_agent",
-		"to":   "frontend",
-		"requirements": map[string]any{
-			"topic":       "math",
-			"style":       "simple and elegant",
-			"total_pages": 15,
-			"audience":    "middle school students",
-		},
-	})
-	assert.Equal(t, 200, w.Code)
-	resp = parseResp(t, w)
-	assert.Equal(t, float64(200), resp["code"])
-
-	// 5. send to ppt agent (first time) – should start runtime
-	// Fake chat loop enqueues a message and then blocks so the runtime stays alive.
+	// 2. send a task to the arm agent — should start the runtime.
+	// The fake turn loop reports progress and then blocks so the runtime
+	// stays alive.
 	firstBlocker := make(chan struct{})
-	pptSvc.SetRunChatFn(func(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
-		st.SendToVoiceAgent("the new version of the ppt is generated successfully")
+	armSvc.SetRunTurnFn(func(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error) {
+		st.SendToVoiceAgent("已到达物块位置，准备抓取 red 物块")
 		<-firstBlocker
-		return history, nil
+		return history, ctx.Err()
 	})
 
-	w = doPost(t, r, "/api/v1/send_to_ppt_agent", map[string]any{
-		"from": "voice_agent",
-		"to":   "ppt_agent",
-		"data": "user's requirements are: topic: math, style: simple and elegant, total_pages: 15, audience: middle school students",
+	w = doPost(t, r, "/api/v1/send_to_arm_agent", map[string]any{
+		"from":    "voice_agent",
+		"to":      "arm_agent",
+		"content": "抓取 red 物块并放到 (1.0,2.0,3.0)。",
 	})
 	assert.Equal(t, 200, w.Code)
 	resp = parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
+	assert.Equal(t, "发送成功", resp["data"])
 
-	// wait for runtime to start and send message
+	// wait for the runtime to start and report
 	require.Eventually(t, func() bool {
-		return pptSvc.IsRuntimeRunning()
+		return armSvc.IsRuntimeRunning() && st.ArmMessageQueueLen() > 0
 	}, time.Second, 10*time.Millisecond)
 
-	// 6. fetch from ppt message queue
-	w = doGet(t, r, "/api/v1/fetch_from_ppt_message_queue")
+	// the task entered the arm context as one consumed user message
+	history := st.GetArmHistory()
+	require.GreaterOrEqual(t, len(history), 2)
+	last := history[len(history)-1]
+	require.NotNil(t, last.OfUser)
+	assert.Equal(t, "all_messages_from_voice_agent:抓取 red 物块并放到 (1.0,2.0,3.0)。", last.OfUser.Content.OfString.Value)
+
+	// 3. voice agent consumes the arm report
+	w = doPost(t, r, "/api/v1/get_message_from_arm_agent", map[string]any{})
 	assert.Equal(t, 200, w.Code)
 	resp = parseResp(t, w)
 	assert.Equal(t, float64(200), resp["code"])
-	assert.Equal(t, "the new version of the ppt is generated successfully", resp["data"])
+	assert.Equal(t, "all_messages_from_arm_agent:已到达物块位置，准备抓取 red 物块", resp["data"])
 
-	// 7. voice agent sends feedback while runtime is running.
-	// In the new architecture OnVoiceMessage does NOT cancel a running runtime;
-	// it only enqueues the feedback. the existing goroutine stays alive.
-	w = doPost(t, r, "/api/v1/send_to_ppt_agent", map[string]any{
-		"from": "voice_agent",
-		"to":   "ppt_agent",
-		"data": "people have some critical feedbacks to the ppt, the feedbacks are: the font should be bigger",
+	// 4. a change message arrives while the runtime is running.
+	// OnVoiceMessage does NOT cancel a running runtime; it only enqueues.
+	w = doPost(t, r, "/api/v1/send_to_arm_agent", map[string]any{
+		"from":    "voice_agent",
+		"to":      "arm_agent",
+		"content": "用户改主意了，请改抓 yellow 物块",
 	})
 	assert.Equal(t, 200, w.Code)
 	resp = parseResp(t, w)
@@ -200,30 +157,14 @@ func TestFullConversationFlow(t *testing.T) {
 
 	// the running goroutine should NOT have been cancelled.
 	time.Sleep(50 * time.Millisecond)
-	assert.True(t, pptSvc.IsRuntimeRunning())
+	assert.True(t, armSvc.IsRuntimeRunning())
+	assert.Equal(t, 1, st.VoiceMessageQueueLen())
 
-	// cleanup: stop the runtime explicitly because the queue still has the
-	// feedback message, so the goroutine would otherwise keep looping.
+	// cleanup: stop the runtime explicitly because the queue still holds the
+	// change message, so the goroutine would otherwise keep looping.
 	close(firstBlocker)
-	pptSvc.StopRuntime()
-	pptSvc.WaitRuntime()
-
-	// 8. update_requirements should now fail because tools disappeared
-	w = doPost(t, r, "/api/v1/update_requirements", map[string]any{
-		"from": "frontend",
-		"to":   "voice_agent",
-		"requirements": map[string]any{
-			"topic": "science",
-		},
-	})
-	assert.Equal(t, 200, w.Code) // HTTP 200 with uniform envelope code 400
-	resp = parseResp(t, w)
-	assert.Equal(t, float64(400), resp["code"])
-	assert.Contains(t, resp["message"], "failed")
-
-	// cleanup
-	pptSvc.StopRuntime()
-	pptSvc.WaitRuntime()
+	armSvc.StopRuntime()
+	armSvc.WaitRuntime()
 }
 
 func TestVADFlow(t *testing.T) {
@@ -252,10 +193,10 @@ func TestVADFlow(t *testing.T) {
 	assert.True(t, data["interrupt"].(bool))
 
 	// 3. vad_end should stream voice agent response via SSE
-	asr.Override = func(string) string { return "make the font bigger" }
+	asr.Override = func(string) string { return "帮我把红色的物块抓到 1.0, 2.0, 3.0 那里" }
 	voiceAgent.chunks = []model.SSEChunk{
-		{Type: "tts", Text: "ok"},
-		{Type: "action", Payload: "send_to_ppt_agent|data:make the font bigger"},
+		{Type: "tts", Text: "好的"},
+		{Type: "action", Payload: "send_to_arm_agent:抓取 red 物块并放到 (1.0,2.0,3.0)。"},
 		{Type: "turn_end"},
 	}
 

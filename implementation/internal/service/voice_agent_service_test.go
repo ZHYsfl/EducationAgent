@@ -33,39 +33,36 @@ func TestStreamExtractorPlainText(t *testing.T) {
 	assert.Equal(t, "hello world", text)
 }
 
-func TestStreamExtractorSingleAction(t *testing.T) {
+func TestStreamExtractorSingleToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "ok" })
+	extractor := newStreamExtractor(out, func(p string) string { return "发送成功" })
 
-	extractor.Feed("ok ")
-	extractor.Feed("<action>")
-	extractor.Feed("update_requirements|topic:math")
-	extractor.Feed("</action>")
-	extractor.Feed(" done")
+	extractor.Feed("好的，")
+	extractor.Feed("<tool_call>")
+	extractor.Feed("\nsend_to_arm_agent:抓取 red 物块\n")
+	extractor.Feed("</tool_call>")
 	extractor.Flush()
 
 	chunks := collectChunks(extractor, out)
 
 	require := assert.New(t)
-	require.GreaterOrEqual(len(chunks), 4)
+	require.GreaterOrEqual(len(chunks), 3)
 	require.Equal("tts", chunks[0].Type)
-	require.Equal("ok ", chunks[0].Text)
+	require.Equal("好的，", chunks[0].Text)
 	require.Equal("action", chunks[1].Type)
-	require.Equal("update_requirements|topic:math", chunks[1].Payload)
+	require.Equal("\nsend_to_arm_agent:抓取 red 物块\n", chunks[1].Payload)
 	require.Equal("tool", chunks[2].Type)
-	require.Equal("ok", chunks[2].Text)
-	require.Equal("tts", chunks[3].Type)
-	require.Equal(" done", chunks[3].Text)
-	require.Equal([]string{"ok"}, extractor.toolResults)
+	require.Equal("发送成功", chunks[2].Text)
+	require.Equal([]string{"发送成功"}, extractor.toolResults)
 }
 
-func TestStreamExtractorSplitActionTag(t *testing.T) {
+func TestStreamExtractorSplitToolCallTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(p string) string { return "done" })
 
-	// <action> split across tokens
-	extractor.Feed("hello <act")
-	extractor.Feed("ion>data</action>")
+	// <tool_call> split across tokens
+	extractor.Feed("hello <tool_")
+	extractor.Feed("call>data</tool_call>")
 	extractor.Flush()
 
 	chunks := collectChunks(extractor, out)
@@ -81,11 +78,11 @@ func TestStreamExtractorSplitActionTag(t *testing.T) {
 	require.Equal([]string{"done"}, extractor.toolResults)
 }
 
-func TestStreamExtractorUnclosedAction(t *testing.T) {
+func TestStreamExtractorUnclosedToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, nil)
 
-	extractor.Feed("text <action>unclosed")
+	extractor.Feed("text <tool_call>unclosed")
 	extractor.Flush()
 
 	chunks := collectChunks(extractor, out)
@@ -94,13 +91,13 @@ func TestStreamExtractorUnclosedAction(t *testing.T) {
 	require.GreaterOrEqual(len(chunks), 2)
 	require.Equal("tts", chunks[0].Type)
 	require.Equal("text ", chunks[0].Text)
-	// Last chunk should contain the unclosed action as plain text.
+	// Last chunk should contain the unclosed tool_call as plain text.
 	last := chunks[len(chunks)-1]
 	require.Equal("tts", last.Type)
-	require.Equal("<action>unclosed", last.Text)
+	require.Equal("<tool_call>unclosed", last.Text)
 }
 
-func TestStreamExtractorMultipleActions(t *testing.T) {
+func TestStreamExtractorMultipleToolCalls(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	counter := 0
 	extractor := newStreamExtractor(out, func(p string) string {
@@ -108,7 +105,7 @@ func TestStreamExtractorMultipleActions(t *testing.T) {
 		return fmt.Sprintf("result%d", counter)
 	})
 
-	extractor.Feed("<action>a1</action> mid <action>a2</action>")
+	extractor.Feed("<tool_call>a1</tool_call> mid <tool_call>a2</tool_call>")
 	extractor.Flush()
 
 	chunks := collectChunks(extractor, out)
@@ -128,7 +125,7 @@ func TestStreamExtractorMultipleActions(t *testing.T) {
 	require.Equal([]string{"result1", "result2"}, extractor.toolResults)
 }
 
-func TestStreamExtractorActionCallback(t *testing.T) {
+func TestStreamExtractorToolCallCallback(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	var payloads []string
 	extractor := newStreamExtractor(out, func(p string) string {
@@ -136,13 +133,13 @@ func TestStreamExtractorActionCallback(t *testing.T) {
 		return "ok"
 	})
 
-	extractor.Feed("<action>update_requirements|topic:math</action>")
-	extractor.Feed("<action>require_confirm</action>")
+	extractor.Feed("<tool_call>send_to_arm_agent:抓取 red 物块</tool_call>")
+	extractor.Feed("<tool_call>get_message_from_arm_agent:</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
 
-	assert.Equal(t, []string{"update_requirements|topic:math", "require_confirm"}, payloads)
+	assert.Equal(t, []string{"send_to_arm_agent:抓取 red 物块", "get_message_from_arm_agent:"}, payloads)
 }
 
 func TestStreamExtractorHistoryPlainText(t *testing.T) {
@@ -156,23 +153,22 @@ func TestStreamExtractorHistoryPlainText(t *testing.T) {
 	assert.Equal(t, "hello world", extractor.history.String())
 }
 
-func TestStreamExtractorHistorySingleAction(t *testing.T) {
+func TestStreamExtractorHistorySingleToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "all fields are updated" })
+	extractor := newStreamExtractor(out, func(p string) string { return "发送成功" })
 
-	extractor.Feed("ok ")
-	extractor.Feed("<action>")
-	extractor.Feed("update_requirements|topic:math")
-	extractor.Feed("</action>")
-	extractor.Feed(" done")
+	extractor.Feed("好的，")
+	extractor.Feed("<tool_call>")
+	extractor.Feed("\nsend_to_arm_agent:抓取 red 物块\n")
+	extractor.Feed("</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "ok <action>update_requirements|topic:math</action> done", extractor.history.String())
-	assert.Equal(t, []string{"all fields are updated"}, extractor.toolResults)
+	assert.Equal(t, "好的，<tool_call>\nsend_to_arm_agent:抓取 red 物块\n</tool_call>", extractor.history.String())
+	assert.Equal(t, []string{"发送成功"}, extractor.toolResults)
 }
 
-func TestStreamExtractorHistoryMultipleActions(t *testing.T) {
+func TestStreamExtractorHistoryMultipleToolCalls(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(p string) string {
 		if p == "a1" {
@@ -181,46 +177,46 @@ func TestStreamExtractorHistoryMultipleActions(t *testing.T) {
 		return "result2"
 	})
 
-	extractor.Feed("<action>a1</action> mid <action>a2</action>")
+	extractor.Feed("<tool_call>a1</tool_call> mid <tool_call>a2</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "<action>a1</action> mid <action>a2</action>", extractor.history.String())
+	assert.Equal(t, "<tool_call>a1</tool_call> mid <tool_call>a2</tool_call>", extractor.history.String())
 	assert.Equal(t, []string{"result1", "result2"}, extractor.toolResults)
 }
 
-func TestStreamExtractorHistorySplitActionTag(t *testing.T) {
+func TestStreamExtractorHistorySplitToolCallTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(p string) string { return "done" })
 
-	extractor.Feed("hello <act")
-	extractor.Feed("ion>data</action>")
+	extractor.Feed("hello <tool_")
+	extractor.Feed("call>data</tool_call>")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "hello <action>data</action>", extractor.history.String())
+	assert.Equal(t, "hello <tool_call>data</tool_call>", extractor.history.String())
 	assert.Equal(t, []string{"done"}, extractor.toolResults)
 }
 
-func TestStreamExtractorHistoryUnclosedAction(t *testing.T) {
+func TestStreamExtractorHistoryUnclosedToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, nil)
 
-	extractor.Feed("text <action>unclosed")
+	extractor.Feed("text <tool_call>unclosed")
 	extractor.Flush()
 
 	_ = collectChunks(extractor, out)
-	assert.Equal(t, "text <action>unclosed", extractor.history.String())
+	assert.Equal(t, "text <tool_call>unclosed", extractor.history.String())
 }
 
 func TestStreamExtractorActions(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	extractor := newStreamExtractor(out, func(string) string { return "ok" })
-	extractor.Feed("ok ")
-	extractor.Feed("<action>update_requirements|topic:math</action>")
-	extractor.Feed("<action>require_confirm</action>")
+	extractor.Feed("好的，")
+	extractor.Feed("<tool_call>send_to_arm_agent:抓取 red 物块</tool_call>")
+	extractor.Feed("<tool_call>get_message_from_arm_agent:</tool_call>")
 	extractor.Flush()
 	_ = collectChunks(extractor, out)
 
-	assert.Equal(t, []string{"update_requirements|topic:math", "require_confirm"}, extractor.actions)
+	assert.Equal(t, []string{"send_to_arm_agent:抓取 red 物块", "get_message_from_arm_agent:"}, extractor.actions)
 }

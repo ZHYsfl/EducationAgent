@@ -7,42 +7,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseActionSimple(t *testing.T) {
-	name, args, err := ParseAction("update_requirements|topic:math|style:simple")
+func TestParseToolCallWithContent(t *testing.T) {
+	name, args, err := ParseToolCall("send_to_arm_agent:抓取 red 物块并放到 (1.0,2.0,3.0)。")
 	require.NoError(t, err)
-	assert.Equal(t, "update_requirements", name)
-	assert.Equal(t, map[string]string{"topic": "math", "style": "simple"}, args)
+	assert.Equal(t, "send_to_arm_agent", name)
+	assert.Equal(t, map[string]string{"content": "抓取 red 物块并放到 (1.0,2.0,3.0)。"}, args)
 }
 
-func TestParseActionNoArgs(t *testing.T) {
-	name, args, err := ParseAction("require_confirm")
+func TestParseToolCallNoArgs(t *testing.T) {
+	name, args, err := ParseToolCall("get_message_from_arm_agent:")
 	require.NoError(t, err)
-	assert.Equal(t, "require_confirm", name)
+	assert.Equal(t, "get_message_from_arm_agent", name)
 	assert.Empty(t, args)
 }
 
-func TestParseActionEmptyValue(t *testing.T) {
-	name, args, err := ParseAction("send_to_ppt_agent|data:")
+func TestParseToolCallBareName(t *testing.T) {
+	name, args, err := ParseToolCall("get_message_from_arm_agent")
 	require.NoError(t, err)
-	assert.Equal(t, "send_to_ppt_agent", name)
-	assert.Equal(t, map[string]string{"data": ""}, args)
+	assert.Equal(t, "get_message_from_arm_agent", name)
+	assert.Empty(t, args)
 }
 
-func TestParseActionEmptyPayload(t *testing.T) {
-	_, _, err := ParseAction("")
+func TestParseToolCallContentKeepsCommasAndColons(t *testing.T) {
+	// Free-form content must pass through verbatim (compact format contract).
+	name, args, err := ParseToolCall("send_to_arm_agent:先移动到 (0.5,0.2,0.1)，注意: 别碰红块")
+	require.NoError(t, err)
+	assert.Equal(t, "send_to_arm_agent", name)
+	assert.Equal(t, "先移动到 (0.5,0.2,0.1)，注意: 别碰红块", args["content"])
+}
+
+func TestParseToolCallEmptyPayload(t *testing.T) {
+	_, _, err := ParseToolCall("")
 	assert.Error(t, err)
-}
-
-func TestArgsToMap(t *testing.T) {
-	args := map[string]string{"topic": "math", "total_pages": "15", "style": "simple"}
-	m := ArgsToMap(args, "total_pages")
-	assert.Equal(t, "math", m["topic"])
-	assert.Equal(t, 15, m["total_pages"])
-	assert.Equal(t, "simple", m["style"])
-}
-
-func TestArgsToMapNonNumericIntField(t *testing.T) {
-	args := map[string]string{"total_pages": "abc"}
-	m := ArgsToMap(args, "total_pages")
-	assert.Equal(t, "abc", m["total_pages"])
 }

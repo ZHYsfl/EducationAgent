@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   startConversation,
-  releaseSlidevPreview,
-  updateRequirements,
-  requireConfirm,
-  sendToPPTAgent,
-  fetchFromPPTMessageQueue,
+  sendToArmAgent,
+  getMessageFromArmAgent,
   vadStart,
   vadEnd,
   isIgnoredResponse,
@@ -31,54 +28,36 @@ describe('API client', () => {
     }))
   })
 
-  it('releaseSlidevPreview posts empty JSON body', async () => {
+  it('sendToArmAgent posts content to the arm agent', async () => {
     mockFetch.mockResolvedValueOnce({
-      json: async () => ({ code: 200, message: 'success', data: null }),
+      json: async () => ({ code: 200, message: 'success', data: '发送成功' }),
     })
-    const res = await releaseSlidevPreview()
-    expect(res.code).toBe(200)
-    expect(mockFetch).toHaveBeenCalledWith('/api/v1/release_slidev_preview', expect.objectContaining({
+    const res = await sendToArmAgent('把红色方块放到左边')
+    expect(res.data).toBe('发送成功')
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/send_to_arm_agent', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ from: 'frontend', to: 'arm_agent', content: '把红色方块放到左边' }),
+    }))
+  })
+
+  it('getMessageFromArmAgent POSTs empty body and returns string data', async () => {
+    mockFetch.mockResolvedValueOnce({
+      json: async () => ({ code: 200, message: 'success', data: 'all_messages_from_arm_agent:消息1;消息2' }),
+    })
+    const res = await getMessageFromArmAgent()
+    expect(res.data).toBe('all_messages_from_arm_agent:消息1;消息2')
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/get_message_from_arm_agent', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({}),
     }))
   })
 
-  it('updateRequirements sends partial requirements', async () => {
+  it('getMessageFromArmAgent handles no-new-message response', async () => {
     mockFetch.mockResolvedValueOnce({
-      json: async () => ({ code: 200, message: 'success', data: { missing_fields: ['audience'] } }),
+      json: async () => ({ code: 200, message: 'success', data: '当前没有新消息' }),
     })
-    const res = await updateRequirements({ topic: 'math' })
-    expect(res.data?.missing_fields).toEqual(['audience'])
-  })
-
-  it('requireConfirm sends full requirements', async () => {
-    mockFetch.mockResolvedValueOnce({
-      json: async () => ({ code: 200, message: 'success', data: null }),
-    })
-    const res = await requireConfirm({
-      topic: 'math',
-      style: 'simple',
-      total_pages: 10,
-      audience: 'kids',
-    })
-    expect(res.code).toBe(200)
-  })
-
-  it('sendToPPTAgent sends data string', async () => {
-    mockFetch.mockResolvedValueOnce({
-      json: async () => ({ code: 200, message: 'success', data: null }),
-    })
-    const res = await sendToPPTAgent('feedback')
-    expect(res.code).toBe(200)
-  })
-
-  it('fetchFromPPTMessageQueue GETs and returns string data', async () => {
-    mockFetch.mockResolvedValueOnce({
-      json: async () => ({ code: 200, message: 'success', data: 'hello' }),
-    })
-    const res = await fetchFromPPTMessageQueue()
-    expect(res.data).toBe('hello')
-    expect(mockFetch).toHaveBeenCalledWith('/api/v1/fetch_from_ppt_message_queue')
+    const res = await getMessageFromArmAgent()
+    expect(res.data).toBe('当前没有新消息')
   })
 
   it('vadStart posts audio payload', async () => {

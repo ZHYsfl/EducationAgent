@@ -15,21 +15,6 @@ export interface UniformResponse<T = unknown> {
 }
 
 // ---------------------------------------------------------------------------
-// Requirements
-// ---------------------------------------------------------------------------
-
-export interface Requirements {
-  topic: string | null
-  style: string | null
-  total_pages: number | null
-  audience: string | null
-}
-
-export interface UpdateRequirementsData {
-  missing_fields: string[] | null
-}
-
-// ---------------------------------------------------------------------------
 // VAD
 // ---------------------------------------------------------------------------
 
@@ -88,11 +73,7 @@ export type ConversationStatus =
   | 'speaking'
   | 'acting'
 
-export interface ConfirmPayload {
-  requirements: Requirements
-}
-
-export interface PPTMessage {
+export interface ArmMessage {
   id: string
   content: string
   receivedAt: number

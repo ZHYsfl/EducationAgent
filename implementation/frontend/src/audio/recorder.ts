@@ -181,7 +181,7 @@ function floatTo16BitPCM(input: Float32Array): DataView {
   return view
 }
 
-function addWavHeader(pcmData: ArrayBuffer, sampleRate: number): ArrayBuffer {
+function addWavHeader(pcmData: ArrayBufferLike, sampleRate: number): ArrayBuffer {
   const pcmBytes = pcmData.byteLength
   const buffer = new ArrayBuffer(44 + pcmBytes)
   const view = new DataView(buffer)

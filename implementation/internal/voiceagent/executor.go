@@ -27,13 +27,13 @@ func (e *Executor) Register(name string, fn ActionFunc) {
 
 // Execute parses the payload, looks up the handler, and invokes it.
 func (e *Executor) Execute(ctx context.Context, payload string) (string, error) {
-	name, args, err := ParseAction(payload)
+	name, args, err := ParseToolCall(payload)
 	if err != nil {
-		return "", fmt.Errorf("parse action: %w", err)
+		return "", fmt.Errorf("parse tool_call: %w", err)
 	}
 	fn, ok := e.actions[name]
 	if !ok {
-		return "", fmt.Errorf("unknown action: %s", name)
+		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 	return fn(ctx, args)
 }

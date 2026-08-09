@@ -1,98 +1,69 @@
 package handler
 
 import (
-	"github.com/gin-gonic/gin"
+	"strings"
+
 	"educationagent/internal/middleware"
 	"educationagent/internal/model"
 	"educationagent/internal/service"
 	"educationagent/internal/state"
+
+	"github.com/gin-gonic/gin"
 )
 
-// VoiceUpdateRequirements handles POST /api/v1/update_requirements
-func VoiceUpdateRequirements(voiceSvc *service.VoiceService) gin.HandlerFunc {
+// VoiceSendToArmAgent handles POST /api/v1/send_to_arm_agent — the voice agent
+// (or a tester) forwards a task/change/cancel message to the arm agent.
+func VoiceSendToArmAgent(armSvc *service.ArmService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req model.UpdateRequirementsRequest
+		var req model.SendToArmAgentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			middleware.Fail(c, 400, "invalid request body")
 			return
 		}
 
-		missing, err := voiceSvc.UpdateRequirements(req.Requirements)
-		if err != nil {
-			middleware.Fail(c, 400, "failed to update the requirements,please try again")
+		if err := armSvc.OnVoiceMessage(req.Content); err != nil {
+			middleware.Fail(c, 400, "failed to send the message to the arm agent")
 			return
 		}
-
-		var data *model.UpdateRequirementsData
-		if len(missing) > 0 {
-			data = &model.UpdateRequirementsData{MissingFields: missing}
-		} else {
-			data = &model.UpdateRequirementsData{MissingFields: nil}
-		}
-		middleware.OK(c, data)
+		middleware.OK(c, "发送成功")
 	}
 }
 
-// VoiceRequireConfirm handles POST /api/v1/require_confirm
-func VoiceRequireConfirm(voiceSvc *service.VoiceService) gin.HandlerFunc {
+// VoiceGetMessageFromArmAgent handles POST /api/v1/get_message_from_arm_agent —
+// drains message_from_arm_agent_queue and returns all pending arm messages
+// joined with ";", per the tool contract in api_of_voice_tools.md §2.2.
+func VoiceGetMessageFromArmAgent(st *state.AppState) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req model.RequireConfirmRequest
+		msgs := st.DrainArmMessageQueue()
+		if len(msgs) == 0 {
+			middleware.OK(c, "当前没有新消息")
+			return
+		}
+		middleware.OK(c, "all_messages_from_arm_agent:"+strings.Join(msgs, ";"))
+	}
+}
+
+// ArmSendToVoiceAgent handles POST /api/v1/send_to_voice_agent — enqueues an
+// arm-side message into message_from_arm_agent_queue (test/联调 endpoint; the
+// arm agent itself uses its send_to_voice_agent tool).
+func ArmSendToVoiceAgent(armSvc *service.ArmService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req model.SendToVoiceAgentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			middleware.Fail(c, 400, "invalid request body")
 			return
 		}
 
-		if err := voiceSvc.RequireConfirm(); err != nil {
-			middleware.Fail(c, 400, "failed to send the data to the frontend")
+		if err := armSvc.SendToVoiceAgent(req.Content); err != nil {
+			middleware.Fail(c, 400, "failed to send the message to the voice agent")
 			return
 		}
-		middleware.OK(c, nil)
-	}
-}
-
-// VoiceSendToPPTAgent handles POST /api/v1/send_to_ppt_agent
-func VoiceSendToPPTAgent(voiceSvc *service.VoiceService, pptSvc *service.PPTService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req model.SendToPPTAgentRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			middleware.Fail(c, 400, "invalid request body")
-			return
-		}
-
-		if err := pptSvc.OnVoiceMessage(req.Data); err != nil {
-			middleware.Fail(c, 400, "failed to send the data to the ppt agent")
-			return
-		}
-		middleware.OK(c, nil)
-	}
-}
-
-// VoiceFetchFromPPTQueue handles GET /api/v1/fetch_from_ppt_message_queue
-func VoiceFetchFromPPTQueue(voiceSvc *service.VoiceService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		msg, err := voiceSvc.FetchFromPPTMessageQueue()
-		if err != nil {
-			middleware.Fail(c, 400, "failed to fetch the data from the ppt message queue")
-			return
-		}
-		if msg == "" {
-			middleware.OK(c, nil)
-			return
-		}
-		middleware.OK(c, msg)
-	}
-}
-
-// ReleaseSlidevPreview handles POST /api/v1/release_slidev_preview — frees TCP 6008 (Slidev / Vite preview).
-func ReleaseSlidevPreview(pptSvc *service.PPTService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		pptSvc.ReleaseSlidevPreviewPort()
-		middleware.OK(c, nil)
+		middleware.OK(c, "发送成功")
 	}
 }
 
 // StartConversation handles POST /api/v1/start_conversation
-func StartConversation(st *state.AppState, pptSvc *service.PPTService) gin.HandlerFunc {
+func StartConversation(st *state.AppState, armSvc *service.ArmService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req model.StartConversationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,7 +71,7 @@ func StartConversation(st *state.AppState, pptSvc *service.PPTService) gin.Handl
 			return
 		}
 
-		pptSvc.StopRuntime()
+		armSvc.StopRuntime()
 		st.LockVoiceTurn()
 		st.ResetConversation()
 		st.UnlockVoiceTurn()

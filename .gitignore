@@ -251,7 +251,6 @@ node_modules/
 .vscode
 .claudeignore
 
-model/
 
 interrupt_detection_cot_lora/
 
@@ -262,8 +261,6 @@ scripts/
 *.excalidraw
 meeting/
 
-go.sum
-go.mod
 
 implementation/docs/
 

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPPTAgentRuntimeStartStop(t *testing.T) {
-	r := NewPPTAgentRuntime()
+func TestAgentRuntimeStartStop(t *testing.T) {
+	r := NewAgentRuntime()
 
 	var started int32
 	err := r.Start(func(ctx context.Context) {
@@ -29,8 +29,8 @@ func TestPPTAgentRuntimeStartStop(t *testing.T) {
 	assert.False(t, r.IsRunning())
 }
 
-func TestPPTAgentRuntimeDoubleStart(t *testing.T) {
-	r := NewPPTAgentRuntime()
+func TestAgentRuntimeDoubleStart(t *testing.T) {
+	r := NewAgentRuntime()
 	err := r.Start(func(ctx context.Context) {
 		<-ctx.Done()
 	})
@@ -45,8 +45,8 @@ func TestPPTAgentRuntimeDoubleStart(t *testing.T) {
 	r.Wait()
 }
 
-func TestPPTAgentRuntimeStopIdempotent(t *testing.T) {
-	r := NewPPTAgentRuntime()
+func TestAgentRuntimeStopIdempotent(t *testing.T) {
+	r := NewAgentRuntime()
 	r.Stop() // should not panic
 	err := r.Start(func(ctx context.Context) {
 		<-ctx.Done()

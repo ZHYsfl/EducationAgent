@@ -7,7 +7,6 @@ import { useSSE } from './useSSE'
 import {
   vadStart,
   startConversation as apiStartConversation,
-  releaseSlidevPreview,
 } from '@/api/client'
 import { splitSentences } from '@/utils/parser'
 import type { SSEChunk } from '@/types'
@@ -97,18 +96,12 @@ export function useConversation() {
         streamHistoryRef.current += actionTag
         store.appendToBuffer(actionTag)
         store.setStatus('acting')
-      } else if (chunk.type === 'tool') {
-        const toolText = chunk.text ?? ''
-        store.hideConfirm()
-        if (toolText.startsWith('require_confirm:')) {
-          try {
-            const req = JSON.parse(toolText.slice('require_confirm:'.length))
-            store.showConfirm({ requirements: req })
-          } catch {}
-        }
-        if (toolText.includes('data is sent to the ppt agent successfully')) {
+        // A task dispatched to the arm agent opens the arm panel.
+        if ((chunk.payload ?? '').startsWith('send_to_arm_agent')) {
           store.setPhase2(true)
         }
+      } else if (chunk.type === 'tool') {
+        const toolText = chunk.text ?? ''
         pendingToolsRef.current.push(toolText)
         // Mark the boundary after the last action tag for round-2 detection.
         postActionOffsetRef.current = streamHistoryRef.current.length
@@ -409,7 +402,6 @@ export function useConversation() {
     ttsWasActiveRef.current = false
     ttsPendingRef.current = ''
     store.setStatus('idle')
-    void releaseSlidevPreview().catch(() => {})
   }, [sse, store])
 
   const sendText = useCallback(async (text: string) => {
@@ -471,7 +463,6 @@ export function useConversation() {
     sendText,
     status: store.status,
     history: store.history,
-    confirmPayload: store.confirmPayload,
-    pptMessages: store.pptMessages,
+    armMessages: store.armMessages,
   }
 }

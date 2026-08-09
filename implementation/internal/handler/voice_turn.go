@@ -28,11 +28,16 @@ func VoiceVADStart(st *state.AppState, asr service.ASRService, interrupt service
 			return
 		}
 
-		// Always treat any detected speech as an interrupt so the voice agent
-		// responds to every user turn. The VAD already filters out noise via
-		// minSpeechDurationMs, so a second LLM-based interrupt check is redundant.
-		isInterrupt := true
-		log.Printf("vad_start: historyLen=%d transcript=%q", st.VoiceHistoryLen(), transcript)
+		// Ask the interrupt-detection model whether this utterance is a real
+		// interruption; fail open (treat as interrupt) when the check errors so
+		// the user is never ignored.
+		isInterrupt, err := interrupt.Check(c.Request.Context(), transcript)
+		if err != nil {
+			log.Printf("vad_start: interrupt check failed, fail-open: %v", err)
+			isInterrupt = true
+		}
+		st.SetLastVADInterrupt(isInterrupt)
+		log.Printf("vad_start: historyLen=%d transcript=%q interrupt=%v", st.VoiceHistoryLen(), transcript, isInterrupt)
 
 		c.JSON(http.StatusOK, model.UniformResponse{
 			Code:    200,
@@ -89,6 +94,24 @@ func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.
 		var req model.VADEndRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "invalid request body"})
+			return
+		}
+
+		// A vad_end without a preceding vad_start has no cached interrupt
+		// decision; reject it instead of running ASR + the voice agent.
+		interrupt, ok := st.GetLastVADInterrupt()
+		if !ok {
+			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "vad_start required before vad_end"})
+			return
+		}
+		// If the last vad_start decided this utterance is not a real interrupt,
+		// ignore the turn instead of running ASR + the voice agent.
+		if !interrupt {
+			c.JSON(http.StatusOK, model.UniformResponse{
+				Code:    200,
+				Message: "success",
+				Data:    gin.H{"ignored": true},
+			})
 			return
 		}
 

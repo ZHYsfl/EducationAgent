@@ -3,7 +3,8 @@
 # 单卡同时启动三路 vLLM（默认端口与 service/.env 一致）：
 #   8001 — 语音 Qwen 4B + LoRA（voice-agent）
 #   8002 — Qwen3-ASR
-#   8000 — 打断检测：基座 + LoRA（默认 model id: interrupt-detection）
+#   8003 — 打断检测：基座 + LoRA（默认 model id: interrupt-detection）
+# 注意：8000 已保留给具身工具网关（api_of_embodied_tools.md），勿占用。
 #
 # - 语音 / 打断检测 用 /root/.venv；ASR 用 /root/autodl-tmp/.venv（勿混用）
 # - 启动顺序：语音 → 等 /health → 打断检测 → 等 /health → ASR → 等 /health
@@ -50,7 +51,7 @@ INTERRUPT_LORA_NAME="${INTERRUPT_LORA_NAME:-interrupt-detection}"
 ASR_MODEL="${ASR_MODEL_PATH:-/root/autodl-tmp/asr}"
 
 VOICE_PORT="${VOICE_PORT:-8001}"
-INTERRUPT_PORT="${INTERRUPT_PORT:-8000}"
+INTERRUPT_PORT="${INTERRUPT_PORT:-8003}"
 ASR_PORT="${ASR_PORT:-8002}"
 
 # 同卡三路：显存占比之和约 0.85

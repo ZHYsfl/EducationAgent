@@ -14,90 +14,143 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+// Voice history compression. A sliding tail window shifts the context prefix
+// every turn (breaking KV-cache reuse), can split message pairs, and silently
+// drops task parameters. Instead, once the stored history grows past
+// voiceCompressThreshold, the oldest chunk is compressed into a rolling
+// summary. The summary is frozen between compression events and injected
+// right after the system prompt, so the context prefix stays stable and
+// append-only — server-side prefix caching (vLLM APC / SGLang RadixAttention)
+// can hit on every turn, missing only on rare compression events.
 const (
-	voiceHistoryPhase1Max = 10
-	// Phase 2: short tail so small local LLMs (~1.5k ctx) stay within limits; round 2 also uses this cap.
-	voiceHistoryPhase2Max = 5
+	// voiceCompressThreshold triggers compression when the stored voice
+	// history exceeds this many messages.
+	voiceCompressThreshold = 24
+	// voiceCompressKeepRecent is how many recent messages stay verbatim.
+	voiceCompressKeepRecent = 12
 )
 
-func trimVoiceHistoryTail(h []openai.ChatCompletionMessageParamUnion, phase2 bool) []openai.ChatCompletionMessageParamUnion {
-	max := voiceHistoryPhase1Max
-	if phase2 {
-		max = voiceHistoryPhase2Max
+// voiceSummaryPrompt rolls the previous summary and a chunk of old history
+// into a new compact summary.
+const voiceSummaryPrompt = `你是对话压缩器。把"此前的摘要"和"一段较旧的对话历史"合并压缩为一段新摘要，要求：
+- 保留任务关键参数（物块颜色、目标坐标）、已完成的进展、未完成事项、用户的明确偏好；
+- 丢弃寒暄、重复内容与已无关紧要的中间过程；
+- 150 字以内，只输出摘要文本。`
+
+// splitCompressionWindow splits history into the old chunk to compress and
+// the recent window to keep verbatim. Leading stale snapshots of the recent
+// window (a <queue_status> status bar or a tool result whose paired message
+// was compressed away) are moved into the old chunk so no pair is split.
+// Returns (nil, history) when compression is not yet needed.
+func splitCompressionWindow(history []openai.ChatCompletionMessageParamUnion) (old, recent []openai.ChatCompletionMessageParamUnion) {
+	if len(history) <= voiceCompressThreshold {
+		return nil, history
 	}
-	if len(h) <= max {
-		return h
+	cut := len(history) - voiceCompressKeepRecent
+	for cut < len(history) {
+		m := history[cut]
+		if m.OfTool != nil {
+			cut++
+			continue
+		}
+		if u := m.OfUser; u != nil && u.Content.OfString.Valid() &&
+			strings.HasPrefix(u.Content.OfString.Value, "<queue_status>") {
+			cut++
+			continue
+		}
+		break
 	}
-	return h[len(h)-max:]
+	return history[:cut], history[cut:]
 }
 
-const phase1SystemPrompt = `你是一个专注于帮助用户制作 PPT 的语音助手，当前处于需求收集阶段（Phase 1）。PPT Agent 尚未启动。
+// renderHistoryForSummary renders messages as "role: text" lines for the
+// compression prompt.
+func renderHistoryForSummary(msgs []openai.ChatCompletionMessageParamUnion) string {
+	var b strings.Builder
+	for _, m := range msgs {
+		switch {
+		case m.OfUser != nil && m.OfUser.Content.OfString.Valid():
+			b.WriteString("user: " + m.OfUser.Content.OfString.Value + "\n")
+		case m.OfAssistant != nil && m.OfAssistant.Content.OfString.Valid():
+			b.WriteString("assistant: " + m.OfAssistant.Content.OfString.Value + "\n")
+		case m.OfTool != nil && m.OfTool.Content.OfString.Valid():
+			b.WriteString("tool: " + m.OfTool.Content.OfString.Value + "\n")
+		}
+	}
+	return b.String()
+}
 
-任务目标：
-通过自然、友好的对话，从用户手中收集以下 4 个必要字段：
-1. topic（主题）
-2. style（风格）
-3. total_pages（总页数）
-4. audience（受众）
+// compressVoiceHistoryIfNeeded compresses older voice turns into the rolling
+// summary when the stored history exceeds voiceCompressThreshold. Compression
+// failure is non-fatal: the history is left untouched and compression is
+// retried on a later turn; if the history grows past twice the threshold the
+// oldest chunk is hard-dropped as a safety valve.
+func (s *DefaultVoiceAgentService) compressVoiceHistoryIfNeeded(ctx context.Context, st *state.AppState) {
+	history := st.GetVoiceHistory()
+	old, recent := splitCompressionWindow(history)
+	if old == nil {
+		return
+	}
 
-可用动作（必须在每轮回复的口语文本最末尾追加）：
-- <action>update_requirements|topic:...|style:...|total_pages:...|audience:...</action>
-  用于更新已收集的字段。工具返回剩余缺失字段名，或返回 "all fields are updated"。
-- <action>require_confirm</action>
-  仅在 4 个字段全部收集完毕后使用。工具返回 "data is sent to the frontend successfully"。
-- <action>send_to_ppt_agent|data:...</action>
-  仅在用户确认需求无误后使用，用于将需求发送给 PPT Agent 正式启动生成。此动作一旦执行，Phase 1 永久结束，进入 Phase 2。
+	previous := st.GetVoiceSummary()
+	if previous == "" {
+		previous = "无"
+	}
+	summary, err := s.agent.ChatText(ctx, []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(voiceSummaryPrompt),
+		openai.UserMessage(fmt.Sprintf("此前的摘要：\n%s\n\n较旧的对话历史：\n%s", previous, renderHistoryForSummary(old))),
+	})
+	if err != nil || strings.TrimSpace(summary) == "" {
+		if len(history) > 2*voiceCompressThreshold {
+			st.SetVoiceHistory(recent) // safety valve against runaway growth
+		}
+		return
+	}
+	st.SetVoiceSummary(strings.TrimSpace(summary))
+	st.SetVoiceHistory(recent)
+}
+
+// buildVoiceMessages assembles the inference context: system prompt, the
+// frozen rolling summary (if any), then the verbatim recent history, then any
+// new messages for this turn.
+func buildVoiceMessages(sys openai.ChatCompletionMessageParamUnion, st *state.AppState, extra ...openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
+	messages := []openai.ChatCompletionMessageParamUnion{sys}
+	if summary := st.GetVoiceSummary(); summary != "" {
+		messages = append(messages, openai.UserMessage("【此前对话摘要】"+summary))
+	}
+	messages = append(messages, st.GetVoiceHistory()...)
+	messages = append(messages, extra...)
+	return messages
+}
+
+// voiceSystemPrompt is the Voice Agent's only system prompt. Unlike the old
+// PPT system there is no remember/require_confirm pipeline: the human speaks
+// tasks directly, intent is clarified in dialogue, and once clear the task is
+// forwarded to the arm agent (async_dual_agent_system_design.md §5).
+const voiceSystemPrompt = `你是异步双 agent 系统中的 Voice Agent，是人唯一的交互入口：你与人实时语音对话，理解任务意图，把任务下发给后台操作机械臂的 Arm Agent，并把 Arm Agent 上报的进度/结果语音转述给人。Arm Agent 不直接对人输出。
+
+可用工具（在回复最末尾以如下紧凑格式调用，每轮至多一个）：
+<tool_call>
+工具名:参数
+</tool_call>
+
+1. send_to_arm_agent:任务内容
+   把任务/变更/取消消息发给 Arm Agent，返回"发送成功"。
+   红线：人的任务意图不明确（缺颜色、缺位置等关键信息，或只是在闲聊/问进度）时不得调用，先通过对话问清楚再下发。
+2. get_message_from_arm_agent（无参数）
+   一次性消费 Arm Agent 上报的全部消息，返回"all_messages_from_arm_agent:消息1;消息2"或"当前没有新消息"。
+   仅当状态栏消息为 <queue_status>not empty</queue_status> 时才调用；empty 时不要调用。
+
+两回合特殊规则：
+你输出 get_message_from_arm_agent 后，后端会同步执行该工具并把结果放入对话历史，然后主动发起第二次推理。第二次推理时你只需把结果用口语如实转述给人（信息完整：结果是什么、需要人做什么），严禁输出任何新的 <tool_call> 标签。
 
 铁律：
-1. Phase 1 期间所有 user 消息的 status 均为 empty，你无需关注队列，只需专注于收集需求。
-2. 每轮回复必须先输出自然口语，再将动作标签放在最末尾。例如：
-   "好的，请问风格偏好是什么？<action>update_requirements|topic:数学</action>"
-   严禁在动作标签后再追加口语文本。
-3. 如果本轮无需执行动作，只输出纯口语，不带任何 <action> 标签。
-4. 用户一次性提供多个字段时，可以合并为一个 action 更新。
-5. update_requirements 和 require_confirm 在第一次调用 send_to_ppt_agent 后永久失效，后续不可再用。
-6. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断了。你只需自然地回应用户的新输入，不要臆造未触发的动作。`
-
-const phase2SystemPrompt = `你是一个语音助手，当前身份是用户与 PPT Agent 之间的沟通桥梁。PPT 正在生成中，你处于 Phase 2。
-
-职责：
-1. 与用户自然闲聊，解答关于 PPT 进度的问题。
-2. 当用户消息中 <status>not empty</status> 时，主动拉取 PPT Message Queue 中的消息。
-3. 将用户的反馈、答复或新指令通过 send_to_ppt_agent 转发给 PPT Agent。
-4. 将 PPT Agent 返回的消息用自然语言汇报给用户。
-
-可用动作：
-- <action>fetch_from_ppt_message_queue</action>
-  当 user 消息 status 为 not empty 时使用，用于拉取队列消息。
-  工具返回格式示例：
-    "the ppt message is: the new version of the ppt is generated successfully"
-    "the ppt message is: questions for user: ..."
-    "the ppt message is: conflict: ..."
-  若队列中有多条消息，会用 " | " 拼接为一条返回。
-
-  两回合特殊规则：
-  你输出 fetch 动作后，后端会同步执行该动作并将结果放入对话历史，然后主动发起第二次推理。
-  在第二次推理中，你的输入历史会包含 fetch 的 tool 结果；你只需像正常对话一样输出自然口语汇报即可。
-  这次汇报是纯口语，严禁输出任何新的 <action> 标签。
-
-  fetch 结果解读：
-  - 如果返回 "queue is empty"，说明 PPT Agent 正在后台工作，暂时没有新消息要汇报。你要告诉用户"正在生成中，请稍候"或"暂时没有新进展"，绝对不能说"已完成"。
-  - 只有当返回内容明确包含 "generated"、"exported"、"完成"、"PDF" 等完成标志时，才能说"已生成完毕"。
-  - 如果返回的是问题或冲突，如实转述给用户。
-
-- <action>send_to_ppt_agent|data:...</action>
-  用于将用户反馈、决策或需求变更转发给 PPT Agent。
-  工具返回 "data is sent to the ppt agent successfully"。
-  此动作执行后直接进入 turn_end，不触发第二次推理。
-
-铁律：
-1. Phase 2 中 update_requirements 和 require_confirm 已永久失效，严禁使用。
-2. 每轮回复必须先输出自然口语，再将动作标签放在最末尾。例如：
-   "我去帮您看看进度。<action>fetch_from_ppt_message_queue</action>"
-   严禁在动作标签后再追加口语文本。
-3. 当 status 为 empty 且用户只是在闲聊时，只输出纯口语，不带任何动作。
-4. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断。只需自然地回应新输入。
-5. 动作执行是静默的（不播放语音）。即使用户在动作执行期间说话，动作仍会在后台完整执行完毕。`
+1. 每条人类 user 消息之后紧跟一条独立的 role=user 状态栏消息 <queue_status>empty/not empty</queue_status>，反映 Arm Agent 是否有未读消息；当工具结果、人类输入、状态栏同时出现时，顺序固定为：工具结果 → 人类输入 → 状态栏。
+2. 每轮回复必须先输出自然口语，再把 <tool_call> 标签放在最末尾，标签后不得再追加口语文本；本轮无需工具时只输出纯口语。
+3. 人的意图缺关键信息（抓什么颜色的物块、放到哪里）时，通过对话逐项问清，确认意图完整后再 send_to_arm_agent；content 要完整转述任务（动作+颜色+坐标），例如"抓取 red 物块并放到 (1.0,2.0,3.0)。"。
+4. 状态栏为 empty 且人催进度时，如实说"还没有新进展，有消息我第一时间告诉你"，不得谎称完成；只有消费到的消息明确包含完成/失败信息时才能如实转述。
+5. 若 user 消息以 </interrupted> 开头，表示人在你上一轮播报过程中打断了你，自然地回应新输入即可，不要重复已说内容。
+6. 回复要口语化、简洁，适合语音播报；工具执行是静默的，即使用户在工具执行期间说话，工具仍会在后台完整执行完毕。`
 
 // VoiceAgentService drives the finetuned voice agent LLM and streams the response.
 type VoiceAgentService interface {
@@ -124,53 +177,52 @@ func NewVoiceAgentService(cfg toolcalling.LLMConfig, exec *voiceagent.Executor) 
 	}
 }
 
-// StreamTurn builds the context, calls the LLM stream, parses inline actions,
-// forwards SSE chunks to out, and executes actions via the executor.
-// Action results are appended to voice history after the turn ends so the next
-// LLM turn can observe them.
+// StreamTurn builds the context, calls the LLM stream, parses inline
+// <tool_call> tags, forwards SSE chunks to out, and executes tool calls via
+// the executor. Tool results are appended to voice history after the turn ends
+// (tool/user dual-role writeback) so the next LLM turn can observe them.
 func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.AppState, transcript string, needsInterruptedPrefix bool, interruptedAssistant string, out chan<- model.SSEChunk) error {
 	defer close(out)
 
 	// If the frontend interrupted an assistant turn during TTS playback, append
 	// the truncated spoken text to history so the backend context stays in sync.
 	if interruptedAssistant != "" {
-		st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
-			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-					OfString: openai.String(interruptedAssistant),
-				},
-			},
-		})
+		st.AppendVoiceHistory(assistantTextMessage(interruptedAssistant))
 	}
 
+	// Compress older turns into the rolling summary if the history outgrew
+	// the threshold; between compression events the context prefix stays
+	// stable so server-side prefix caching can hit.
+	s.compressVoiceHistoryIfNeeded(ctx, st)
+
+	// Every human user message enters the context followed by a separate
+	// role=user <queue_status> status bar message (design §4.3), reflecting
+	// message_from_arm_agent_queue. When a tool response, the human input
+	// and the status bar are all present, their order is fixed:
+	// tool response → user input → status bar.
 	queueStatus := "empty"
-	if _, ok := st.PeekPPTMessageQueue(); ok {
+	if _, ok := st.PeekArmMessageQueue(); ok {
 		queueStatus = "not empty"
 	}
 
-	userContent := fmt.Sprintf("<status>%s</status>\n<user>%s</user>", queueStatus, transcript)
+	userContent := transcript
 	if needsInterruptedPrefix {
 		userContent = "</interrupted>\n" + userContent
 	}
+	statusBar := fmt.Sprintf("<queue_status>%s</queue_status>", queueStatus)
 
-	// Emit the fully formatted user message first so the frontend can append it
-	// to the conversation history before the assistant turn starts.
+	// Emit the fully formatted user message and the status bar first so the
+	// frontend can append them to the conversation history before the
+	// assistant turn starts.
 	out <- model.SSEChunk{Type: "user_transcript", Text: userContent}
+	out <- model.SSEChunk{Type: "user_transcript", Text: statusBar}
 
-	var sys openai.ChatCompletionMessageParamUnion
-	if st.IsRequirementsFinalized() {
-		sys = openai.SystemMessage(phase2SystemPrompt)
-	} else {
-		sys = openai.SystemMessage(phase1SystemPrompt)
-	}
+	sys := openai.SystemMessage(voiceSystemPrompt)
 
 	// -------------------------------------------------------------------------
-	// Round 1: assistant generates TTS + action(s)
+	// Round 1: assistant generates TTS + tool call(s)
 	// -------------------------------------------------------------------------
-	// Keep only the most recent turns to stay within the model's context window.
-	history := trimVoiceHistoryTail(st.GetVoiceHistory(), st.IsRequirementsFinalized())
-	history = append(history, openai.UserMessage(userContent))
-	messages := append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
+	messages := buildVoiceMessages(sys, st, openai.UserMessage(userContent), openai.UserMessage(statusBar))
 	stream := s.agent.StreamChat(ctx, messages)
 
 	extractor := newStreamExtractor(out, func(payload string) string {
@@ -195,37 +247,33 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 		return ctx.Err()
 	}
 
-	// Persist round 1: user -> assistant -> tool(s)
+	// Persist round 1: user -> status bar -> assistant -> tool result(s) with
+	// tool/user dual-role writeback (design §5).
 	st.AppendVoiceHistory(openai.UserMessage(userContent))
+	st.AppendVoiceHistory(openai.UserMessage(statusBar))
 	if assistantContent := extractor.history.String(); assistantContent != "" {
-		st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
-			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-					OfString: openai.String(assistantContent),
-				},
-			},
-		})
+		st.AppendVoiceHistory(assistantTextMessage(assistantContent))
 	}
 	for _, tr := range extractor.toolResults {
-		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-action"))
+		st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-tool"))
+		st.AppendVoiceHistory(openai.UserMessage(tr))
 	}
 
 	// -------------------------------------------------------------------------
-	// Round 2 (conditional): if any action is fetch_from_ppt_message_queue,
-	// run a second inference so the model can report the tool results.
+	// Round 2 (conditional): if the tool call was get_message_from_arm_agent,
+	// run a second inference so the model can report the consumed messages.
 	// -------------------------------------------------------------------------
 	hasFetch := false
 	for _, a := range extractor.actions {
-		name, _, err := voiceagent.ParseAction(a)
-		if err == nil && name == "fetch_from_ppt_message_queue" {
+		name, _, err := voiceagent.ParseToolCall(a)
+		if err == nil && name == "get_message_from_arm_agent" {
 			hasFetch = true
 			break
 		}
 	}
 
 	if hasFetch {
-		history = trimVoiceHistoryTail(st.GetVoiceHistory(), st.IsRequirementsFinalized())
-		messages = append([]openai.ChatCompletionMessageParamUnion{sys}, history...)
+		messages = buildVoiceMessages(sys, st)
 		stream2 := s.agent.StreamChat(ctx, messages)
 
 		extractor2 := newStreamExtractor(out, func(payload string) string {
@@ -250,13 +298,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 			return ctx.Err()
 		}
 		if content := extractor2.history.String(); content != "" {
-			st.AppendVoiceHistory(openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-						OfString: openai.String(content),
-					},
-				},
-			})
+			st.AppendVoiceHistory(assistantTextMessage(content))
 		}
 	}
 
@@ -270,16 +312,16 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	return nil
 }
 
-// streamExtractor parses inline <action>...</action> tags from a token stream
-// and emits model.SSEChunk values. When a complete action is found, onAction
-// is invoked and its return value is emitted as a "tool" chunk.
+// streamExtractor parses inline <tool_call>...</tool_call> tags from a token
+// stream and emits model.SSEChunk values. When a complete tool call is found,
+// onAction is invoked and its return value is emitted as a "tool" chunk.
 type streamExtractor struct {
 	out         chan<- model.SSEChunk
 	raw         strings.Builder
 	history     strings.Builder
 	actions     []string
 	toolResults []string
-	inAction    bool
+	inToolCall  bool
 	onAction    func(payload string) string
 	utf8Buf     []byte
 }
@@ -315,12 +357,12 @@ func (e *streamExtractor) writeText(text string) {
 	e.history.WriteString(safe)
 }
 
-func (e *streamExtractor) writeAction(payload string) {
+func (e *streamExtractor) writeToolCall(payload string) {
 	e.emit(model.SSEChunk{Type: "action", Payload: payload})
 	e.actions = append(e.actions, payload)
-	e.history.WriteString("<action>")
+	e.history.WriteString(toolcalling.ToolCallOpenTag)
 	e.history.WriteString(payload)
-	e.history.WriteString("</action>")
+	e.history.WriteString(toolcalling.ToolCallCloseTag)
 	if e.onAction != nil {
 		toolText := e.onAction(payload)
 		if toolText != "" {
@@ -335,35 +377,36 @@ func (e *streamExtractor) Feed(token string) {
 	e.raw.WriteString(token)
 	for {
 		s := e.raw.String()
-		if e.inAction {
-			idx := strings.Index(s, "</action>")
+		if e.inToolCall {
+			idx := strings.Index(s, toolcalling.ToolCallCloseTag)
 			if idx >= 0 {
 				payload := s[:idx]
-				e.writeAction(payload)
+				e.writeToolCall(payload)
 				e.raw.Reset()
-				e.raw.WriteString(s[idx+9:])
-				e.inAction = false
+				e.raw.WriteString(s[idx+len(toolcalling.ToolCallCloseTag):])
+				e.inToolCall = false
 				continue
 			}
 			break
 		}
 
-		idx := strings.Index(s, "<action>")
+		idx := strings.Index(s, toolcalling.ToolCallOpenTag)
 		if idx >= 0 {
 			text := s[:idx]
 			e.writeText(text)
 			e.raw.Reset()
-			e.raw.WriteString(s[idx+8:])
-			e.inAction = true
+			e.raw.WriteString(s[idx+len(toolcalling.ToolCallOpenTag):])
+			e.inToolCall = true
 			continue
 		}
 
-		// Safety flush: <action> is 8 chars. If the trailing 8 chars do not contain '<',
-		// no action tag can cross the boundary, so everything before them is safe to emit.
-		if len(s) > 8 {
-			suffix := s[len(s)-8:]
+		// Safety flush: <tool_call> is 11 chars. If the trailing 11 chars do not
+		// contain '<', no tool_call tag can cross the boundary, so everything
+		// before them is safe to emit.
+		if len(s) > len(toolcalling.ToolCallOpenTag) {
+			suffix := s[len(s)-len(toolcalling.ToolCallOpenTag):]
 			if !strings.Contains(suffix, "<") {
-				e.writeText(s[:len(s)-8])
+				e.writeText(s[:len(s)-len(toolcalling.ToolCallOpenTag)])
 				e.raw.Reset()
 				e.raw.WriteString(suffix)
 			}
@@ -375,8 +418,8 @@ func (e *streamExtractor) Feed(token string) {
 // Flush drains any remaining text when the stream ends.
 func (e *streamExtractor) Flush() {
 	s := e.raw.String()
-	if e.inAction {
-		e.writeText("<action>" + s)
+	if e.inToolCall {
+		e.writeText(toolcalling.ToolCallOpenTag + s)
 	} else if s != "" {
 		e.writeText(s)
 	}

@@ -2,8 +2,7 @@ import { create } from 'zustand'
 import type {
   ConversationStatus,
   ConversationMessage,
-  ConfirmPayload,
-  PPTMessage,
+  ArmMessage,
   SSEChunk,
 } from '@/types'
 
@@ -62,17 +61,10 @@ export interface ConversationState {
   setInterrupted: (value: boolean) => void
 
   // -------------------------------------------------------------------------
-  // Confirm table
+  // Arm messages
   // -------------------------------------------------------------------------
-  confirmPayload: ConfirmPayload | null
-  showConfirm: (payload: ConfirmPayload) => void
-  hideConfirm: () => void
-
-  // -------------------------------------------------------------------------
-  // PPT messages
-  // -------------------------------------------------------------------------
-  pptMessages: PPTMessage[]
-  addPPTMessage: (content: string) => void
+  armMessages: ArmMessage[]
+  addArmMessage: (content: string) => void
 
   isPhase2: boolean
   setPhase2: (v: boolean) => void
@@ -145,17 +137,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   isInterrupted: false,
   setInterrupted: (value) => set({ isInterrupted: value }),
 
-  // Confirm
-  confirmPayload: null,
-  showConfirm: (payload) => set({ confirmPayload: payload }),
-  hideConfirm: () => set({ confirmPayload: null }),
-
-  // PPT messages
-  pptMessages: [],
-  addPPTMessage: (content) =>
+  // Arm messages
+  armMessages: [],
+  addArmMessage: (content) =>
     set((state) => ({
-      pptMessages: [
-        ...state.pptMessages,
+      armMessages: [
+        ...state.armMessages,
         { id: crypto.randomUUID(), content, receivedAt: Date.now() },
       ],
     })),

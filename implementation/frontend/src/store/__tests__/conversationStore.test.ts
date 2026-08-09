@@ -11,8 +11,7 @@ describe('conversationStore', () => {
       spokenText: '',
       ttsPendingText: '',
       isInterrupted: false,
-      confirmPayload: null,
-      pptMessages: [],
+      armMessages: [],
       toolBuffer: [],
     })
   })
@@ -46,13 +45,13 @@ describe('conversationStore', () => {
 
   it('handles action + tool + turn_end', () => {
     useConversationStore.getState().resetBuffer()
-    useConversationStore.getState().handleSSEChunk({ type: 'action', payload: 'require_confirm' })
+    useConversationStore.getState().handleSSEChunk({ type: 'action', payload: 'send_to_arm_agent:pick up the block' })
     useConversationStore.getState().handleSSEChunk({ type: 'tool', text: 'ok' })
     useConversationStore.getState().handleSSEChunk({ type: 'turn_end' })
     const history = useConversationStore.getState().history
     expect(history.at(-2)).toEqual({
       role: 'assistant',
-      content: '<action>require_confirm</action>',
+      content: '<action>send_to_arm_agent:pick up the block</action>',
     })
     expect(history.at(-1)).toEqual({
       role: 'tool',
@@ -61,17 +60,9 @@ describe('conversationStore', () => {
     expect(useConversationStore.getState().status).toBe('idle')
   })
 
-  it('tracks confirm payload', () => {
-    const payload = { requirements: { topic: 'math', style: 'simple', total_pages: 10, audience: 'kids' } }
-    useConversationStore.getState().showConfirm(payload)
-    expect(useConversationStore.getState().confirmPayload).toEqual(payload)
-    useConversationStore.getState().hideConfirm()
-    expect(useConversationStore.getState().confirmPayload).toBeNull()
-  })
-
-  it('adds ppt messages', () => {
-    useConversationStore.getState().addPPTMessage('ppt done')
-    expect(useConversationStore.getState().pptMessages).toHaveLength(1)
-    expect(useConversationStore.getState().pptMessages[0].content).toBe('ppt done')
+  it('adds arm messages', () => {
+    useConversationStore.getState().addArmMessage('task done')
+    expect(useConversationStore.getState().armMessages).toHaveLength(1)
+    expect(useConversationStore.getState().armMessages[0].content).toBe('task done')
   })
 })

@@ -1,207 +1,115 @@
-# VoxFlow（又名EducationAgent）
+# EducationAgent —— 异步双 Agent 具身系统（Voice Agent + Arm Agent）
 
 <p align="center">
-  <b>全双工语音对话驱动的 PPT 生成助手</b><br>
-  <i>只需说话，PPT 自动生成 —— 支持实时打断、语音反馈修改与双 Agent 协作</i>
+  <b>对机械臂说话，任务自动执行</b><br>
+  <i>Voice Agent 前台全双工语音交互，Arm Agent 后台操作机械臂真机 —— 两条消息队列异步解耦</i>
 </p>
 
-<p align="center">
-  <a href="https://github.com/ZHYsfl/EducationAgent/stargazers"><img src="https://img.shields.io/github/stars/ZHYsfl/EducationAgent?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/ZHYsfl/EducationAgent/network/members"><img src="https://img.shields.io/github/forks/ZHYsfl/EducationAgent?style=flat-square" alt="Forks"></a>
-  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go" alt="Go">
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react" alt="React">
-  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python" alt="Python">
-  <a href="https://huggingface.co/ZaneSFL/zh-ppt-voice-agent-model-lora-support-interrupt"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace-Model-yellow?style=flat-square" alt="HF Model"></a>
-  <a href="https://huggingface.co/datasets/ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace-Dataset-yellow?style=flat-square" alt="HF Dataset"></a>
-</p>
-
-<p align="center">
-  <a href="演示视频.mp4"><b>▶ 点击播放 / 下载观看演示视频（约 13 MB）</b></a>
-</p>
+> 本仓库前身为 **VoxFlow**（全双工语音 PPT 生成助手）。当前版本复用其验证过的异步架构与语音链路，把后台的 PPT Agent 替换为操作机械臂的 **Arm Agent**。系统设计文档见 `../async_dual_agent_system_design.md`，工具网关契约见 `../api_of_embodied_tools.md` / `../api_of_voice_tools.md`，微调数据方案见 `../finetuning_of_arm_agent.md` / `../finetuning_of_voice_agent.md`。
 
 ---
 
-## 效果演示
+## 系统总览
 
-> **典型交互流程**：用户对 VoxFlow 说 "我想做一个 Python 入门的 PPT" → Voice Agent 连续确认主题、风格、页数、受众 → PPT Agent 在后台生成 Slidev Markdown 并导出 PDF → 用户语音反馈 "第三页是空的，排版被遮挡了" → PPT Agent 自动修复并重新生成。
+人对机械臂说话即可完成任务下发与变更：Voice Agent 与人实时语音交互、理解意图、下发任务并转述结果；Arm Agent 在后台调用具身工具链执行物理任务；两个 agent 通过两条 FIFO 消息队列异步解耦，互不阻塞。
 
-### 系统架构
-
-```mermaid
-graph TD
-    subgraph 前端["前端 (React 18 + Vite + Zustand)"]
-        UI["Chat UI"]
-        VAD["VAD (Web Audio)"]
-        TTS["TTS (Web Speech)"]
-        SSE["SSE Consumer"]
-    end
-
-    subgraph 后端["后端 (Go + Gin :8080)"]
-        R["Router / Handler"]
-        VA["VoiceAgentService"]
-        PA["PPTService"]
-        ASR["ASRService"]
-        IS["InterruptService"]
-        KB["KBService (BM25)"]
-        SS["SearchService (Tavily)"]
-        ST["AppState"]
-    end
-
-    subgraph 模型层["模型层 (本地 vLLM / 云端 API)"]
-        VLLM["Voice LLM<br/>Qwen3-4B + LoRA"]
-        PLLM["PPT LLM<br/>OpenAI-compatible"]
-        ASR_M["ASR Model<br/>Qwen3-ASR"]
-        INT_M["Interrupt LLM<br/>Qwen3-0.6B + LoRA"]
-    end
-
-    subgraph 工具层["PPT Agent 工具层"]
-        TOOLS["toolcalling.Agent"]
-        FS["文件系统操作"]
-        SHELL["Shell 执行"]
-        WEB["Web 搜索"]
-        KB_Q["知识库查询"]
-    end
-
-    UI -->|"HTTP / SSE"| R
-    VAD -->|"vad_start / vad_end"| R
-    R --> VA
-    R --> PA
-    R --> ASR
-    R --> IS
-    R --> KB
-    R --> SS
-    VA --> ST
-    PA --> ST
-    ASR --> ASR_M
-    IS --> INT_M
-    VA --> VLLM
-    PA --> PLLM
-    PA --> TOOLS
-    TOOLS --> FS
-    TOOLS --> SHELL
-    TOOLS --> WEB
-    TOOLS --> KB_Q
-    KB_Q --> KB
-    WEB --> SS
+```
+  人 ⇄ 麦克风 → 前端 VAD → STT → ┌────────────────┐ → 前端播放器 ⇄ 人
+                            │  Voice Agent   │
+                            │ (Qwen3-4B 微调) │
+                            └───┬────────▲───┘
+        send_to_arm_agent ──────┘        └────── get_message_from_arm_agent
+                │                            ▲
+   message_from_voice_agent_queue   message_from_arm_agent_queue
+                │                            ▲
+ get_message_from_voice_agent ────┐          └────── send_to_voice_agent
+                            └───┬──┴────────┐
+                            │   Arm Agent    │
+                            │ (Qwen3-4B 微调) │
+                            └───┬───────────┘
+                                │ RESTful 调用具身工具网关（127.0.0.1:8000）
+                                ▼
+   get_current_coordinates / move_to_coordinates / grab_the_block / release_the_block
+                                │
+                                ▼
+                          机械臂真机 + 视觉摄像头
 ```
 
----
+### 核心机制
 
-## 核心特性
+- **人优先原则**：人的语音交互永远不被后台任务阻塞；后台消息只能通过「状态栏感知 + 主动消费」进入上下文，绝不插队打断当前推理。
+- **`<queue_status>` 状态栏**（两侧统一为独立的 role=user 消息；tool response、user input、状态栏同时存在时顺序固定为 tool response → user input → 状态栏）：
+  - Voice 侧：每条人类 user 消息之后紧跟一条 `<queue_status>empty/not empty</queue_status>` 状态栏消息（反映 arm→voice 队列），`not empty` 时调用 `get_message_from_arm_agent` 主动消费并语音转述。
+  - Arm 侧：忙碌时**每条工具结果之后**追加一条 `<queue_status>` 状态栏消息，`not empty` 时调用 `get_message_from_voice_agent` 主动消费新指令（改颜色/改位置/取消）；空闲时由运行时自动消费队列，新任务由此进入上下文（此时不追加状态栏——队列刚排空恒为 empty）。
+- **紧凑 `<tool_call>` 格式**：两个微调模型均以文本内联格式 `<tool_call>\nname:args\n</tool_call>` 输出工具调用（与微调数据契约一致），编排层负责解析执行。
+- **tool/user 双角色回写**：工具结果同时以 tool 与 user 两条消息写回上下文，兼顾工具语义与「作为新输入驱动推理」。
+- **全双工语音链路**：浏览器前端 VAD（含回声消除）+ 前端 TTS 播放器 + 后端 ASR + 打断检测小模型；打断以 `</interrupted>` 标记截断并重组上下文。
 
-- **全双工语音交互** —— 浏览器端 VAD + TTS，边说边听，端到端延迟极低
-- **实时打断与上下文恢复** —— 1.5s 音频预检判断是否为真实打断，支持 `</interrupted>` 标签与截断文本回传，对话流畅不丢失上下文
-- **智能 PPT 生成** —— 基于 [Slidev](https://sli.dev/) 将 Markdown 实时转化为精美 PDF/PPT，支持主题定制与代码高亮
-- **语音反馈修改** —— 无需打字，直接语音描述问题（如 "这页太空了"、"代码太多"），PPT Agent 自动调整并重新生成
-- **双 Agent 深度协作** —— Voice Agent 负责对话与意图理解，PPT Agent 负责工具执行与文件操作，分工明确、高效协同
-- **单卡可跑全链路** —— 训练（SFT）与推理全部在单张 RTX 4090 24GB 完成，门槛低、复现易
-- **开源全链路** —— 代码、数据集、模型权重、知识库全部开源
+## 角色与工具
 
----
+| 角色 | 基座 | 部署 | 工具 |
+| --- | --- | --- | --- |
+| Voice Agent | Qwen3-4B-Instruct-2507 + QLoRA | RTX 3090 #1（vLLM :8001） | `send_to_arm_agent`、`get_message_from_arm_agent` |
+| Arm Agent | Qwen3-4B-Instruct-2507 + QLoRA | RTX 3090 #2（vLLM :8004） | `get_current_coordinates`、`move_to_coordinates`、`grab_the_block`、`release_the_block`、`send_to_voice_agent`、`get_message_from_voice_agent` |
+| 打断检测 | Qwen3-0.6B + LoRA | 同 3090 #1（:8003） | — |
+| ASR | Qwen3-ASR | 同 3090 #1（:8002） | — |
+| 具身工具网关 | — | :8000（RESTful，见 `api_of_embodied_tools.md`） | 机械臂真机 + 视觉摄像头 |
 
-## 系统架构
-
-VoxFlow 采用 **双 Agent + 前后端分离** 架构：
-
-| 层级 | 技术选型 | 职责 |
-|------|---------|------|
-| **前端** | React 18 + TypeScript + Vite + Zustand | 麦克风采集、VAD、TTS 播放、SSE 流式消费、对话 UI |
-| **后端** | Go 1.23 + Gin | HTTP API、SSE 推送、业务编排、状态管理 |
-| **Voice Agent** | Qwen3-4B-Instruct-2507 + QLoRA (本地 vLLM) | 语音对话、需求收集、PPT Agent 沟通桥梁 |
-| **PPT Agent** | SOTA LLM (OpenAI-compatible API，如 MiniMax) | Slidev 生成、文件操作、命令执行、搜索、知识库查询 |
-| **ASR** | Qwen3-ASR (本地 vLLM) | 语音转文字 |
-| **打断检测** | Qwen3-0.6B + LoRA (本地 vLLM) | 1.5s 快速判断是否为真实用户打断 |
-| **知识库** | BM25 + Markdown | 计算机领域核心知识检索 (MySQL / Network / OS / Redis) |
-
----
+Arm Agent 的 4 个具身工具通过 RESTful 网关调用；2 个通信工具直接操作编排层持有的两条队列（队列是系统级共享状态，见设计文档 §3）。
 
 ## 快速开始
 
 ### 环境要求
 
-- **Go** 1.23+
-- **Node.js** 18+（前端构建 + Slidev 渲染）
-- **Python** 3.10+（训练与推理环境）
-- **NVIDIA GPU**：推荐 RTX 4090 24GB（单卡可运行全部模型）
-- **Docker**（可选，用于沙箱部署）
+- Go 1.23+、Node.js 18+、Python 3.10+（训练）
+- 2 × RTX 3090 24GB（一卡一个 agent 的微调与推理）
 
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/ZHYsfl/EducationAgent.git
-cd EducationAgent
-```
-
-### 2. 配置环境变量
+### 1. 配置环境变量
 
 ```bash
 cp implementation/.env.example implementation/.env
 ```
 
-编辑 `implementation/.env`，填入你的本地 vLLM 或云端 API 信息：
-
 ```env
-# Voice Agent（本地微调模型）
+# Voice Agent LLM（vLLM，3090 #1）
 VOICE_LLM_BASE_URL=http://127.0.0.1:8001/v1
 VOICE_LLM_MODEL=voice-agent
 VOICE_LLM_API_KEY=dummy
 
-# 打断检测（本地小模型）
-INTERRUPT_LLM_BASE_URL=http://127.0.0.1:8000/v1
+# 打断检测（注意：8000 已保留给具身工具网关）
+INTERRUPT_LLM_BASE_URL=http://127.0.0.1:8003/v1
 INTERRUPT_LLM_MODEL=interrupt-detection
 INTERRUPT_LLM_API_KEY=dummy
 
-# PPT Agent / 搜索摘要（云端 SOTA 模型）
-OPENAI_BASE_URL=https://api.minimax.chat/v1
-OPENAI_MODEL=MiniMax-Text-01
-OPENAI_API_KEY=sk-your-key
+# Arm Agent LLM（vLLM，3090 #2）
+ARM_LLM_BASE_URL=http://127.0.0.1:8004/v1
+ARM_LLM_MODEL=arm-agent
+ARM_LLM_API_KEY=dummy
 
-# ASR（本地模型）
+# 具身工具 RESTful 网关（api_of_embodied_tools.md，固定 8000）
+ARM_GATEWAY_BASE_URL=http://127.0.0.1:8000
+
+# ASR
 ASR_OPENAI_BASE_URL=http://127.0.0.1:8002/v1
 ASR_MODEL_ID=/root/autodl-tmp/asr
 ASR_API_KEY=EMPTY
-
-# 网页搜索（可选）
-SEARCH_API_URL=
-TAVILY_API_KEY=tvly-your-key
 ```
 
-### 3. 启动后端
+### 2. 启动后端 / 前端 / 模型服务
 
 ```bash
-cd implementation
-go mod download
-go run ./server
-# 服务默认监听 :8080
+cd implementation && go mod download && go run ./server   # Go 后端 :8080
+cd implementation/frontend && npm install && npm run dev  # 前端 :5173
+bash implementation/start_dual_voice_asr.sh               # 单卡三路 vLLM：voice:8001 / interrupt:8003 / asr:8002
+# 另需：3090 #2 上启动 arm-agent vLLM（:8004），以及具身工具网关（:8000）
 ```
 
-### 4. 启动前端
+### 3. 运行测试
 
 ```bash
-cd implementation/frontend
-npm install
-npm run dev
-# 默认 http://localhost:5173
+cd implementation && go test ./...
+cd tool_calling_go && go test ./...
 ```
-
-### 5. 启动本地模型服务（vLLM 示例）
-
-```bash
-# Voice Agent
-vllm serve /path/to/voice-agent-lora \
-  --enable-lora --port 8001
-
-# Interrupt Detection
-vllm serve /path/to/interrupt-detection-lora \
-  --enable-lora --port 8000
-
-# ASR
-vllm serve /path/to/asr-model --port 8002
-```
-
-> 模型权重下载见下方「开源生态」章节。
-
----
 
 ## 项目结构
 
@@ -209,216 +117,36 @@ vllm serve /path/to/asr-model --port 8002
 EducationAgent/
 ├── implementation/                 # 主实现（Go 后端 + React 前端）
 │   ├── frontend/                   # React 18 + Vite + Zustand SPA
-│   │   ├── src/components/         # Chat, ConfirmTable, PPTAgentPanel
-│   │   ├── src/hooks/              # useConversation, useSSE
-│   │   ├── src/audio/              # VAD, Recorder, TTS
-│   │   └── src/store/              # Zustand conversation store
 │   ├── internal/
-│   │   ├── handler/                # Gin HTTP / SSE 路由处理
-│   │   ├── service/                # 业务逻辑层
-│   │   │   ├── voice_agent_service.go   # Voice Agent 编排（两轮推理）
-│   │   │   ├── ppt_service.go           # PPT Agent 运行时与工具注册
-│   │   │   ├── interrupt_service.go     # 打断检测
-│   │   │   ├── asr_service.go           # 语音识别
-│   │   │   ├── kb_service.go            # BM25 知识库检索
-│   │   │   └── search_service.go        # Tavily 网页搜索
-│   │   ├── state/                  # AppState + PPTAgentRuntime 生命周期
-│   │   ├── toolcalling/            # LLM Agent 框架（嵌入版）
-│   │   ├── voiceagent/             # <action> 标签解析与执行
-│   │   └── tools/                  # 文件与命令底层工具
+│   │   ├── handler/                # Gin HTTP / SSE 路由（voice_turn / voice / arm_stream）
+│   │   ├── service/
+│   │   │   ├── voice_agent_service.go  # Voice Agent 编排（流式 <tool_call> 解析 + 两轮推理）
+│   │   │   ├── arm_service.go          # Arm Agent 运行时（<queue_status> 注入 + 工具链执行）
+│   │   │   ├── interrupt_service.go    # 打断检测
+│   │   │   └── asr_service.go          # 语音识别
+│   │   ├── state/                  # AppState（双向队列/双历史/日志广播）+ AgentRuntime
+│   │   ├── toolcalling/            # LLM Agent 框架（嵌入版）+ 紧凑 <tool_call> 解析
+│   │   ├── voiceagent/             # Voice 侧 <tool_call> 解析与执行
+│   │   └── tools/                  # arm_gateway.go（具身工具 RESTful 客户端）
 │   ├── server/                     # 入口 main.go
-│   ├── train/                      # SFT 训练脚本
-│   │   └── sft_train.py            # Unsloth + QLoRA 微调
-│   ├── data/                       # 计算机领域知识库
-│   │   ├── mysql/                  # MySQL 核心知识点
-│   │   ├── network/                # 计算机网络
-│   │   ├── os/                     # 操作系统
-│   │   └── redis/                  # Redis
-│   ├── workspace/                  # PPT Agent 工作区 + Slidev Skills
-│   │   └── skills/slidev/SKILL.md  # 面向 Agent 的 Slidev 速查手册
-├── tool_calling_go/                # 独立 Go SDK（可单独使用）
-│   ├── agent.go                    # Agent：自动工具调用循环 + 流式
-│   ├── batch.go                    # Batch：信号量并发
-│   ├── race.go                     # BatchRace：竞速 + 级联终止
-│   ├── orchestrator.go             # 高层编排封装
-│   └── example/                    # 使用示例
+│   ├── tests/                      # 端到端集成测试
+│   └── train/                      # SFT 训练脚本（Unsloth + QLoRA）
+├── tool_calling_go/                # 独立 Go SDK（Agent / Batch / BatchRace）
+├── dataset/                        # 旧版 voice agent 微调数据（PPT 时代）
+└── data_docs/                      # 旧版造数据指南（PPT 时代）
 ```
-
----
-
-## 技术深度解析
-
-### Voice Agent 两轮推理（Two-Round Inference）
-
-Voice Agent 并非单次输出完即结束，而是采用条件触发的两轮推理：
-
-```mermaid
-sequenceDiagram
-    participant U as user
-    participant B as Backend
-    participant V as Voice Agent LLM
-    participant E as voiceagent.Executor
-
-    U->>B: vad_end (语音转文字)
-    B->>V: Round 1: StreamChat(user + history)
-    loop Stream tokens
-        V-->>B: tts token
-        B-->>U: 播放语音
-        V-->>B: <action>...</action>
-    end
-    B->>E: 同步执行 action(s)
-    E-->>B: tool results
-
-    alt Round 1 包含 fetch_from_ppt_message_queue
-        B->>B: 将 assistant + tool results 追加历史
-        B->>V: Round 2: StreamChat(更新后 history)
-        Note over V: 第二轮只输出汇报文本，<br/>严禁再输出新 action
-        V-->>B: 汇报 TTS (如 "新版本已生成")
-        B-->>U: 播放汇报语音
-    end
-    B-->>U: turn_end
-```
-
-- **Round 1**：模型流式输出 TTS 文本 + `<action>...</action>` 动作标签。Action 被同步执行，结果以独立 `tool` 消息暂存。
-- **Round 2（条件触发）**：仅当 Round 1 包含 `fetch_from_ppt_message_queue` 时触发。后端将 tool 结果追加到历史，发起第二次 `StreamChat`，模型只输出汇报文本，**严禁再产生新 action**。
-
-这种设计确保：用户始终先听到语音反馈，PPT Agent 的异步结果在完成后通过第二轮自然汇报，不打断对话节奏。
-
-### 实时打断机制
-
-VoxFlow 实现了低延迟的全双工打断，核心流程如下：
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant F as 前端 (VAD)
-    participant B as 后端 (Gin)
-    participant A as ASR
-    participant V as Voice Agent
-
-    U->>F: 开始说话 (vad_start)
-    F->>F: 缓冲 1.5s 音频
-    F->>B: POST /vad_start (音频)
-    B->>A: ASR 转录
-    B-->>F: {interrupt: true}
-    Note over B,F: 当前实现：VAD 已过滤噪音，<br/>直接视为有效打断
-
-    alt 判定为打断
-        F->>F: 停止 TTS 播放、清空队列
-        F->>F: 中止当前 SSE 流
-        F->>F: 若 action 正在执行，静默等待完成
-    end
-
-    U->>F: 结束说话 (vad_end)
-    F->>B: POST /vad_end (完整音频 + interrupted 上下文)
-    B->>A: 完整 ASR
-    B->>V: StreamTurn (transcript + needsInterruptedPrefix)
-    V->>B: SSE 流式返回 (user_transcript → tts → action → turn_end)
-    B-->>F: SSE Chunk
-    F->>F: TTS 播放、执行 action
-```
-
-1. **VAD 检测**：前端通过 Web Audio API 进行能量检测，过滤静音与噪音，确认有效语音后触发。
-2. **打断响应**：前端立即停止 TTS、中止 SSE 流；若后端已输出 `<action` 标签，则静默等待 action 序列完整执行（用户无感知）。
-3. **上下文恢复**：通过 `</interrupted>` 标记与 `interrupted_assistant_text` 精确恢复截断前的对话状态，确保 LLM 历史一致性。
-
-### PPT Agent 工具链
-
-PPT Agent 注册约 10 个工具，覆盖完整的 PPT 制作闭环：
-
-| 工具 | 用途 |
-|------|------|
-| `write_file` / `edit_file` | 写入或修改 Slidev Markdown |
-| `execute_command` | 执行 shell 命令（Slidev 导出、npm 安装等） |
-| `send_to_voice_agent` | 向 Voice Agent 发送消息（如"PPT 已生成"） |
-| `fetch_from_voice_message_queue` | 拉取用户的语音反馈 |
-| `query_chunks` | 查询本地计算机知识库 |
-| `search_web` | Tavily 网页搜索 |
-| `read_file` | 读取文件内容 |
-
-### 历史压缩
-
-当 PPT Agent 对话历史 token 预估超过 100k 时，系统自动对旧轮次进行摘要，压缩为单条 user 消息，同时保留 tool-call 对齐关系，防止长上下文溢出。
-
----
-
-## 训练与复现
-
-### Voice Agent 微调
-
-我们使用 **Unsloth + QLoRA** 对 Qwen3-4B-Instruct-2507 进行 SFT：
-
-| 配置 | 值 |
-|------|-----|
-| 基座模型 | Qwen3-4B-Instruct-2507 |
-| 微调方法 | QLoRA (4-bit) |
-| LoRA 参数 | r=8, alpha=16, target_modules=all attention + MLP |
-| 训练轮数 | 3 epochs |
-| 学习率 | 2e-4 |
-| 序列长度 | 1536 |
-| 有效 Batch | 8 (per_device=1, accumulation=8) |
-| 硬件 | 单张 RTX 4090 24GB |
-
-```bash
-cd implementation/train
-python sft_train.py
-```
-
-数据集为 6000+ 条 `final.jsonl`（OpenAI messages 格式），覆盖 Phase 1（需求收集）与 Phase 2（反馈沟通）的全流程对话，包含正常流与打断流。
-
-- **模型权重**：[ZaneSFL/zh-ppt-voice-agent-model-lora-support-interrupt](https://huggingface.co/ZaneSFL/zh-ppt-voice-agent-model-lora-support-interrupt)
-- **数据集**：[ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues](https://huggingface.co/datasets/ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues)
-
-### 打断检测微调
-
-| 配置 | 值 |
-|------|-----|
-| 基座模型 | Qwen3-0.6B |
-| 微调方法 | LoRA |
-| 数据集 | 5000 条（4000 train / 500 val / 500 test）|
-| 最佳指标 | Eval Loss 0.4512 @ step 700 |
-
-打断检测 LoRA 权重与数据集可在 HuggingFace 获取（见下方「开源生态」）。
-
----
-
-## 开源生态
-
-VoxFlow 不是孤立项目，我们围绕它构建了一整套可复用的开源资源：
-
-| 资源 | 说明 | 链接 |
-|------|------|------|
-| **EducationAgent** | 主仓库（本仓库）：完整前后端 + 训练 + 部署 | [GitHub](https://github.com/ZHYsfl/EducationAgent) |
-| **tool_calling_go** | 独立 Go SDK：LLM Agent、批量并发（Batch）、竞速编排（BatchRace）、级联终止 | 本仓库 [`tool_calling_go/`](tool_calling_go/) |
-| **zh-ppt-voice-agent-model-lora-support-interrupt** | Voice Agent QLoRA 微调权重，支持打断场景的中文语音助手对话 | [HuggingFace](https://huggingface.co/ZaneSFL/zh-ppt-voice-agent-model-lora-support-interrupt) |
-| **zh-ppt-voice-agent-interrupt-dialogues** | 6000+ 条中文语音助手打断对话 SFT 数据集（OpenAI messages 格式） | [HuggingFace Datasets](https://huggingface.co/datasets/ZaneSFL/zh-ppt-voice-agent-interrupt-dialogues) |
-| **interrupt_detection_cot_lora** | 打断检测 LoRA 模型（Qwen3-0.6B + LoRA）与 5000 条标注数据 | 训练产出，与代码配套开源 |
-| **CS Knowledge Base** | 计算机领域核心知识库，支撑 PPT 内容生成 | 本仓库 [`implementation/data/`](implementation/data/) |
-
----
 
 ## 文档索引
 
 | 文档 | 内容 |
 |------|------|
-| [`implementation/api.md`](implementation/api.md) | 完整后端 API 契约（Module 0-4 + 前端职责） |
-| [`tool_calling_go/README.md`](tool_calling_go/README.md) | tool_calling_go SDK 双语文档（Agent / Batch / BatchRace / 编排） |
-
----
-
-## 团队与致谢
-
-VoxFlow 由 **5 人团队**历时数月迭代开发，累计 **400+ commits**。我们从零构建了一套完整的语音交互 PPT 生成系统，并将代码、数据、模型全部开源，希望能为中文语音助手与 Agent 工具调用社区提供有价值的参考。
-
-感谢以下开源项目提供的坚实基础：
-
-- [Qwen](https://github.com/QwenLM/Qwen) —— 强大的中文基座模型
-- [Slidev](https://sli.dev/) —— 开发者友好的幻灯片方案
-- [Unsloth](https://github.com/unslothai/unsloth) —— 高效的 LLM 微调框架
-- [openai-go](https://github.com/openai/openai-go) —— 官方 Go SDK
-- [Gin](https://github.com/gin-gonic/gin) —— 高性能 Go Web 框架
-
----
+| [`implementation/api.md`](implementation/api.md) | 后端 API 契约（语音轮次 + 双 agent 通信 + 日志流） |
+| [`../async_dual_agent_system_design.md`](../async_dual_agent_system_design.md) | 异步双 agent 系统设计原理 |
+| [`../api_of_embodied_tools.md`](../api_of_embodied_tools.md) | 具身工具 RESTful 网关文档（:8000） |
+| [`../api_of_voice_tools.md`](../api_of_voice_tools.md) | Voice 工具 RESTful 网关文档（:8001，联调用） |
+| [`../finetuning_of_arm_agent.md`](../finetuning_of_arm_agent.md) | Arm Agent 微调数据方案 |
+| [`../finetuning_of_voice_agent.md`](../finetuning_of_voice_agent.md) | Voice Agent 微调数据方案 |
+| [`tool_calling_go/README.md`](tool_calling_go/README.md) | tool_calling_go SDK 文档 |
 
 ## License
 

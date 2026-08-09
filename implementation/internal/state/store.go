@@ -1,35 +1,33 @@
 package state
 
 import (
-	"errors"
-	"fmt"
-	"strings"
 	"sync"
-
-	"educationagent/internal/model"
 
 	"github.com/openai/openai-go/v3"
 )
 
 // AppState holds all mutable application state protected by a mutex.
+//
+// The two FIFO queues are the system-level shared state of the async
+// dual-agent design (see async_dual_agent_system_design.md §4.1):
+//   - voiceMessageQueue: voice → arm direction (message_from_voice_agent_queue)
+//   - armMessageQueue:   arm → voice direction (message_from_arm_agent_queue)
 type AppState struct {
-	mu                    sync.RWMutex
-	req                   model.Requirements
-	requirementsFinalized bool
-	pptMessageQueue       []string
-	voiceMessageQueue     []string
-	pptHistory            []openai.ChatCompletionMessageParamUnion
-	pptWorkDir            string
+	mu                sync.RWMutex
+	armMessageQueue   []string
+	voiceMessageQueue []string
+	armHistory        []openai.ChatCompletionMessageParamUnion
 
-	// PPT agent activity log broadcast
-	pptLogMu      sync.Mutex
-	pptLogSubs    []chan string
-	pptLogRecent  []string // ring buffer for late SSE subscribers
+	// Arm agent activity log broadcast
+	armLogMu     sync.Mutex
+	armLogSubs   []chan string
+	armLogRecent []string // ring buffer for late SSE subscribers
 
 	// Voice turn state
 	conversationStarted bool
 	lastVADInterrupt    *bool
 	voiceHistory        []openai.ChatCompletionMessageParamUnion
+	voiceSummary        string // rolling summary of compressed older voice turns
 	voiceTurnMu         sync.Mutex
 }
 
@@ -38,122 +36,19 @@ func NewAppState() *AppState {
 	return &AppState{}
 }
 
-// UpdateRequirements merges the provided fields into the existing requirements.
-// It returns the list of missing fields. If requirements are already finalized,
-// it returns an error because the update_requirements tool has disappeared.
-func (s *AppState) UpdateRequirements(req map[string]any) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// ---------------------------------------------------------------------------
+// message_from_voice_agent_queue (voice → arm)
+// ---------------------------------------------------------------------------
 
-	if s.requirementsFinalized {
-		return nil, errors.New("update_requirements tool has disappeared")
-	}
-
-	if v, ok := req["topic"]; ok {
-		if str, ok := v.(string); ok && str != "" {
-			s.req.Topic = &str
-		}
-	}
-	if v, ok := req["style"]; ok {
-		if str, ok := v.(string); ok && str != "" {
-			s.req.Style = &str
-		}
-	}
-	if v, ok := req["total_pages"]; ok {
-		switch n := v.(type) {
-		case int:
-			s.req.TotalPages = &n
-		case int64:
-			i := int(n)
-			s.req.TotalPages = &i
-		case float64:
-			i := int(n)
-			s.req.TotalPages = &i
-		case float32:
-			i := int(n)
-			s.req.TotalPages = &i
-		default:
-			// ignore unrecognised type
-		}
-	}
-	if v, ok := req["audience"]; ok {
-		if str, ok := v.(string); ok && str != "" {
-			s.req.Audience = &str
-		}
-	}
-
-	missing := s.req.MissingFields()
-	return missing, nil
-}
-
-// GetRequirements returns a snapshot of current requirements.
-func (s *AppState) GetRequirements() model.Requirements {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.req
-}
-
-// RequireConfirm verifies that all requirement fields are present.
-// If requirements are finalized it returns an error.
-func (s *AppState) RequireConfirm() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.requirementsFinalized {
-		return errors.New("require_confirm tool has disappeared")
-	}
-	if !s.req.IsComplete() {
-		return fmt.Errorf("requirements incomplete, missing: %v", s.req.MissingFields())
-	}
-	return nil
-}
-
-// MarkRequirementsFinalized locks the requirements phase forever.
-func (s *AppState) MarkRequirementsFinalized() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.requirementsFinalized = true
-}
-
-// IsRequirementsFinalized reports whether the requirements phase is locked.
-func (s *AppState) IsRequirementsFinalized() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.requirementsFinalized
-}
-
-// SendToPPTAgent enqueues a message from the voice agent to the ppt agent
-// (stored in the voice message queue).
-func (s *AppState) SendToPPTAgent(data string) {
+// SendToArmAgent enqueues a message from the voice agent to the arm agent.
+func (s *AppState) SendToArmAgent(data string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.voiceMessageQueue = append(s.voiceMessageQueue, data)
 }
 
-// FetchFromVoiceMessageQueue dequeues the oldest message from the voice message queue.
-// It returns the message and true if one existed.
-func (s *AppState) FetchFromVoiceMessageQueue() (string, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.voiceMessageQueue) == 0 {
-		return "", false
-	}
-	msg := s.voiceMessageQueue[0]
-	s.voiceMessageQueue = s.voiceMessageQueue[1:]
-	return msg, true
-}
-
-// PeekVoiceMessageQueue returns the oldest voice message without removing it.
-func (s *AppState) PeekVoiceMessageQueue() (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.voiceMessageQueue) == 0 {
-		return "", false
-	}
-	return s.voiceMessageQueue[0], true
-}
-
-// DrainVoiceMessageQueue removes and returns all messages from the voice message queue.
+// DrainVoiceMessageQueue removes and returns all messages from the
+// voice → arm queue (oldest first).
 func (s *AppState) DrainVoiceMessageQueue() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,67 +58,80 @@ func (s *AppState) DrainVoiceMessageQueue() []string {
 	return out
 }
 
-// VoiceMessageQueueLen returns the number of pending messages in the voice message queue.
+// VoiceMessageQueueLen returns the number of pending messages in the
+// voice → arm queue.
 func (s *AppState) VoiceMessageQueueLen() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.voiceMessageQueue)
 }
 
-// SendToVoiceAgent enqueues a message from the ppt agent to the voice agent
-// (stored in the ppt message queue).
+// ---------------------------------------------------------------------------
+// message_from_arm_agent_queue (arm → voice)
+// ---------------------------------------------------------------------------
+
+// SendToVoiceAgent enqueues a message from the arm agent to the voice agent.
 func (s *AppState) SendToVoiceAgent(data string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pptMessageQueue = append(s.pptMessageQueue, data)
+	s.armMessageQueue = append(s.armMessageQueue, data)
 }
 
-// FetchFromPPTMessageQueue drains all messages from the ppt message queue and
-// returns them concatenated with " | ", or an empty string if the queue is empty.
-func (s *AppState) FetchFromPPTMessageQueue() (string, error) {
+// DrainArmMessageQueue removes and returns all messages from the
+// arm → voice queue (oldest first).
+func (s *AppState) DrainArmMessageQueue() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.pptMessageQueue) == 0 {
-		return "", nil
-	}
-	msgs := make([]string, len(s.pptMessageQueue))
-	copy(msgs, s.pptMessageQueue)
-	s.pptMessageQueue = s.pptMessageQueue[:0]
-	return strings.Join(msgs, " | "), nil
-}
-
-// PeekPPTMessageQueue returns the oldest ppt message without removing it.
-func (s *AppState) PeekPPTMessageQueue() (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.pptMessageQueue) == 0 {
-		return "", false
-	}
-	return s.pptMessageQueue[0], true
-}
-
-// AppendPPTHistory appends a message to the PPT agent's conversation history.
-func (s *AppState) AppendPPTHistory(msg openai.ChatCompletionMessageParamUnion) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pptHistory = append(s.pptHistory, msg)
-}
-
-// GetPPTHistory returns a copy of the PPT agent's conversation history.
-func (s *AppState) GetPPTHistory() []openai.ChatCompletionMessageParamUnion {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]openai.ChatCompletionMessageParamUnion, len(s.pptHistory))
-	copy(out, s.pptHistory)
+	out := make([]string, len(s.armMessageQueue))
+	copy(out, s.armMessageQueue)
+	s.armMessageQueue = s.armMessageQueue[:0]
 	return out
 }
 
-// SetPPTHistory replaces the entire PPT agent history.
-func (s *AppState) SetPPTHistory(history []openai.ChatCompletionMessageParamUnion) {
+// PeekArmMessageQueue returns the oldest arm → voice message without removing it.
+func (s *AppState) PeekArmMessageQueue() (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.armMessageQueue) == 0 {
+		return "", false
+	}
+	return s.armMessageQueue[0], true
+}
+
+// ArmMessageQueueLen returns the number of pending messages in the
+// arm → voice queue.
+func (s *AppState) ArmMessageQueueLen() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.armMessageQueue)
+}
+
+// ---------------------------------------------------------------------------
+// Arm agent conversation history
+// ---------------------------------------------------------------------------
+
+// AppendArmHistory appends a message to the arm agent's conversation history.
+func (s *AppState) AppendArmHistory(msg openai.ChatCompletionMessageParamUnion) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pptHistory = make([]openai.ChatCompletionMessageParamUnion, len(history))
-	copy(s.pptHistory, history)
+	s.armHistory = append(s.armHistory, msg)
+}
+
+// GetArmHistory returns a copy of the arm agent's conversation history.
+func (s *AppState) GetArmHistory() []openai.ChatCompletionMessageParamUnion {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]openai.ChatCompletionMessageParamUnion, len(s.armHistory))
+	copy(out, s.armHistory)
+	return out
+}
+
+// SetArmHistory replaces the entire arm agent history.
+func (s *AppState) SetArmHistory(history []openai.ChatCompletionMessageParamUnion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.armHistory = make([]openai.ChatCompletionMessageParamUnion, len(history))
+	copy(s.armHistory, history)
 }
 
 // ---------------------------------------------------------------------------
@@ -235,12 +143,11 @@ func (s *AppState) ResetConversation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.voiceHistory = nil
+	s.voiceSummary = ""
 	s.lastVADInterrupt = nil
 	s.conversationStarted = true
-	s.req = model.Requirements{}
-	s.requirementsFinalized = false
-	s.pptHistory = nil
-	s.pptMessageQueue = s.pptMessageQueue[:0]
+	s.armHistory = nil
+	s.armMessageQueue = s.armMessageQueue[:0]
 	s.voiceMessageQueue = s.voiceMessageQueue[:0]
 }
 
@@ -307,7 +214,22 @@ func (s *AppState) VoiceHistoryLen() int {
 	return len(s.voiceHistory)
 }
 
-// LockVoiceTurn blocks until the current voice turn (including its action sequence) finishes.
+// GetVoiceSummary returns the rolling summary of compressed older voice turns.
+func (s *AppState) GetVoiceSummary() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.voiceSummary
+}
+
+// SetVoiceSummary replaces the rolling voice summary.
+func (s *AppState) SetVoiceSummary(summary string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.voiceSummary = summary
+}
+
+// LockVoiceTurn blocks until the current voice turn (including its tool-call
+// sequence) finishes.
 func (s *AppState) LockVoiceTurn() {
 	s.voiceTurnMu.Lock()
 }
@@ -318,57 +240,41 @@ func (s *AppState) UnlockVoiceTurn() {
 }
 
 // ---------------------------------------------------------------------------
-// PPT workdir
+// Arm log broadcast (fan-out to SSE subscribers)
 // ---------------------------------------------------------------------------
 
-func (s *AppState) SetPPTWorkDir(dir string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pptWorkDir = dir
-}
+const armLogRecentMax = 500
 
-func (s *AppState) GetPPTWorkDir() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.pptWorkDir
-}
-
-// ---------------------------------------------------------------------------
-// PPT log broadcast (fan-out to SSE subscribers)
-// ---------------------------------------------------------------------------
-
-const pptLogRecentMax = 500
-
-// SubscribePPTLog registers a subscriber and returns buffered lines already broadcast (for SSE replay).
-func (s *AppState) SubscribePPTLog() (ch chan string, replay []string) {
+// SubscribeArmLog registers a subscriber and returns buffered lines already broadcast (for SSE replay).
+func (s *AppState) SubscribeArmLog() (ch chan string, replay []string) {
 	ch = make(chan string, 256)
-	s.pptLogMu.Lock()
-	replay = append([]string(nil), s.pptLogRecent...)
-	s.pptLogSubs = append(s.pptLogSubs, ch)
-	s.pptLogMu.Unlock()
+	s.armLogMu.Lock()
+	replay = append([]string(nil), s.armLogRecent...)
+	s.armLogSubs = append(s.armLogSubs, ch)
+	s.armLogMu.Unlock()
 	return ch, replay
 }
 
-func (s *AppState) UnsubscribePPTLog(ch chan string) {
-	s.pptLogMu.Lock()
-	defer s.pptLogMu.Unlock()
-	subs := s.pptLogSubs[:0]
-	for _, sub := range s.pptLogSubs {
+func (s *AppState) UnsubscribeArmLog(ch chan string) {
+	s.armLogMu.Lock()
+	defer s.armLogMu.Unlock()
+	subs := s.armLogSubs[:0]
+	for _, sub := range s.armLogSubs {
 		if sub != ch {
 			subs = append(subs, sub)
 		}
 	}
-	s.pptLogSubs = subs
+	s.armLogSubs = subs
 }
 
-func (s *AppState) BroadcastPPTLog(msg string) {
-	s.pptLogMu.Lock()
-	s.pptLogRecent = append(s.pptLogRecent, msg)
-	if len(s.pptLogRecent) > pptLogRecentMax {
-		s.pptLogRecent = s.pptLogRecent[len(s.pptLogRecent)-pptLogRecentMax:]
+func (s *AppState) BroadcastArmLog(msg string) {
+	s.armLogMu.Lock()
+	s.armLogRecent = append(s.armLogRecent, msg)
+	if len(s.armLogRecent) > armLogRecentMax {
+		s.armLogRecent = s.armLogRecent[len(s.armLogRecent)-armLogRecentMax:]
 	}
-	subs := append([]chan string(nil), s.pptLogSubs...)
-	s.pptLogMu.Unlock()
+	subs := append([]chan string(nil), s.armLogSubs...)
+	s.armLogMu.Unlock()
 	for _, ch := range subs {
 		select {
 		case ch <- msg:

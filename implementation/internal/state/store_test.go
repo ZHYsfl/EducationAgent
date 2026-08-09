@@ -7,93 +7,52 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUpdateRequirements(t *testing.T) {
-	s := NewAppState()
-
-	// Update partial requirements
-	missing, err := s.UpdateRequirements(map[string]any{
-		"topic": "math",
-		"style": "simple",
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"total_pages", "audience"}, missing)
-
-	// Update remaining requirements
-	missing, err = s.UpdateRequirements(map[string]any{
-		"total_pages": 15,
-		"audience":    "middle school students",
-	})
-	assert.NoError(t, err)
-	assert.Empty(t, missing)
-
-	// After finalized, updates should fail
-	s.MarkRequirementsFinalized()
-	_, err = s.UpdateRequirements(map[string]any{"topic": "science"})
-	assert.Error(t, err)
-}
-
-func TestRequireConfirm(t *testing.T) {
-	s := NewAppState()
-
-	// Incomplete requirements should fail
-	err := s.RequireConfirm()
-	assert.Error(t, err)
-
-	// Complete requirements should succeed before finalized
-	_, _ = s.UpdateRequirements(map[string]any{
-		"topic":       "math",
-		"style":       "simple",
-		"total_pages": 10,
-		"audience":    "kids",
-	})
-	err = s.RequireConfirm()
-	assert.NoError(t, err)
-
-	// After finalized, require_confirm should fail
-	s.MarkRequirementsFinalized()
-	err = s.RequireConfirm()
-	assert.Error(t, err)
-}
-
 func TestMessageQueues(t *testing.T) {
 	s := NewAppState()
 
-	// PPT -> Voice queue
-	s.SendToVoiceAgent("ppt says hello")
-	msg, err := s.FetchFromPPTMessageQueue()
-	assert.NoError(t, err)
-	assert.Equal(t, "ppt says hello", msg)
+	// arm → voice queue (message_from_arm_agent_queue)
+	s.SendToVoiceAgent("arm says hello")
+	msgs := s.DrainArmMessageQueue()
+	assert.Equal(t, []string{"arm says hello"}, msgs)
+	assert.Empty(t, s.DrainArmMessageQueue())
 
-	msg, err = s.FetchFromPPTMessageQueue()
-	assert.NoError(t, err)
-	assert.Equal(t, "", msg)
-
-	// Voice -> PPT queue
-	s.SendToPPTAgent("voice says hi")
-	vmsg, ok := s.FetchFromVoiceMessageQueue()
-	assert.True(t, ok)
-	assert.Equal(t, "voice says hi", vmsg)
+	// voice → arm queue (message_from_voice_agent_queue)
+	s.SendToArmAgent("voice says hi")
+	vmsgs := s.DrainVoiceMessageQueue()
+	assert.Equal(t, []string{"voice says hi"}, vmsgs)
+	assert.Equal(t, 0, s.VoiceMessageQueueLen())
 }
 
-func TestPPTHistory(t *testing.T) {
+func TestArmHistory(t *testing.T) {
 	s := NewAppState()
-	s.AppendPPTHistory(openai.UserMessage("hello"))
-	s.AppendPPTHistory(openai.UserMessage("world"))
+	s.AppendArmHistory(openai.UserMessage("hello"))
+	s.AppendArmHistory(openai.UserMessage("world"))
 
-	hist := s.GetPPTHistory()
+	hist := s.GetArmHistory()
 	assert.Len(t, hist, 2)
 
 	// Ensure copy is returned
 	hist[0] = openai.UserMessage("modified")
-	hist = s.GetPPTHistory()
+	hist = s.GetArmHistory()
 	assert.Equal(t, "hello", hist[0].OfUser.Content.OfString.Value)
 }
 
 func TestConversationLifecycle(t *testing.T) {
 	s := NewAppState()
 	assert.False(t, s.IsConversationStarted())
-	s.MarkConversationStarted()
+	s.ResetConversation()
 	assert.True(t, s.IsConversationStarted())
+
+	// Reset clears queues and histories.
+	s.SendToArmAgent("task")
+	s.SendToVoiceAgent("report")
+	s.AppendArmHistory(openai.UserMessage("x"))
+	s.AppendVoiceHistory(openai.UserMessage("y"))
+	s.ResetConversation()
+	assert.Equal(t, 0, s.VoiceMessageQueueLen())
+	assert.Equal(t, 0, s.ArmMessageQueueLen())
+	assert.Empty(t, s.GetArmHistory())
+	assert.Empty(t, s.GetVoiceHistory())
 }
 
 func TestVADInterruptCache(t *testing.T) {
@@ -112,31 +71,30 @@ func TestVADInterruptCache(t *testing.T) {
 	assert.False(t, val)
 }
 
-func TestPeekPPTMessageQueue(t *testing.T) {
+func TestPeekArmMessageQueue(t *testing.T) {
 	s := NewAppState()
-	_, ok := s.PeekPPTMessageQueue()
+	_, ok := s.PeekArmMessageQueue()
 	assert.False(t, ok)
 
 	s.SendToVoiceAgent("msg1")
 	s.SendToVoiceAgent("msg2")
 
-	msg, ok := s.PeekPPTMessageQueue()
+	msg, ok := s.PeekArmMessageQueue()
 	assert.True(t, ok)
 	assert.Equal(t, "msg1", msg)
 
 	// Peek should not remove the message.
-	msg, ok = s.PeekPPTMessageQueue()
+	msg, ok = s.PeekArmMessageQueue()
 	assert.True(t, ok)
 	assert.Equal(t, "msg1", msg)
+	assert.Equal(t, 2, s.ArmMessageQueueLen())
 
-	// Fetch should drain all messages.
-	msg, err := s.FetchFromPPTMessageQueue()
-	assert.NoError(t, err)
-	assert.Equal(t, "msg1 | msg2", msg)
+	// Drain should remove all messages, oldest first.
+	msgs := s.DrainArmMessageQueue()
+	assert.Equal(t, []string{"msg1", "msg2"}, msgs)
 
-	msg, ok = s.PeekPPTMessageQueue()
+	_, ok = s.PeekArmMessageQueue()
 	assert.False(t, ok)
-	assert.Equal(t, "", msg)
 }
 
 func TestVoiceHistory(t *testing.T) {

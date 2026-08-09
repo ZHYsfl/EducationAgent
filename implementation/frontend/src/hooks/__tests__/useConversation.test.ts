@@ -15,8 +15,7 @@ describe('useConversation', () => {
       spokenText: '',
       ttsPendingText: '',
       isInterrupted: false,
-      confirmPayload: null,
-      pptMessages: [],
+      armMessages: [],
       toolBuffer: [],
     })
 
@@ -46,11 +45,6 @@ describe('useConversation', () => {
       message: 'success',
       data: null,
     } as Awaited<ReturnType<typeof client.startConversation>>)
-    vi.spyOn(client, 'releaseSlidevPreview').mockResolvedValue({
-      code: 200,
-      message: 'success',
-      data: null,
-    } as Awaited<ReturnType<typeof client.releaseSlidevPreview>>)
 
     const { result } = renderHook(() => useConversation())
     await act(async () => {

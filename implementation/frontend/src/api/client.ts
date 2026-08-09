@@ -1,7 +1,5 @@
 import type {
   UniformResponse,
-  Requirements,
-  UpdateRequirementsData,
   VADStartRequest,
   VADStartData,
   VADEndRequest,
@@ -20,11 +18,6 @@ async function post<T>(path: string, body: unknown): Promise<UniformResponse<T>>
   return res.json() as Promise<UniformResponse<T>>
 }
 
-async function get<T>(path: string): Promise<UniformResponse<T>> {
-  const res = await fetch(`${API_BASE}${path}`)
-  return res.json() as Promise<UniformResponse<T>>
-}
-
 // ---------------------------------------------------------------------------
 // Voice Agent APIs
 // ---------------------------------------------------------------------------
@@ -33,41 +26,20 @@ export async function startConversation(): Promise<UniformResponse<null>> {
   return post<null>('/start_conversation', { from: 'frontend', to: 'voice_agent' })
 }
 
-/** Frees Slidev preview TCP 6008 (called when user stops the session or server exits). */
-export async function releaseSlidevPreview(): Promise<UniformResponse<null>> {
-  return post<null>('/release_slidev_preview', {})
-}
+// ---------------------------------------------------------------------------
+// Arm Agent APIs
+// ---------------------------------------------------------------------------
 
-export async function updateRequirements(
-  requirements: Partial<Requirements>,
-): Promise<UniformResponse<UpdateRequirementsData>> {
-  return post<UpdateRequirementsData>('/update_requirements', {
+export async function sendToArmAgent(content: string): Promise<UniformResponse<string>> {
+  return post<string>('/send_to_arm_agent', {
     from: 'frontend',
-    to: 'voice_agent',
-    requirements,
+    to: 'arm_agent',
+    content,
   })
 }
 
-export async function requireConfirm(
-  requirements: Requirements,
-): Promise<UniformResponse<null>> {
-  return post<null>('/require_confirm', {
-    from: 'voice_agent',
-    to: 'frontend',
-    requirements,
-  })
-}
-
-export async function sendToPPTAgent(data: string): Promise<UniformResponse<null>> {
-  return post<null>('/send_to_ppt_agent', {
-    from: 'voice_agent',
-    to: 'ppt_agent',
-    data,
-  })
-}
-
-export async function fetchFromPPTMessageQueue(): Promise<UniformResponse<string | null>> {
-  return get<string | null>('/fetch_from_ppt_message_queue')
+export async function getMessageFromArmAgent(): Promise<UniformResponse<string | null>> {
+  return post<string | null>('/get_message_from_arm_agent', {})
 }
 
 // ---------------------------------------------------------------------------
@@ -159,31 +131,8 @@ export function isIgnoredResponse(data: unknown): data is VADEndIgnoredData {
 }
 
 // ---------------------------------------------------------------------------
-// PPT agent panel APIs
+// Text input
 // ---------------------------------------------------------------------------
-
-export interface FSEntry {
-  name: string
-  path: string
-  isDir: boolean
-}
-
-export async function fsList(signal?: AbortSignal): Promise<FSEntry[]> {
-  const res = await fetch(`${API_BASE}/fs/list`, { signal })
-  if (!res.ok) {
-    throw new Error(`fs/list HTTP ${res.status}`)
-  }
-  return res.json() as Promise<FSEntry[]>
-}
-
-export async function fsRead(path: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(path)}`)
-  if (!res.ok) {
-    throw new Error(`fs/read HTTP ${res.status}`)
-  }
-  const json = (await res.json()) as { content: string }
-  return json.content
-}
 
 export async function textInput(
   text: string,
@@ -223,12 +172,12 @@ export async function textInput(
   }
 }
 
-export function fsDownloadUrl(path: string): string {
-  return `${API_BASE}/fs/download?path=${encodeURIComponent(path)}`
-}
+// ---------------------------------------------------------------------------
+// Arm agent activity log stream
+// ---------------------------------------------------------------------------
 
-export function subscribePPTLog(onLine: (line: string) => void, signal: AbortSignal): void {
-  const es = new EventSource(`${API_BASE}/ppt/log-stream`)
+export function subscribeArmLog(onLine: (line: string) => void, signal: AbortSignal): void {
+  const es = new EventSource(`${API_BASE}/arm/log-stream`)
   signal.addEventListener('abort', () => es.close())
   es.onmessage = (e) => {
     try {

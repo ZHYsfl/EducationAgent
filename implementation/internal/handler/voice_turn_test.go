@@ -138,8 +138,8 @@ func TestVADEndStreamsWhenInterruptTrue(t *testing.T) {
 	voiceAgent := &mockVoiceAgentService{
 		chunks: []model.SSEChunk{
 			{Type: "tts", Text: "ok"},
-			{Type: "action", Payload: "send_to_ppt_agent|data:make it bigger"},
-			{Type: "tool", Text: "data is sent to the ppt agent successfully"},
+			{Type: "action", Payload: "send_to_arm_agent:把红色物块放到 (1.0,2.0,3.0)"},
+			{Type: "tool", Text: "发送成功"},
 			{Type: "turn_end"},
 		},
 	}

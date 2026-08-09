@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useConversation } from '@/hooks/useConversation'
 import { useConversationStore } from '@/store/conversationStore'
-import { ConfirmTable } from './ConfirmTable'
-import { PPTAgentPanel } from './PPTAgentPanel'
+import { ArmAgentPanel } from './ArmAgentPanel'
 import { OpenSourceLinks } from './OpenSourceLinks'
 
 export function Chat() {
-  const { start, stop, sendText, status, history, confirmPayload } = useConversation()
+  const { start, stop, sendText, status, history } = useConversation()
   const isPhase2 = useConversationStore((s) => s.isPhase2)
   const [input, setInput] = useState('')
   const historyEndRef = useRef<HTMLDivElement>(null)
@@ -36,11 +35,6 @@ export function Chat() {
         ))}
         <div ref={historyEndRef} />
       </section>
-      {confirmPayload && (
-        <section className="confirm-section">
-          <ConfirmTable requirements={confirmPayload.requirements} />
-        </section>
-      )}
     </div>
   )
 
@@ -55,7 +49,7 @@ export function Chat() {
 
       <div className={`chat-main ${isPhase2 ? 'phase2' : ''}`}>
         {voicePanel}
-        {isPhase2 && <PPTAgentPanel />}
+        {isPhase2 && <ArmAgentPanel />}
       </div>
 
       <footer className="chat-controls">

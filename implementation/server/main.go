@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,10 +27,10 @@ func main() {
 
 	appState := state.NewAppState()
 
-	voiceSvc := service.NewVoiceService(appState)
-	kbSvc := service.NewKBService()
-	searchSvc := service.NewSearchService()
-	pptSvc := service.NewPPTService(appState, nil, kbSvc, searchSvc)
+	// Arm agent: background embodied executor. LLM from ARM_LLM_* env vars,
+	// embodied tools via the RESTful gateway at ARM_GATEWAY_BASE_URL
+	// (default http://127.0.0.1:8000, see api_of_embodied_tools.md).
+	armSvc := service.NewArmService(appState, nil, nil)
 	asrSvc := service.NewASRService()
 	// Interrupt-check LLM and Voice-Agent LLM are local fine-tuned models.
 	// They expose an OpenAI-compatible HTTP API (e.g. vLLM / llama.cpp server).
@@ -40,44 +39,27 @@ func main() {
 		Model:   os.Getenv("INTERRUPT_LLM_MODEL"),
 		BaseURL: os.Getenv("INTERRUPT_LLM_BASE_URL"),
 	})
-	// Build the voice-agent action executor that parses <action>...</action>
-	// payloads and maps them to actual Go function calls.
-	voiceActionExec := voiceagent.NewExecutor()
-	voiceActionExec.Register("update_requirements", func(ctx context.Context, args map[string]string) (string, error) {
-		reqMap := voiceagent.ArgsToMap(args, "total_pages")
-		missing, err := voiceSvc.UpdateRequirements(reqMap)
-		if err != nil {
+	// Build the voice-agent tool executor that parses <tool_call>...</tool_call>
+	// payloads and maps them to actual Go calls. The voice agent has exactly
+	// two tools (api_of_voice_tools.md): send_to_arm_agent and
+	// get_message_from_arm_agent.
+	voiceToolExec := voiceagent.NewExecutor()
+	voiceToolExec.Register("send_to_arm_agent", func(ctx context.Context, args map[string]string) (string, error) {
+		content := strings.TrimSpace(args["content"])
+		if content == "" {
+			return "", fmt.Errorf("send_to_arm_agent 缺少任务内容")
+		}
+		if err := armSvc.OnVoiceMessage(content); err != nil {
 			return "", err
 		}
-		if len(missing) > 0 {
-			return fmt.Sprintf("we now still missing %s", strings.Join(missing, ", ")), nil
-		}
-		return "all fields are updated", nil
+		return "发送成功", nil
 	})
-	voiceActionExec.Register("require_confirm", func(ctx context.Context, args map[string]string) (string, error) {
-		if err := voiceSvc.RequireConfirm(); err != nil {
-			return "", err
+	voiceToolExec.Register("get_message_from_arm_agent", func(ctx context.Context, args map[string]string) (string, error) {
+		msgs := appState.DrainArmMessageQueue()
+		if len(msgs) == 0 {
+			return "当前没有新消息", nil
 		}
-		req := appState.GetRequirements()
-		b, _ := json.Marshal(req)
-		return "require_confirm:" + string(b), nil
-	})
-	voiceActionExec.Register("send_to_ppt_agent", func(ctx context.Context, args map[string]string) (string, error) {
-		data := args["data"]
-		if err := pptSvc.OnVoiceMessage(data); err != nil {
-			return "", err
-		}
-		return "data is sent to the ppt agent successfully", nil
-	})
-	voiceActionExec.Register("fetch_from_ppt_message_queue", func(ctx context.Context, args map[string]string) (string, error) {
-		msg, err := voiceSvc.FetchFromPPTMessageQueue()
-		if err != nil {
-			return "failed to fetch the data from the ppt message queue", err
-		}
-		if msg == "" {
-			return "queue is empty", nil
-		}
-		return fmt.Sprintf("the ppt message is: %s", msg), nil
+		return "all_messages_from_arm_agent:" + strings.Join(msgs, ";"), nil
 	})
 
 	voiceLLMCfg := toolcalling.LLMConfig{
@@ -93,9 +75,9 @@ func main() {
 			voiceLLMCfg.StreamMaxTokens = n
 		}
 	}
-	voiceAgentSvc := service.NewVoiceAgentService(voiceLLMCfg, voiceActionExec)
+	voiceAgentSvc := service.NewVoiceAgentService(voiceLLMCfg, voiceToolExec)
 
-	handler.RegisterRoutes(r, appState, voiceSvc, pptSvc, kbSvc, searchSvc, asrSvc, interruptSvc, voiceAgentSvc)
+	handler.RegisterRoutes(r, appState, armSvc, asrSvc, interruptSvc, voiceAgentSvc)
 
 	srv := &http.Server{
 		Addr:    ":8080",
@@ -113,7 +95,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	pptSvc.ReleaseSlidevPreviewPort()
+	armSvc.StopRuntime()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

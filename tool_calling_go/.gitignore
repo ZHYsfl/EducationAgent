@@ -4,8 +4,6 @@
 *.dylib
 *.test
 
-/go.sum
-/go.mod
 /go.work
 
 *.log

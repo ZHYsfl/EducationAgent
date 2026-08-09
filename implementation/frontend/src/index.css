@@ -195,101 +195,16 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Confirm table
+   Arm messages
    --------------------------------------------------------------------------- */
 
-.confirm-section {
+.arm-section {
   padding: 20px 24px;
   border-top: 1px solid var(--border-light);
   background: var(--bg-card);
 }
 
-.confirm-table {
-  background: var(--bg-warm);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  border: 1px solid var(--border-light);
-}
-
-.confirm-table h3 {
-  margin: 0 0 14px;
-  font-size: 1.05rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  letter-spacing: 0.02em;
-}
-
-.confirm-table table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 16px;
-}
-
-.confirm-table td {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-light);
-  font-size: 0.95rem;
-}
-
-.confirm-table td:first-child {
-  font-weight: 500;
-  width: 36%;
-  color: var(--text-secondary);
-}
-
-.confirm-table td:last-child {
-  color: var(--text-primary);
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.confirm-actions button {
-  flex: 1;
-  padding: 11px;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 0.95rem;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-.confirm-actions button:active {
-  transform: translateY(1px);
-}
-
-.confirm-actions button:first-child {
-  background: var(--accent-teal);
-  color: #fff;
-}
-
-.confirm-actions button:first-child:hover {
-  background: var(--accent-teal-hover);
-}
-
-.confirm-actions button:last-child {
-  background: var(--accent-sand);
-  color: var(--text-primary);
-}
-
-.confirm-actions button:last-child:hover {
-  background: #c9c4bc;
-}
-
-/* ---------------------------------------------------------------------------
-   PPT messages
-   --------------------------------------------------------------------------- */
-
-.ppt-section {
-  padding: 20px 24px;
-  border-top: 1px solid var(--border-light);
-  background: var(--bg-card);
-}
-
-.ppt-messages h4 {
+.arm-messages h4 {
   margin: 0 0 10px;
   font-size: 0.95rem;
   font-weight: 500;
@@ -297,12 +212,12 @@ body {
   letter-spacing: 0.02em;
 }
 
-.ppt-messages ul {
+.arm-messages ul {
   margin: 0;
   padding-left: 18px;
 }
 
-.ppt-message {
+.arm-message {
   margin-bottom: 8px;
   font-size: 0.92rem;
   color: var(--text-secondary);
@@ -387,118 +302,20 @@ body {
   overflow-y: auto;
 }
 
-/* PPT Agent Panel */
-.ppt-panel-wrap {
+/* Arm Agent Panel */
+.arm-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-}
-
-.ppt-backend-banner {
-  flex: none;
-  padding: 8px 12px;
-  background: #5a2d2d;
-  color: #ffcccc;
-  font-size: 0.85rem;
-  border-bottom: 1px solid #333;
-}
-
-.ppt-panel {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  min-height: 0;
+  padding: 16px 20px;
   background: #1e1e1e;
   color: #d4d4d4;
   font-size: 0.92rem;
 }
 
-.ppt-panel-left {
-  width: 220px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #333;
-  overflow: hidden;
-}
-
-.ppt-filetree {
-  padding: 12px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.ppt-filetree h3 {
-  margin: 0 0 10px;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #888;
-  font-weight: 500;
-}
-
-.filetree-entry {
-  padding: 5px 8px;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  cursor: default;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.filetree-entry.file {
-  cursor: pointer;
-}
-
-.filetree-entry.file:hover {
-  background: #2a2a2a;
-}
-
-.filetree-entry.active {
-  background: #2d3f5c;
-}
-
-.ppt-file-content {
-  border-top: 1px solid #333;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.file-content-header {
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  color: #888;
-  border-bottom: 1px solid #333;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ppt-file-content pre {
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  font-size: 0.82rem;
-  font-family: 'Fira Code', 'Cascadia Code', monospace;
-  flex: 1;
-  color: #d4d4d4;
-}
-
-.ppt-panel-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 16px 20px;
-}
-
-.ppt-panel-right h3 {
+.arm-panel h3 {
   margin: 0 0 12px;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -507,7 +324,7 @@ body {
   font-weight: 500;
 }
 
-.ppt-log {
+.arm-log {
   flex: 1;
   overflow-y: auto;
   font-family: 'Fira Code', 'Cascadia Code', monospace;
@@ -526,36 +343,6 @@ body {
 .log-result  { color: #6a9955; }
 .log-text    { color: #d4d4d4; }
 .log-agent   { color: #dcdcaa; }
-
-/* Context menu */
-.ctx-menu {
-  position: fixed;
-  background: #2d2d2d;
-  border: 1px solid #444;
-  border-radius: 4px;
-  z-index: 1000;
-  min-width: 120px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-
-.ctx-menu-item {
-  padding: 8px 14px;
-  font-size: 0.88rem;
-  cursor: pointer;
-  color: #d4d4d4;
-}
-
-.ctx-menu-item:hover {
-  background: #3a3a3a;
-}
-
-/* PDF preview */
-.pdf-preview {
-  flex: 1;
-  width: 100%;
-  border: none;
-  background: #fff;
-}
 
 /* Log rows */
 .log-row {

@@ -1,778 +1,151 @@
-api.md
+# 后端 API 契约 —— 异步双 Agent 具身系统（Voice Agent + Arm Agent）
 
-## go-backend api
+> 本文是 Go 后端（Gin，默认 `:8080`）的完整 API 契约。
+> 系统设计见 `../async_dual_agent_system_design.md`；具身工具网关（:8000）见 `../api_of_embodied_tools.md`；微调数据格式见 `../finetuning_of_arm_agent.md` / `../finetuning_of_voice_agent.md`。
 
-we follow the mvp rule to build things fast and iteratively.all the tools have context.Context as the first argument.the backend program is deployed in a docker sandbox.the sandbox has node.js,go,slidev installed.the voice agent llm will be finetined by us,and the ppt agent llm will directly use the sota llm api.
+## 通用约定
 
-### module 0: voice turn api
-
-the frontend handles vad_start and vad_end locally. no audio chunks are streamed before vad_end.
-
-#### 0.1 Post `/api/v1/voice/vad_start`
-
-when the frontend detects `vad_start`, it begins buffering microphone data into a local ring buffer. it waits until either `vad_end` fires or `1.5s` elapses, whichever comes first. only then does it send the captured audio segment to the backend for a fast interrupt check.
-
-request body:
-```json
-{
-    "audio": "base64-encoded audio from vad_start to min(vad_end, vad_start + 1.5s)",
-    "format": "pcm"
-}
-```
-
-backend processing:
-1. run local asr on the short audio segment.
-2. send the transcript to the interrupt-check llm to decide if this is a real interruption.
-
-response body:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "interrupt": true | false
-    }
-}
-```
-
-frontend behavior after response:
-- if `interrupt: true`:
-  - if the assistant turn is active, the frontend immediately clears the tts queue and stops playback, and discards any buffered tokens.
-  - if the backend stream has not yet emitted the opening `<` of the first `<action`, the stream is aborted and no action is generated.
-  - if the opening `<` has already been emitted, the frontend must let the goroutine continue running until the **full action sequence** is complete. a single `<action>...</action>` may be fully closed, but if the goroutine is still running, there may be more `<action>...</action>` tags following. because actions are silent (not tts-played), the user will not experience "the machine is still talking".
-  - the assistant message that goes into the conversation history contains the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence) plus the complete action sequence only if the stream had already entered the action phase.
-  - when vad_end arrives, the frontend sends the full audio to `POST /api/v1/voice/vad_end`. the backend runs full asr and skips the interrupt-check llm because the fast check has already confirmed this is a real turn. however, if the action sequence from the previous turn is still running, the backend must wait for it to finish before starting the voice agent llm.
-- if `interrupt: false`:
-  - if the assistant turn is active, the frontend continues playing tts as if nothing happened. the conversation history is unchanged.
-  - when vad_end arrives, the frontend still sends the full audio to `POST /api/v1/voice/vad_end`. the backend reuses the `interrupt: false` result and returns `{"ignored": true}` without calling the voice agent llm.
-
-#### 0.2 Post `/api/v1/voice/vad_end`
-
-call this right after vad_end.
-
-request body:
-
-when `vad_start` returned `interrupt: false`:
-```json
-{
-    "audio": "base64-encoded audio from vad_start to vad_end",
-    "format": "pcm"
-}
-```
-
-when `vad_start` returned `interrupt: true`:
-```json
-{
-    "audio": "base64-encoded audio from vad_start to vad_end",
-    "format": "pcm",
-    "needs_interrupted_prefix": true,
-    "interrupted_assistant_text": "新版 PPT 已经"
-}
-```
-- `needs_interrupted_prefix`: decided by the frontend. `true` only when the assistant was still playing TTS text to the user when the interrupt happened.
-- `interrupted_assistant_text`: the truncated assistant text that had already been spoken before the interrupt. the backend appends it to the conversation history before starting the new inference so the LLM context stays consistent. empty string when there is no truncated text to sync.
-
-backend processing:
-1. run local asr on the full audio segment. this asr can start in parallel with the short asr from `vad_start` because the audio is just a prefix extension. the two asr jobs are cascaded (they may share the same session state) but the full asr does not need to wait for the fast check to finish.
-2. look up the fast-check result stored for this turn:
-   - if `vad_start` returned `interrupt: false`, return immediately:
-     ```json
-     {
-         "code": 200,
-         "message": "success",
-         "data": {
-             "ignored": true
-         }
-     }
-     ```
-     the frontend discards this turn and does nothing.
-   - if `vad_start` returned `interrupt: true`, skip the interrupt-check llm and send the transcript directly to the finetuned voice agent llm. stream the response back to the frontend token by token.
-
-streamed response format (server-sent events or websocket chunks):
-
-| chunk type | example | meaning |
-|------------|---------|---------|
-| user_transcript | `{"type": "user_transcript", "text": "</interrupted>\\n<status>not empty</status>\\n<user>xxxxx</user>"}` | the fully formatted user message for this turn, emitted first so the frontend can append it to history. |
-| tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to the tts engine |
-| action | `{"type": "action", "payload": "update_requirements|topic:数学"}` | a parsed action extracted from the llm stream |
-| tool | `{"type": "tool", "text": "all fields are updated"}` | the synchronous result of the action just emitted. inserted into the conversation history as an independent `tool` message after the assistant turn ends. |
-| turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
-
-note: the backend executes every action synchronously. the stream order is `user_transcript` → `tts` (spoken text) → `action` → `tool` → `action` → `tool` → ... → **[optional] `tts`** → `turn_end`. **after all actions are emitted, the assistant may output additional tts text to report the action results, but no further actions are allowed after that.** the tool result is a plain string (no xml wrapper). in history, it is stored as a separate `tool` role message following the `assistant` message that emitted the corresponding `<action>`. **if there is post-action tts, it becomes a second, independent `assistant` message placed after all `tool` messages—not merged into the first assistant message.**
-
-### module 1: voice agent
-
-#### 1.1 Post api/v1/update_requirements
-
-request body:
-```json
-{
-    "from":"frontend",
-    "to":"voice_agent",
-    "requirements": {
-        "topic": "string"|null,  
-        "style": "string"|null,
-        "total_pages": "int"|null,
-        "audience": "string"|null,
-    }
-}
-```
-
-response body:
-if success:
-return the missing fields after some fields are updated.
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "missing_fields": ["string"] | null,
-    }
-}
-```
-if failed:
-return the error message.
-```json
-{
-    "code": 400,
-    "message": "failed to update the requirements,please try again",
-    "data": null,
-}
-```
-
-we will maintain the requirements fields in the backend, and update the fields when the user provides the information，by the way,return the missing fields after some fields are updated.(voice agent will call update_requirements tool,that tool will call this api to update the requirements fields and get the missing fields back to voice agent.)
-
-for instance:
+- 除 SSE 端点外，所有 REST 端点 **HTTP 恒 200**，业务码在信封里：
 
 ```json
-{
-    "from":"frontend",
-    "to":"voice_agent",
-    "requirements": {
-        "topic": "math",
-        "style": "simple and elegant",
-    }
-}
-
-
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "missing_fields": ["total_pages", "audience"]
-    }
-}
+{ "code": 200, "message": "success", "data": ... }
 ```
 
-```json
-{
-    "from":"voice_agent",
-    "to":"frontend",
-    "requirements": {
-        "total_pages": 15,
-        "audience": "middle school students"
-    }
-}
-```
+`code != 200` 表示失败，`message` 中有原因。
 
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "missing_fields": null
-    }
-}
-```
-
-the update_requirements tool function definition:
-LLM:
-```text
-<action>update_requirements|topic:...|style:...|total_pages:...|audience:...</action>
-```
-go：
-```go
-func update_requirements(ctx context.Context, requirements map[string]any) (string, error) {
-    // update the requirements fields in the backend
-    // success: return a plain string telling the missing fields or completion
-    return "we now still missing total_pages, audience", nil
-    // or
-    return "all fields are updated", nil
-    // failure: return the error message directly
-    return "failed to update the requirements,please try again", errors.New("failed to update the requirements,please try again") or ctx.Err()
-}
-```
-
-tool result examples (plain string returned by the backend):
-- success (still missing fields): `we now still missing total_pages, audience`
-- success (complete): `all fields are updated`
-- failure: `failed to update the requirements,please try again`
-
-LLM -> parse the fields and their value,make the map[string]any,and call the update_requirements tool function->get the return value quickly -> LLM -> ask the user to provide the missing fields.
-if all fields are updated, LLM will call the require_confirm tool to ask the user to confirm the requirements.
-
-the update_requirements tool will disappear forever after the first send_to_ppt_agent tool is called.
+- 两条系统级 FIFO 队列由编排运行时（`AppState`）持有：
+  - `message_from_voice_agent_queue`（voice → arm）：`send_to_arm_agent` 生产，Arm Agent 消费。
+  - `message_from_arm_agent_queue`（arm → voice）：`send_to_voice_agent` 生产，Voice Agent 消费。
+- 人优先原则：队列消息只能通过「`<queue_status>` 状态栏感知 + 主动消费」进入上下文，不得插队打断当前推理。
 
 ---
 
-#### 1.2 Post api/v1/require_confirm
+## Module 0：语音轮次 API（前端 VAD/播放器 ⇄ 后端）
 
-request body:
-```json
-{
-    "from": "voice_agent",
-    "to": "frontend",
-    "requirements": {
-        "topic": "string", //required
-        "style": "string", //required
-        "total_pages": "int", //required
-        "audience": "string", //required
-    }
-}
-```
+前端职责：浏览器 VAD（含回声消除、防吞字缓存）、TTS 播放、打断时停播并中止 SSE。
 
-response body:
-if success:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
+### 0.1 `POST /api/v1/voice/vad_start`
 
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to send the data to the frontend",
-    "data": null,
-}
-```
+说话开始的 1.5s 音频预检：ASR 转录 + 打断检测模型判断是否为真实打断。
 
-we will send the requirements to the frontend, and return the success or failure quickly.
-the frontend will show and pop a table to the user to confirm the requirements.user can confirm the requirements or deny the requirements just by speaking.if user deny , and change the fields,we will close the table and call the update_requirements tool again to update the requirements fields and call require_confirm tool again to send the requirements to the frontend.if user confirm the requirements, we will close the table and call the send_to_ppt_agent tool to send the requirements to the ppt agent.
-Notice:this tool will return the success or failure quickly,and will not wait for the user to confirm the requirements.so the response data is just a message of if the data is sent to the frontend successfully.
+- 请求：`{ "audio": "<base64 wav>", "format": "pcm" }`
+- 响应：`data = { "interrupt": true|false }`
+- 副作用：结果缓存在后端（`SetLastVADInterrupt`），供紧随其后的 `vad_end` 使用。打断检测失败时 fail-open 为 `true`。
 
-the require_confirm tool function definition:
-LLM:
-```text
-<action>require_confirm</action>
-```
-go:
-```go
-func require_confirm(ctx context.Context, requirements map[string]any) (string, error) {
-    // require the user to confirm the requirements
-    // success: plain string confirmation
-    return "data is sent to the frontend successfully", nil
-    // failure: plain string error
-    return "failed to send the data to the frontend", errors.New("failed to send the data to the frontend") or ctx.Err()
-}
-```
+### 0.2 `POST /api/v1/voice/vad_end`
 
-tool result examples:
-- success: `data is sent to the frontend successfully`
-- failure: `failed to send the data to the frontend`
+说话结束：完整 ASR → Voice Agent 流式推理，SSE 返回。
 
-for instance:
-```json
-{
-    "from": "voice_agent",
-    "to": "frontend",
-    "requirements": {
-        "topic": "math",
-        "style": "simple and elegant",
-        "total_pages": 15,
-        "audience": "middle school students"
-    }
-}
-```
+- 请求：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `audio` | string | base64 wav（与 `text` 二选一） |
+| `text` | string | 直接给文本时跳过 ASR |
+| `needs_interrupted_prefix` | bool | 上一轮播报被打断时为 true，用户消息前加 `</interrupted>` |
+| `interrupted_assistant_text` | string | 被打断的 assistant 已播报文本，先补入历史再推理 |
+
+- 响应分支：
+  1. 缓存的 vad_start 判定 `interrupt=false` → 普通 JSON `{code:200, data:{ignored:true}}`，不推理。
+  2. 无缓存的 vad_start → `{code:400, message:"vad_start required before vad_end"}`。
+  3. 否则 `Content-Type: text/event-stream`，逐行 `data: <SSEChunk JSON>\n\n`，以 `data: [DONE]` 结束。
+
+### 0.3 `POST /api/v1/voice/text_input`
+
+跳过 ASR 直接以文本触发一轮 Voice Agent（调试/打字备用），SSE 格式同 vad_end。请求 `{ "text": "..." }`。
+
+### 0.4 SSE chunk 契约
 
 ```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
+{ "type": "user_transcript|tts|action|tool|turn_end", "text": "...", "payload": "..." }
 ```
 
-the require_confirm tool will disappear forever after the first send_to_ppt_agent tool is called.
+| type | 含义 |
+| --- | --- |
+| `user_transcript` | 完整格式化后的用户消息（含 `</interrupted>` 前缀）或独立的 `<queue_status>` 状态栏消息，前端据此先落历史；每轮先落用户消息、再落状态栏消息 |
+| `tts` | 口语文本片段，前端逐段送 TTS 播放 |
+| `action` | 一个完整 `<tool_call>` 的 payload（紧凑格式 `name:自由文本`，如 `send_to_arm_agent:抓取 red 物块…`），仅展示，不播放 |
+| `tool` | 工具执行结果字符串（如 `发送成功` / `all_messages_from_arm_agent:…`） |
+| `turn_end` | 本轮结束 |
+
+### 0.5 上下文重组规则（打断）
+
+- 被打断的 assistant 消息以截断文本原样保留在历史中；新用户消息以 `</interrupted>` 开头，后接用户新文本。
+- 每条人类 user 消息之后紧跟一条独立的 role=user `<queue_status>empty|not empty</queue_status>` 状态栏消息（反映 `message_from_arm_agent_queue` 是否非空）；当 tool response、user input、状态栏三者同时存在时，顺序固定为 tool response → user input → 状态栏。
+- 工具结果以 **tool/user 双角色**写回历史（一条 role=tool + 一条同内容 role=user）。
+
+### 0.6 Voice Agent 两轮推理
+
+Round 1 流式输出 TTS + `<tool_call>`；若工具调用为 `get_message_from_arm_agent`，后端执行工具、写回结果后自动发起 Round 2，模型只用口语转述消费到的消息，不得再输出新 `<tool_call>`。
 
 ---
 
-#### 1.3 Post api/v1/send_to_ppt_agent
+## Module 1：跨 Agent 通信 REST 端点（联调/测试用）
 
-request body:
-```json
-{
-    "from": "voice_agent",
-    "to": "ppt_agent",
-    "data":"string",
-}
-```
+> 生产路径上这些消息由两个 agent 自己的工具产生/消费；以下端点供前端面板与联调直接操作同一队列后端。
 
-response body:
-if success:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
+### 1.1 `POST /api/v1/send_to_arm_agent`
 
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to send the data to the ppt agent",
-    "data": null,
-}
-```
+把一条任务/变更/取消消息追加到 `message_from_voice_agent_queue`；Arm Agent 空闲时会自动消费并启动运行时。
 
-voice agent will send the data to the ppt agent, and return the success or failure quickly.
-the ppt agent will generate the ppt based on the data.
-the voice agent will call the send_to_ppt_agent tool,that tool will call this api to send the data to the ppt agent and get the success or failure back to the voice agent quickly.
-Notice:this tool will return the success or failure quickly,and will not wait for the ppt agent to generate the ppt.so the response data is just a message of if the data is sent to the ppt agent successfully.
+- 请求：`{ "from": "voice_agent", "to": "arm_agent", "content": "抓取 red 物块并放到 (1.0,2.0,3.0)。" }`
+- 响应：`data = "发送成功"`；`content` 为空时 `code=400`。
 
+### 1.2 `POST /api/v1/get_message_from_arm_agent`
 
-the send_to_ppt_agent tool function definition:
-LLM:
-```text
-<action>send_to_ppt_agent|data:...</action>
-```
-go:
-```go
-func send_to_ppt_agent(ctx context.Context, data string) (string, error) {
-    // send the data to the ppt agent
-    // success: plain string confirmation
-    return "data is sent to the ppt agent successfully", nil
-    // failure: plain string error
-    return "failed to send the data to the ppt agent", errors.New("failed to send the data to the ppt agent") or ctx.Err()
-}
-```
+排空 `message_from_arm_agent_queue`。
 
-tool result examples:
-- success: `data is sent to the ppt agent successfully`
-- failure: `failed to send the data to the ppt agent`
+- 请求：空 body `{}`。
+- 响应：队列非空 `data = "all_messages_from_arm_agent:消息1;消息2"`（入队顺序，`;` 拼接）；空队列 `data = "当前没有新消息"`。
 
-for instance:
-```json
-{
-    "from": "voice_agent",
-    "to": "ppt_agent",
-    "data": "user's requirements are: topic: math, style: simple and elegant, total_pages: 15, audience: middle school students",
-}
-```
+### 1.3 `POST /api/v1/send_to_voice_agent`
 
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
+把一条 arm 侧消息追加到 `message_from_arm_agent_queue`（模拟 Arm Agent 上报）。
 
-if people have some critical feedbacks to the ppt, the voice agent will ask if they have other feedbacks for the version now,and whether they have or not, the voice agent will call the send_to_ppt_agent tool to send the feedbacks to the ppt agent and get the success or failure back to the voice agent quickly.if they have other feedbacks, the voice agent will call the send_to_ppt_agent tool again to send the feedbacks again to the ppt agent and get the success or failure back to the voice agent quickly.if they don't have other feedbacks, the voice agent will stop ask for new feedbacks.
-Notice:this tool will return the success or failure quickly,and will not wait for the ppt agent to generate the ppt.so the response data is just a message of if the data is sent to the ppt agent successfully.
+- 请求：`{ "from": "arm_agent", "to": "voice_agent", "content": "已到达目标位置，任务完成。" }`
+- 响应：`data = "发送成功"`。
 
-for instance:
-```json
-{
-    "from": "voice_agent",
-    "to": "ppt_agent",
-    "data": "people have some critical feedbacks to the ppt, the feedbacks are: the font should be bigger, the color should be more colorful",
-}
-```
+### 1.4 `POST /api/v1/start_conversation`
 
-```json
-
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
+重置整段会话：停止 Arm Agent 运行时、清空双队列与双方历史。
 
 ---
 
-#### 1.4 Get api/v1/fetch_from_ppt_message_queue
+## Module 2：Arm Agent 运行时（内部机制，非 HTTP 契约）
 
-response body:
-if success:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": "string"|null,
-}
-```
-
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to fetch the data from the ppt message queue",
-    "data": null,
-}
-```
-
-the user prompt of the voice agent will record if the ppt_message_queue is not empty in real time. when the user interrupts the voice agent while it is still speaking (vad_start fires during assistant output), and the queue is not empty when vad_end, the context will be like:
-
-</interrupted>
-<status>not empty</status>
-<user>xxxxx</user>
-
-if the assistant is idle and the user speaks, and the queue is empty when vad_end, the context will be like:
-
-<status>empty</status>
-<user>xxxxx</user>
-
-and voice agent will depend if the queue is not empty to judge if call the fetch_from_ppt_message_queue tool to fetch the data from the queue or not.
-
-go:
-```go
-func fetch_from_ppt_message_queue(ctx context.Context, args map[string]string) (string, error) {
-    // fetch ALL messages from the ppt message queue at once
-    // success (has messages): plain string with all messages concatenated by " | "
-    return "the ppt message is: xxxx,xxxx... | yyyy,yyyy...", nil
-    // success (empty): plain string telling it's empty
-    return "queue is empty", nil
-    // failure: plain string error
-    return "failed to fetch the data from the ppt message queue", errors.New("failed to fetch the data from the ppt message queue") or ctx.Err()
-}
-```
-
-tool result examples:
-- success (single message): `the ppt message is: the new version of the ppt is generated successfully`
-- success (multiple messages): `the ppt message is: the new version of the ppt is generated successfully | questions for user: 请问封面的主色调有什么偏好吗？`
-- success (empty): `queue is empty`
-- failure: `failed to fetch the data from the ppt message queue`
+- **生命周期**：`OnVoiceMessage` 只入队；运行时在空闲时启动（**空闲自动消费**：启动前排空队列，消息以一条 user 消息 `all_messages_from_voice_agent:…` 进入上下文，**不追加状态栏**——队列刚排空恒为 empty），运行中绝不因新消息重启。
+- **工具调用循环**：Arm LLM 以紧凑格式 `<tool_call>\nname:args\n</tool_call>` 输出工具调用；编排层解析执行后，结果以 tool/user 双角色写回，**每条工具结果之后追加一条 role=user 的 `<queue_status>empty|not empty</queue_status>`**；模型看到 `not empty` 应调用 `get_message_from_voice_agent` 主动消费。
+- **工具路由**：4 个具身工具走 `ARM_GATEWAY_BASE_URL`（默认 `http://127.0.0.1:8000`）RESTful 网关；2 个通信工具（`send_to_voice_agent` / `get_message_from_voice_agent`）直接操作 `AppState` 队列，返回字符串与 `../api_of_embodied_tools.md` §2.5/§2.6 逐字一致。
+- **上下文耗尽保护**：单轮最多 32 次工具调用。
 
 ---
 
-#### 1.5 Post api/v1/start_conversation
+## Module 3：Arm Agent 日志流
 
-request body:
-```json
-{
-    "from": "frontend",
-    "to":"voice_agent",
-}
-```
+### 3.1 `GET /api/v1/arm/log-stream`（SSE）
 
-response body:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
+实时广播 Arm Agent 活动日志，供前端面板展示。每行 `data: <JSON 字符串>`，前缀约定：
 
-if failed:
-```json
-{
-    "code": 400,        
-    "message": "failed to start the conversation",
-    "data": null,
-}
-```
+| 前缀 | 含义 |
+| --- | --- |
+| `[tool] name args` | 工具调用 |
+| `[tool_result] name: result` | 工具返回 |
+| `[agent] text` | 最新 assistant 文本（规划/说明） |
+| `[error] ...` | 运行时错误 |
 
-the frontend will start the conversation,call this api,and the vad detection,noise suppression,acoustic echo cancellation will be started.the voice agent will start the conversation once frontend call this api.
+带 500 条 ring buffer，晚订阅的客户端会先收到回放。
 
 ---
 
-### module 2: ppt agent
+## 端点汇总
 
-#### 2.1 system prompt
-
-every time the ppt agent runtime starts a new llm turn (except the very first passive restart after being idle), the backend rebuilds the system message so it always contains the **real-time voice message queue status**.
-
-example system prompt:
-```text
-You are a PPT generation agent. Use the available tools to create the presentation.
-You must write the slide content to a Markdown file (e.g. slides.md) using Slidev syntax,
-then use execute_command to run `npx slidev export slides.md --output ppt.pdf` to produce the final PDF.
-After the PDF is successfully exported, you MUST call send_to_voice_agent to notify the voice agent.
-Current voice message queue status: has 2 pending message(s).
-If the queue has messages, call fetch_from_voice_message_queue to consume them.
-```
-
-notice:
-- the agent **does not need to wait** for the voice agent to confirm before continuing its work.
-- the agent decides on its own when to pause (e.g. after sending a message via `send_to_voice_agent`).
-- the agent decides on its own when to fetch new feedback via `fetch_from_voice_message_queue`.
-
----
-
-#### 2.2 some tools:
-
-```go
-func edit_file(ctx context.Context, path string, old_string string, new_string string) error // will edit the file
-func write_file(ctx context.Context, path string, content string) error // will overwrite the file
-func read_file(ctx context.Context, path string) (string, error) // will read the file
-func list_dir(ctx context.Context, path string) ([]string, error) // will list the directory
-func move_file(ctx context.Context, src, dst string) error // will move the file
-func execute_command(ctx context.Context, command string, workdir string) (stdout string, stderr string, err error) // will execute the command
-```
-
----
-
-#### 2.3 Post api/v1/send_to_voice_agent
-
-request body:
-```json
-{
-    "from": "ppt_agent",
-    "to": "voice_agent",
-    "data": "string",
-}
-```
-
-response body:
-if success:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
-
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to send the data to the voice agent",    
-    "data": null,
-}
-```
-
-ppt agent is generating the new version of the ppt. when it wants to notify the voice agent (e.g. "the new version of the ppt is generated successfully"), it calls the `send_to_voice_agent` tool. this tool only enqueues the message into the `ppt_message_queue`; it **does not stop the ppt agent runtime**. the ppt agent decides on its own when to pause or continue working.
-
-Notice:this tool will return the success or failure quickly,and will not wait for the voice agent to receive the message.so the response data is just a message of if the data is enqueued successfully.
-
-the send_to_voice_agent tool function definition (PPT agent uses standard OpenAI function calling):
-LLM:
-```json
-{
-  "name": "send_to_voice_agent",
-  "arguments": {"data": "..."}
-}
-```
-go:
-```go
-func send_to_voice_agent(ctx context.Context, data string) (string, error) {
-    // enqueue the message to the voice agent
-    // success: plain string confirmation
-    return "data is sent to the voice agent successfully", nil
-    // failure: plain string error
-    return "failed to send the data to the voice agent", errors.New("failed to send the data to the voice agent") or ctx.Err()
-}
-```
-
-for instance:
-```json
-{
-    "from": "ppt_agent",
-    "to": "voice_agent",
-    "data": "the new version of the ppt is generated successfully",
-}
-```
-
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": null,
-}
-```
-
----
-
-#### 2.3 PPT agent runtime lifecycle
-
-the backend maintains a background goroutine (runtime) for the ppt agent. the runtime runs a loop:
-
-1. **refresh system prompt**: before every llm call, the backend rebuilds the system message so it always contains the **real-time voice message queue status** (e.g. "queue is empty" or "queue has 2 pending messages").
-2. **llm inference**: call the llm with the current history. because the system prompt tells the queue status, the ppt agent can decide whether to call `fetch_from_voice_message_queue` to consume feedback.
-3. **after the llm turn finishes**:
-   - if the `voice_message_queue` has new messages, the runtime keeps running. on the next loop iteration it refreshes the system prompt (which now reports the real-time queue status) and calls the llm again, so the ppt agent can decide on its own when to call `fetch_from_voice_message_queue` to consume the feedback.
-   - if the queue is empty, the runtime exits (goes idle). it will be restarted later when a new voice message arrives.
-
-**voice message arrival (`send_to_ppt_agent`)**:
-- the message is always enqueued into the `voice_message_queue` first.
-- if the ppt agent runtime is **already running**, the runtime will notice the queue on its next loop iteration; no cancel/restart happens.
-- if the ppt agent runtime is **idle**, the backend drains the entire queue, appends the messages to the ppt agent history as user prompts, and starts the runtime again.
-
-this means the ppt agent is never forcibly interrupted while it is working. it only stops when it finishes a turn and finds the queue empty.
-
----
-
-#### 2.4 fetch_from_voice_message_queue tool
-
-the ppt agent can call this tool to explicitly fetch the next pending message from the `voice_message_queue`.
-
-LLM (PPT agent uses standard OpenAI function calling):
-```json
-{
-  "name": "fetch_from_voice_message_queue",
-  "arguments": {}
-}
-```
-
-go:
-```go
-func fetch_from_voice_message_queue(ctx context.Context) (string, error) {
-    // fetch the next message from the voice message queue
-    // success (has message): plain string with the feedback
-    return "the feedback is: xxxx,xxxx...", nil
-    // success (empty): plain string telling it's empty
-    return "queue is empty", nil
-}
-```
-
----
-
-### module 3: kb service
-
-#### 3.1 Post api/v1/kb/query-chunks（同步）
-
-request body:
-```json
-{
-    "from": "ppt_agent",
-    "to": "kb_service",
-    "query": "string",
-}
-```
-
-response body:
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "chunks": [
-            {
-                "chunk_id": "string",
-                "content": "string",
-            }
-        ],
-        "total": "int",
-    },
-}
-```
-
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to query the chunks from the kb service",   
-    "data": null,
-}
-```
-
-go:
-
-```go
-type chunk struct {
-    chunk_id: "string",
-    content: "string",
-}
-```
-
-```go
-func query_chunks(ctx context.Context, query string) ([]chunk, int, error) {
-    // query the chunks from the kb service
-    // success: returns chunk list and total count
-    return []chunk, total, nil
-    // failure: returns empty list, 0, and a plain error string
-    return []chunk{}, 0, errors.New("failed to query the chunks from the kb service") or ctx.Err()
-}
-```
-
-if ppt agent want to query the chunks from the kb service,it can call the query_chunks tool,that tool will call this api to query the chunks from the kb service and get the chunks and the total back to the ppt agent slowly(blockingly).
-
----
-
-### module 4: search service
-
-#### 4.1 Post api/v1/search/query
-
-request body:
-```json
-{
-    "from": "ppt_agent",
-    "to": "search_service",
-    "query": "string",
-}
-```
-
-response body:  
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": "string",
-}
-```
-
-if failed:
-```json
-{
-    "code": 400,
-    "message": "failed to search the web",
-    "data": null,
-}
-```
-
-if ppt agent want to search the web,it can call the search_web tool,that tool will call this api to search the web and get the result back to the ppt agent slowly(blockingly).the result is the summary of the search result.
-
-go:
-```go
-func search_web(ctx context.Context, query string) (string, error) {
-    // search the web
-    // success: returns a plain string summary of the search result
-    return "the summary of the search result is xxxx,xxxx...", nil
-    // failure: returns a plain string error
-    return "failed to search the web", errors.New("failed to search the web") or ctx.Err()
-}
-```
-
----
-
-## frontend api
-
-the frontend will written by ts and react.we will use the ability of web browser to implement the frontend,such as vad_detection,acoustic echo cancellation,noise suppression,etc.
-
-### frontend interrupt handling responsibility (critical)
-
-data flow recap: the backend streams tokens to the frontend. the frontend buffers them and feeds the tts engine sentence by sentence (triggered by punctuation). therefore:
-- "already spoken" = text the tts engine has actually finished playing before vad_start. if a sentence is cut off mid-playback, only the part that was actually spoken is kept.
-- "not yet spoken" = everything else: text the frontend has buffered but not yet pushed to tts, plus the tail of any sentence that was pushed to tts but not finished playing.
-- "still being generated by the backend" = text not yet received by the frontend.
-
-when vad_start fires, the frontend does the following in order:
-
-1. fast interrupt check: send the audio from vad_start to min(vad_end, vad_start + 1.5s) to `POST /api/v1/voice/vad_start`. the backend runs a quick asr + interrupt-check llm and returns `{"interrupt": true | false}`.
-2. if `interrupt: false`:
-   - the frontend does nothing. if the assistant is active, tts continues playing as if nothing happened.
-   - when vad_end arrives, the frontend still sends the full audio to `POST /api/v1/voice/vad_end`. this is mostly a formality to keep the frontend logic uniform: the backend simply looks up the already-computed fast-check result and immediately returns `{"ignored": true}`. no llm inference is triggered and the conversation history is unchanged.
-3. if `interrupt: true`:
-   - if the assistant turn is active, stop local playback: clear the tts queue and stop any audio currently playing.
-   - tell the backend to cancel: the backend aborts the ongoing llm inference.
-   - buffer the new audio locally until vad_end. do not append anything to the llm context yet.
-   - wait if action has started: if the backend stream has already emitted the opening `<` of the first `<action`, the frontend must let that goroutine run until the **full action sequence** is complete. actions are silent, so the user will not feel "the machine is still talking".
-   - when vad_end arrives, send the full audio to `POST /api/v1/voice/vad_end` together with `needs_interrupted_prefix: true | false`. **this flag is decided by the frontend**: it is `true` only when the assistant was still playing **tts text** to the user (i.e. the tts queue was not empty or the stream had not yet emitted any `<action>`). if the tts had already finished and the assistant had entered the silent action phase, the flag is `false`.
-   - the backend runs full asr and calls the voice agent llm. it prepends `</interrupted>\n` to the user message **only when `needs_interrupted_prefix` is `true`**.
-   - decide what goes into history:
-     - assistant message: the text that had **already been spoken** (it may be a complete sentence or a truncated half-sentence). if the stream had already entered the action phase, also append the **complete action sequence** (`<action>...</action>`) in order.
-     - tool messages (role = `tool`): for each action that was emitted, append its synchronous execution result as a plain string. these follow the assistant message.
-     - user message (role = `user`): the backend emits a `user_transcript` SSE chunk containing the fully formatted user message. the frontend appends it to the local history as `role: 'user'`.
-   - the overall turn order appended to history is: `assistant` (truncated spoken text + complete action sequence) → `tool` messages → `[optional] assistant` (post-action TTS if the model produced any). **the post-action TTS is a separate assistant message, not merged into the first assistant message.**
-
-edge case: if the backend stream hangs abnormally, the frontend may truncate any trailing incomplete action before appending the cached user input.
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/v1/voice/vad_start` | 语音开始预检（ASR + 打断检测） |
+| POST | `/api/v1/voice/vad_end` | 语音结束 → SSE 语音轮次 |
+| POST | `/api/v1/voice/text_input` | 文本输入 → SSE 语音轮次 |
+| POST | `/api/v1/send_to_arm_agent` | 生产 voice→arm 消息 |
+| POST | `/api/v1/get_message_from_arm_agent` | 消费 arm→voice 全部消息 |
+| POST | `/api/v1/send_to_voice_agent` | 生产 arm→voice 消息（联调） |
+| POST | `/api/v1/start_conversation` | 重置会话 |
+| GET | `/api/v1/arm/log-stream` | Arm Agent 活动日志 SSE |

@@ -11,23 +11,23 @@ import (
 
 func TestExecutorSuccess(t *testing.T) {
 	e := NewExecutor()
-	e.Register("greet", func(ctx context.Context, args map[string]string) (string, error) {
-		return "hello " + args["name"], nil
+	e.Register("send_to_arm_agent", func(ctx context.Context, args map[string]string) (string, error) {
+		return "发送成功:" + args["content"], nil
 	})
 
-	res, err := e.Execute(context.Background(), "greet|name:world")
+	res, err := e.Execute(context.Background(), "send_to_arm_agent:抓取 red 物块")
 	require.NoError(t, err)
-	assert.Equal(t, "hello world", res)
+	assert.Equal(t, "发送成功:抓取 red 物块", res)
 }
 
-func TestExecutorUnknownAction(t *testing.T) {
+func TestExecutorUnknownTool(t *testing.T) {
 	e := NewExecutor()
-	_, err := e.Execute(context.Background(), "unknown|x:1")
+	_, err := e.Execute(context.Background(), "unknown_tool:x")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown action")
+	assert.Contains(t, err.Error(), "unknown tool")
 }
 
-func TestExecutorActionError(t *testing.T) {
+func TestExecutorToolError(t *testing.T) {
 	e := NewExecutor()
 	e.Register("fail", func(ctx context.Context, args map[string]string) (string, error) {
 		return "", errors.New("boom")
