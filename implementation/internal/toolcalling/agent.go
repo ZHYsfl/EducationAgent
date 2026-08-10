@@ -369,23 +369,43 @@ func (a *Agent) Chat(
 
 // ---------------------------------------------------------------------------
 // ChatText  — simple non-streaming call that returns just the text content.
-// Skips the tool-calling loop; useful for classification / lightweight tasks.
-// Registered tools ARE declared in the request (the chat template renders
-// them into the system block's <tools> section, matching the fine-tuning
-// contract), so a finetuned model may still emit inline <tool_call> blocks
-// in the returned text — parsing them is the caller's job.
+// Skips the tool-calling loop and does NOT declare tools; useful for
+// classification / summarization / lightweight tasks. Use ChatTextWithTools
+// when the model needs the tool schemas in its prompt.
 // ---------------------------------------------------------------------------
 
 func (a *Agent) ChatText(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) (string, error) {
+	return a.chatText(ctx, messages, false)
+}
+
+// ChatTextWithTools is ChatText with the registered tools declared in the
+// request: the chat template renders them into the system block's <tools>
+// section (matching the fine-tuning contract), so a finetuned model may emit
+// inline <tool_call> blocks in the returned text — parsing them is the
+// caller's job.
+func (a *Agent) ChatTextWithTools(
+	ctx context.Context,
+	messages []openai.ChatCompletionMessageParamUnion,
+) (string, error) {
+	return a.chatText(ctx, messages, true)
+}
+
+func (a *Agent) chatText(
+	ctx context.Context,
+	messages []openai.ChatCompletionMessageParamUnion,
+	withTools bool,
+) (string, error) {
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(a.config.Model),
 		Messages: messages,
 	}
-	if tools := a.getTools(); len(tools) > 0 {
-		params.Tools = tools
+	if withTools {
+		if tools := a.getTools(); len(tools) > 0 {
+			params.Tools = tools
+		}
 	}
 	if a.config.ExtraBody != nil {
 		params.SetExtraFields(a.config.ExtraBody)

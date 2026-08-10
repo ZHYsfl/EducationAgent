@@ -312,7 +312,7 @@ func (s *ArmService) runTurn(ctx context.Context, history []openai.ChatCompletio
 			return nil, ctx.Err()
 		}
 
-		content, err := s.agent.ChatText(ctx, msgs)
+		content, err := s.agent.ChatTextWithTools(ctx, msgs)
 		if err != nil {
 			return nil, fmt.Errorf("arm llm chat: %w", err)
 		}
