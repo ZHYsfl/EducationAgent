@@ -320,13 +320,24 @@ func (s *ArmService) runTurn(ctx context.Context, history []openai.ChatCompletio
 
 		calls := toolcalling.ParseToolCallBlocks(content)
 		if len(calls) == 0 {
+			if strings.Contains(content, toolcalling.ToolCallOpenTag) {
+				s.state.BroadcastArmLog("[warn] malformed <tool_call> skipped (no valid JSON payload); turn ends here")
+			}
 			return msgs, nil
 		}
 
-		for _, call := range calls {
+		for i, call := range calls {
 			toolCalls++
 			if toolCalls > armMaxToolCallsPerTurn {
 				s.state.BroadcastArmLog("[error] arm agent exceeded max tool calls per turn")
+				// Leave a role=tool result for every skipped call so the saved
+				// history has no dangling tool_call without a response.
+				for range calls[i:] {
+					msgs = append(msgs,
+						openai.ToolMessage("[EXEC_ERROR] 超过单轮工具调用上限，调用被取消", "arm-tool"),
+						openai.UserMessage(s.queueStatusMessage()),
+					)
+				}
 				return msgs, nil
 			}
 			result := s.executeArmTool(ctx, call)

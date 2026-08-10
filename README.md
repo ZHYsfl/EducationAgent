@@ -41,8 +41,8 @@
 - **`<queue_status>` 状态栏**（两侧统一为独立的 role=user 消息；tool response、user input、状态栏同时存在时顺序固定为 tool response → user input → 状态栏）：
   - Voice 侧：每条人类 user 消息之后紧跟一条 `<queue_status>empty/not empty</queue_status>` 状态栏消息（反映 arm→voice 队列），`not empty` 时调用 `get_message_from_arm_agent` 主动消费并语音转述。
   - Arm 侧：忙碌时**每条工具结果之后**追加一条 `<queue_status>` 状态栏消息，`not empty` 时调用 `get_message_from_voice_agent` 主动消费新指令（改颜色/改位置/取消）；空闲时由运行时自动消费队列，新任务由此进入上下文（此时不追加状态栏——队列刚排空恒为 empty）。
-- **紧凑 `<tool_call>` 格式**：两个微调模型均以文本内联格式 `<tool_call>\nname:args\n</tool_call>` 输出工具调用（与微调数据契约一致），编排层负责解析执行。
-- **tool/user 双角色回写**：工具结果同时以 tool 与 user 两条消息写回上下文，兼顾工具语义与「作为新输入驱动推理」。
+- **Qwen3 原生 `<tool_call>` 格式**：两个微调模型均以 Qwen3 chat template 原生格式 `<tool_call>\n{"name": "...", "arguments": {...}}\n</tool_call>` 输出工具调用（与微调数据契约一致），编排层负责解析执行。
+- **role=tool 单条回写**：工具结果以一条 role=tool 消息写回上下文，chat template 渲染时进入 user 侧的 `<tool_response>` 块，与 Qwen3 原生多轮工具对话格式完全一致。
 - **全双工语音链路**：浏览器前端 VAD（含回声消除）+ 前端 TTS 播放器 + 后端 ASR + 打断检测小模型；打断以 `</interrupted>` 标记截断并重组上下文。
 
 ## 角色与工具
@@ -55,7 +55,7 @@
 | ASR | Qwen3-ASR | 同 3090 #1（:8002） | — |
 | 具身工具网关 | — | :8000（RESTful，见 `api_of_embodied_tools.md`） | 机械臂真机 + 视觉摄像头 |
 
-Arm Agent 的 4 个具身工具通过 RESTful 网关调用；2 个通信工具直接操作编排层持有的两条队列（队列是系统级共享状态，见设计文档 §3）。
+Arm Agent 的 4 个具身工具通过 RESTful 网关调用；2 个通信工具直接操作编排层持有的两条队列（队列是系统级共享状态，见设计文档 §4.1）。
 
 ## 快速开始
 
@@ -125,7 +125,7 @@ EducationAgent/
 │   │   │   ├── interrupt_service.go    # 打断检测
 │   │   │   └── asr_service.go          # 语音识别
 │   │   ├── state/                  # AppState（双向队列/双历史/日志广播）+ AgentRuntime
-│   │   ├── toolcalling/            # LLM Agent 框架（嵌入版）+ 紧凑 <tool_call> 解析
+│   │   ├── toolcalling/            # LLM Agent 框架（嵌入版）+ Qwen3 原生 <tool_call> 解析
 │   │   ├── voiceagent/             # Voice 侧 <tool_call> 解析与执行
 │   │   └── tools/                  # arm_gateway.go（具身工具 RESTful 客户端）
 │   ├── server/                     # 入口 main.go

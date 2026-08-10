@@ -2,6 +2,7 @@ package toolcalling
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -167,7 +168,7 @@ func BatchRace(
 	var errs []string
 	for r := range resultCh {
 		if r.err != nil {
-			if r.err == context.Canceled {
+			if errors.Is(r.err, context.Canceled) {
 				continue
 			}
 			errs = append(errs, fmt.Sprintf("agent %d: %v", r.index, r.err))

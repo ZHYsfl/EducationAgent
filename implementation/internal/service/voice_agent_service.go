@@ -60,6 +60,11 @@ func splitCompressionWindow(history []openai.ChatCompletionMessageParamUnion, th
 		}
 		break
 	}
+	// Pathological case: the whole recent window is dangling tool results /
+	// status bars. Never let recent go empty — keep at least the last message.
+	if cut >= len(history) {
+		cut = len(history) - 1
+	}
 	return history[:cut], history[cut:]
 }
 

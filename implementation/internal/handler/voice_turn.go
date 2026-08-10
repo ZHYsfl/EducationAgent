@@ -69,7 +69,9 @@ func VoiceTextInput(st *state.AppState, voiceAgent service.VoiceAgentService) gi
 
 		out := make(chan model.SSEChunk, 32)
 		go func() {
-			_ = voiceAgent.StreamTurn(c.Request.Context(), st, req.Text, false, "", out)
+			if err := voiceAgent.StreamTurn(c.Request.Context(), st, req.Text, false, "", out); err != nil {
+				log.Printf("voice_turn: stream turn: %v", err)
+			}
 		}()
 
 		for chunk := range out {
@@ -104,6 +106,8 @@ func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.
 			c.JSON(http.StatusOK, model.UniformResponse{Code: 400, Message: "vad_start required before vad_end"})
 			return
 		}
+		// Consume the cached decision: it belongs to this utterance only.
+		st.ClearLastVADInterrupt()
 		// If the last vad_start decided this utterance is not a real interrupt,
 		// ignore the turn instead of running ASR + the voice agent.
 		if !interrupt {
@@ -137,7 +141,9 @@ func VoiceVADEnd(st *state.AppState, asr service.ASRService, voiceAgent service.
 
 		out := make(chan model.SSEChunk, 32)
 		go func() {
-			_ = voiceAgent.StreamTurn(c.Request.Context(), st, transcript, req.NeedsInterruptedPrefix, req.InterruptedAssistantText, out)
+			if err := voiceAgent.StreamTurn(c.Request.Context(), st, transcript, req.NeedsInterruptedPrefix, req.InterruptedAssistantText, out); err != nil {
+				log.Printf("vad_end: stream turn: %v", err)
+			}
 		}()
 
 		for chunk := range out {

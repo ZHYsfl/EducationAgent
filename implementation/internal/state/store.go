@@ -179,6 +179,14 @@ func (s *AppState) GetLastVADInterrupt() (bool, bool) {
 	return *s.lastVADInterrupt, true
 }
 
+// ClearLastVADInterrupt discards the cached vad_start result so a stale
+// decision is never reused by a later vad_end.
+func (s *AppState) ClearLastVADInterrupt() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastVADInterrupt = nil
+}
+
 // ---------------------------------------------------------------------------
 // Voice agent conversation history
 // ---------------------------------------------------------------------------

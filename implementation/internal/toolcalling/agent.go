@@ -306,10 +306,15 @@ func (a *Agent) Chat(
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(a.config.Model),
 		Messages: messages,
-		Tools:    a.getTools(),
-		ToolChoice: openai.ChatCompletionToolChoiceOptionUnionParam{
+	}
+	// Only declare tools (and force auto tool choice) when any are registered:
+	// an empty tools array or a tool_choice on a server without tool parsing
+	// enabled is rejected by some OpenAI-compatible backends.
+	if tools := a.getTools(); len(tools) > 0 {
+		params.Tools = tools
+		params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
 			OfAuto: openai.String("auto"),
-		},
+		}
 	}
 	if a.config.ExtraBody != nil {
 		params.SetExtraFields(a.config.ExtraBody)
@@ -318,6 +323,9 @@ func (a *Agent) Chat(
 	resp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("chat completion: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("chat completion: empty choices")
 	}
 
 	next := make([]openai.ChatCompletionMessageParamUnion, len(messages))
@@ -360,6 +368,9 @@ func (a *Agent) Chat(
 		resp, err = a.client.Chat.Completions.New(ctx, params)
 		if err != nil {
 			return nil, fmt.Errorf("chat completion (tool loop): %w", err)
+		}
+		if len(resp.Choices) == 0 {
+			return nil, fmt.Errorf("chat completion (tool loop): empty choices")
 		}
 	}
 
