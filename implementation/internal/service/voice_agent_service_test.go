@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -19,7 +20,7 @@ func collectChunks(extractor *streamExtractor, out chan model.SSEChunk) []model.
 
 func TestStreamExtractorPlainText(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, nil)
+	extractor := newStreamExtractor(context.Background(), out, nil)
 
 	extractor.Feed("hello world")
 	extractor.Flush()
@@ -35,7 +36,7 @@ func TestStreamExtractorPlainText(t *testing.T) {
 
 func TestStreamExtractorSingleToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "发送成功" })
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string { return "发送成功" })
 
 	extractor.Feed("好的，")
 	extractor.Feed("<tool_call>")
@@ -58,7 +59,7 @@ func TestStreamExtractorSingleToolCall(t *testing.T) {
 
 func TestStreamExtractorSplitToolCallTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "done" })
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string { return "done" })
 
 	// <tool_call> split across tokens
 	extractor.Feed("hello <tool_")
@@ -80,7 +81,7 @@ func TestStreamExtractorSplitToolCallTag(t *testing.T) {
 
 func TestStreamExtractorUnclosedToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, nil)
+	extractor := newStreamExtractor(context.Background(), out, nil)
 
 	extractor.Feed("text <tool_call>unclosed")
 	extractor.Flush()
@@ -100,7 +101,7 @@ func TestStreamExtractorUnclosedToolCall(t *testing.T) {
 func TestStreamExtractorMultipleToolCalls(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	counter := 0
-	extractor := newStreamExtractor(out, func(p string) string {
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string {
 		counter++
 		return fmt.Sprintf("result%d", counter)
 	})
@@ -128,7 +129,7 @@ func TestStreamExtractorMultipleToolCalls(t *testing.T) {
 func TestStreamExtractorToolCallCallback(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
 	var payloads []string
-	extractor := newStreamExtractor(out, func(p string) string {
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string {
 		payloads = append(payloads, p)
 		return "ok"
 	})
@@ -144,7 +145,7 @@ func TestStreamExtractorToolCallCallback(t *testing.T) {
 
 func TestStreamExtractorHistoryPlainText(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, nil)
+	extractor := newStreamExtractor(context.Background(), out, nil)
 
 	extractor.Feed("hello world")
 	extractor.Flush()
@@ -155,7 +156,7 @@ func TestStreamExtractorHistoryPlainText(t *testing.T) {
 
 func TestStreamExtractorHistorySingleToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "发送成功" })
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string { return "发送成功" })
 
 	extractor.Feed("好的，")
 	extractor.Feed("<tool_call>")
@@ -170,7 +171,7 @@ func TestStreamExtractorHistorySingleToolCall(t *testing.T) {
 
 func TestStreamExtractorHistoryMultipleToolCalls(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string {
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string {
 		if p == "a1" {
 			return "result1"
 		}
@@ -187,7 +188,7 @@ func TestStreamExtractorHistoryMultipleToolCalls(t *testing.T) {
 
 func TestStreamExtractorHistorySplitToolCallTag(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(p string) string { return "done" })
+	extractor := newStreamExtractor(context.Background(), out, func(p string) string { return "done" })
 
 	extractor.Feed("hello <tool_")
 	extractor.Feed("call>data</tool_call>")
@@ -200,7 +201,7 @@ func TestStreamExtractorHistorySplitToolCallTag(t *testing.T) {
 
 func TestStreamExtractorHistoryUnclosedToolCall(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, nil)
+	extractor := newStreamExtractor(context.Background(), out, nil)
 
 	extractor.Feed("text <tool_call>unclosed")
 	extractor.Flush()
@@ -211,7 +212,7 @@ func TestStreamExtractorHistoryUnclosedToolCall(t *testing.T) {
 
 func TestStreamExtractorActions(t *testing.T) {
 	out := make(chan model.SSEChunk, 10)
-	extractor := newStreamExtractor(out, func(string) string { return "ok" })
+	extractor := newStreamExtractor(context.Background(), out, func(string) string { return "ok" })
 	extractor.Feed("好的，")
 	extractor.Feed("<tool_call>{\"name\": \"send_to_arm_agent\", \"arguments\": {\"content\": \"抓取 red 物块\"}}</tool_call>")
 	extractor.Feed("<tool_call>{\"name\": \"get_message_from_arm_agent\", \"arguments\": {}}</tool_call>")

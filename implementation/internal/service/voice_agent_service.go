@@ -240,7 +240,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 	messages := buildVoiceMessages(sys, st, openai.UserMessage(userContent), openai.UserMessage(statusBar))
 	stream := s.agent.StreamChat(ctx, messages)
 
-	extractor := newStreamExtractor(out, func(payload string) string {
+	extractor := newStreamExtractor(ctx, out, func(payload string) string {
 		if s.executor == nil {
 			return "no executor registered"
 		}
@@ -291,7 +291,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 		messages = buildVoiceMessages(sys, st)
 		stream2 := s.agent.StreamChat(ctx, messages)
 
-		extractor2 := newStreamExtractor(out, func(payload string) string {
+		extractor2 := newStreamExtractor(ctx, out, func(payload string) string {
 			if s.executor == nil {
 				return "no executor registered"
 			}
@@ -312,8 +312,14 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		// Persist round 2 exactly like round 1: assistant text, then any tool
+		// result(s) as role=tool messages — otherwise a round-2 tool call
+		// would leave a dangling tool_call with no response in the history.
 		if content := extractor2.history.String(); content != "" {
 			st.AppendVoiceHistory(assistantTextMessage(content))
+		}
+		for _, tr := range extractor2.toolResults {
+			st.AppendVoiceHistory(openai.ToolMessage(tr, "voice-agent-tool"))
 		}
 	}
 
@@ -331,6 +337,7 @@ func (s *DefaultVoiceAgentService) StreamTurn(ctx context.Context, st *state.App
 // stream and emits model.SSEChunk values. When a complete tool call is found,
 // onAction is invoked and its return value is emitted as a "tool" chunk.
 type streamExtractor struct {
+	ctx         context.Context
 	out         chan<- model.SSEChunk
 	raw         strings.Builder
 	history     strings.Builder
@@ -341,14 +348,17 @@ type streamExtractor struct {
 	utf8Buf     []byte
 }
 
-func newStreamExtractor(out chan<- model.SSEChunk, onAction func(string) string) *streamExtractor {
-	return &streamExtractor{out: out, onAction: onAction}
+func newStreamExtractor(ctx context.Context, out chan<- model.SSEChunk, onAction func(string) string) *streamExtractor {
+	return &streamExtractor{ctx: ctx, out: out, onAction: onAction}
 }
 
 func (e *streamExtractor) emit(chunk model.SSEChunk) {
+	// Block until the consumer drains the chunk (or the turn is cancelled):
+	// dropping tts/action/tool chunks on a slow client would silently garble
+	// the spoken reply.
 	select {
 	case e.out <- chunk:
-	default:
+	case <-e.ctx.Done():
 	}
 }
 

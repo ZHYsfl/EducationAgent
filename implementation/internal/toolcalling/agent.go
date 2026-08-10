@@ -433,6 +433,11 @@ func (a *Agent) StreamChat(
 		}
 
 		stream := a.client.Chat.Completions.NewStreaming(ctx, params)
+		defer func() {
+			if err := stream.Close(); err != nil && ctx.Err() == nil {
+				log.Printf("stream chat close: %v", err)
+			}
+		}()
 
 		for stream.Next() {
 			chunk := stream.Current()

@@ -88,6 +88,11 @@ type ArmService struct {
 	agent   *toolcalling.Agent
 	gateway *tools.ArmGateway
 
+	// startMu serializes the enqueue+start decision (OnVoiceMessage) with
+	// the loop's exit decision; armIdle is the authoritative idle flag.
+	startMu sync.Mutex
+	armIdle bool
+
 	// runTurnFn is injectable for testing.
 	runTurnFn func(ctx context.Context, history []openai.ChatCompletionMessageParamUnion) ([]openai.ChatCompletionMessageParamUnion, error)
 	runTurnMu sync.RWMutex
@@ -100,6 +105,7 @@ func NewArmService(st *state.AppState, agent *toolcalling.Agent, gateway *tools.
 	svc := &ArmService{
 		state:   st,
 		runtime: state.NewAgentRuntime(),
+		armIdle: true,
 	}
 	if agent != nil {
 		svc.agent = agent
@@ -140,14 +146,23 @@ func (s *ArmService) SetRunTurnFn(fn func(ctx context.Context, history []openai.
 // send_to_arm_agent. The message is always enqueued first; the runtime is
 // (re)started only when idle, so a running arm agent is never interrupted
 // mid-inference — it picks the message up via the <queue_status> status bar.
+//
+// The enqueue + start decision is serialized with the loop's exit decision
+// under startMu (armIdle is the authoritative idle flag): without this, a
+// message arriving in the window between the loop's final queue drain and
+// the goroutine actually exiting would be enqueued but never consumed
+// (lost wakeup).
 func (s *ArmService) OnVoiceMessage(content string) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return fmt.Errorf("empty task content")
 	}
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
 	s.state.SendToArmAgent(content)
-	if !s.runtime.IsRunning() {
-		s.startRuntime()
+	if s.armIdle {
+		s.armIdle = false
+		s.startRuntimeLocked()
 	}
 	return nil
 }
@@ -165,9 +180,15 @@ func (s *ArmService) IsRuntimeRunning() bool {
 	return s.runtime.IsRunning()
 }
 
-// StopRuntime cancels the arm agent runtime goroutine.
+// StopRuntime cancels the arm agent runtime goroutine and waits for it to
+// exit, so a subsequent conversation reset cannot race with a stale history
+// writeback from the dying goroutine.
 func (s *ArmService) StopRuntime() {
 	s.runtime.Stop()
+	s.runtime.Wait()
+	s.startMu.Lock()
+	s.armIdle = true
+	s.startMu.Unlock()
 }
 
 // WaitRuntime blocks until the arm agent runtime goroutine exits.
@@ -180,15 +201,17 @@ func (s *ArmService) buildSystemMessage() openai.ChatCompletionMessageParamUnion
 	return openai.SystemMessage(armSystemPrompt)
 }
 
-// startRuntime is the "idle auto-consume" entry point of the design (§4.3):
-// when the arm agent is idle, the runtime drains message_from_voice_agent_queue
-// and the consumed messages enter the context as one user message. No
-// <queue_status> status bar is appended here — the queue was just drained, so
-// the bar would always read "empty"; the bar only follows tool results while
-// the agent is busy.
-func (s *ArmService) startRuntime() {
+// startRuntimeLocked is the "idle auto-consume" entry point of the design
+// (§4.3): when the arm agent is idle, the runtime drains
+// message_from_voice_agent_queue and the consumed messages enter the context
+// as one user message. No <queue_status> status bar is appended here — the
+// queue was just drained, so the bar would always read "empty"; the bar only
+// follows tool results while the agent is busy. Must be called with startMu
+// held (and armIdle already cleared).
+func (s *ArmService) startRuntimeLocked() {
 	msgs := s.state.DrainVoiceMessageQueue()
 	if len(msgs) == 0 {
+		s.armIdle = true
 		return
 	}
 	history := s.state.GetArmHistory()
@@ -197,11 +220,22 @@ func (s *ArmService) startRuntime() {
 	}
 	history = append(history, openai.UserMessage(consumeResultString(msgs)))
 	s.state.SetArmHistory(history)
-	s.runArmAgentLoop()
+	if err := s.runArmAgentLoop(); err != nil {
+		// The previous goroutine may still be on its way out (it declared
+		// itself idle just before exiting); wait for it and retry once.
+		s.runtime.Wait()
+		if err := s.runArmAgentLoop(); err != nil {
+			for _, m := range msgs {
+				s.state.SendToArmAgent(m)
+			}
+			s.armIdle = true
+			s.state.BroadcastArmLog("[error] arm runtime failed to (re)start: " + err.Error())
+		}
+	}
 }
 
-func (s *ArmService) runArmAgentLoop() {
-	s.runtime.Start(func(ctx context.Context) {
+func (s *ArmService) runArmAgentLoop() error {
+	return s.runtime.Start(func(ctx context.Context) {
 		for {
 			if ctx.Err() != nil {
 				return
@@ -225,6 +259,11 @@ func (s *ArmService) runArmAgentLoop() {
 				}
 				return
 			}
+			if ctx.Err() != nil {
+				// Cancelled mid-turn (e.g. conversation reset): do not write
+				// the stale history back over the freshly reset state.
+				return
+			}
 			s.state.SetArmHistory(msgs)
 
 			// Broadcast the latest assistant text to log subscribers.
@@ -238,14 +277,19 @@ func (s *ArmService) runArmAgentLoop() {
 				}
 			}
 
-			// The turn ended with no pending tool call. If new voice messages
-			// arrived in the meantime (and were not consumed mid-turn), drain
-			// them into the context and keep the runtime alive for one more
-			// turn; otherwise go idle.
+			// The turn ended with no pending tool call. The exit decision is
+			// made under startMu, serialized with OnVoiceMessage: if new voice
+			// messages arrived in the meantime (and were not consumed
+			// mid-turn), drain them into the context and keep the runtime
+			// alive for one more turn; otherwise go idle.
+			s.startMu.Lock()
 			pending := s.state.DrainVoiceMessageQueue()
-			if len(pending) == 0 {
+			if len(pending) == 0 || ctx.Err() != nil {
+				s.armIdle = true
+				s.startMu.Unlock()
 				return
 			}
+			s.startMu.Unlock()
 			s.state.AppendArmHistory(openai.UserMessage(consumeResultString(pending)))
 		}
 	})
