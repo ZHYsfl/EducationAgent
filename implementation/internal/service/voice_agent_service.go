@@ -42,11 +42,11 @@ const voiceSummaryPrompt = `你是对话压缩器。把"此前的摘要"和"一�
 // window (a <queue_status> status bar or a tool result whose paired message
 // was compressed away) are moved into the old chunk so no pair is split.
 // Returns (nil, history) when compression is not yet needed.
-func splitCompressionWindow(history []openai.ChatCompletionMessageParamUnion) (old, recent []openai.ChatCompletionMessageParamUnion) {
-	if len(history) <= voiceCompressThreshold {
+func splitCompressionWindow(history []openai.ChatCompletionMessageParamUnion, threshold, keepRecent int) (old, recent []openai.ChatCompletionMessageParamUnion) {
+	if len(history) <= threshold {
 		return nil, history
 	}
-	cut := len(history) - voiceCompressKeepRecent
+	cut := len(history) - keepRecent
 	for cut < len(history) {
 		m := history[cut]
 		if m.OfTool != nil {
@@ -87,7 +87,7 @@ func renderHistoryForSummary(msgs []openai.ChatCompletionMessageParamUnion) stri
 // oldest chunk is hard-dropped as a safety valve.
 func (s *DefaultVoiceAgentService) compressVoiceHistoryIfNeeded(ctx context.Context, st *state.AppState) {
 	history := st.GetVoiceHistory()
-	old, recent := splitCompressionWindow(history)
+	old, recent := splitCompressionWindow(history, voiceCompressThreshold, voiceCompressKeepRecent)
 	if old == nil {
 		return
 	}

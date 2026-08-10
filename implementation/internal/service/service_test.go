@@ -355,6 +355,68 @@ func TestParseToolCallBlocks(t *testing.T) {
 	assert.Empty(t, toolcalling.ParseToolCallBlocks("<tool_call>not json</tool_call>"))
 }
 
+// TestCompressArmHistoryIfNeeded verifies the arm-side rolling compression:
+// the system message stays pinned, the frozen summary message is stored right
+// after it, the recent window is kept verbatim without splitting a
+// tool_call/result/status-bar triple, and a second compression replaces the
+// summary message instead of duplicating it.
+func TestCompressArmHistoryIfNeeded(t *testing.T) {
+	llm := llmStub(t,
+		"上一任务：红色物块已放置到(1.0,2.0,3.0)并完成上报。",
+		"摘要v2：红色任务完成，黄色任务进行中。",
+	)
+	defer llm.Close()
+	st := state.NewAppState()
+	agent := toolcalling.NewAgent(toolcalling.LLMConfig{BaseURL: llm.URL, Model: "arm-agent", APIKey: "dummy"})
+	svc := NewArmService(st, agent, tools.NewArmGateway("http://127.0.0.1:1"))
+
+	appendTriples := func(history []openai.ChatCompletionMessageParamUnion, from, count int) []openai.ChatCompletionMessageParamUnion {
+		for i := from; i < from+count; i++ {
+			history = append(history,
+				openai.AssistantMessage(fmt.Sprintf("步骤 %d", i)),
+				openai.ToolMessage("成功", "arm-tool"),
+				openai.UserMessage("<queue_status>empty</queue_status>"),
+			)
+		}
+		return history
+	}
+
+	// system + 18 triples (54 messages) > armCompressThreshold.
+	history := appendTriples([]openai.ChatCompletionMessageParamUnion{svc.buildSystemMessage()}, 0, 18)
+	st.SetArmHistory(history)
+
+	svc.compressArmHistoryIfNeeded(context.Background(), st)
+
+	got := st.GetArmHistory()
+	require.NotNil(t, got[0].OfSystem)
+	require.NotNil(t, got[1].OfUser)
+	assert.True(t, strings.HasPrefix(got[1].OfUser.Content.OfString.Value, armSummaryMarker))
+	assert.Contains(t, got[1].OfUser.Content.OfString.Value, "红色物块")
+	// recent window kept verbatim; its head is a clean triple boundary.
+	assert.Equal(t, 2+armCompressKeepRecent, len(got))
+	require.NotNil(t, got[2].OfAssistant)
+
+	// Below threshold afterwards: a second call is a no-op.
+	svc.compressArmHistoryIfNeeded(context.Background(), st)
+	assert.Equal(t, 2+armCompressKeepRecent, len(st.GetArmHistory()))
+
+	// Grow past the threshold again: the summary is replaced, not duplicated.
+	st.SetArmHistory(appendTriples(st.GetArmHistory(), 18, 10))
+	svc.compressArmHistoryIfNeeded(context.Background(), st)
+
+	got = st.GetArmHistory()
+	assert.Equal(t, 2+armCompressKeepRecent, len(got))
+	markers := 0
+	for _, m := range got {
+		if u := m.OfUser; u != nil && u.Content.OfString.Valid() &&
+			strings.HasPrefix(u.Content.OfString.Value, armSummaryMarker) {
+			markers++
+			assert.Contains(t, u.Content.OfString.Value, "摘要v2")
+		}
+	}
+	assert.Equal(t, 1, markers)
+}
+
 // TestSplitCompressionWindowBelowThreshold verifies that compression does not
 // trigger while the history fits within voiceCompressThreshold.
 func TestSplitCompressionWindowBelowThreshold(t *testing.T) {
@@ -363,7 +425,7 @@ func TestSplitCompressionWindowBelowThreshold(t *testing.T) {
 		openai.UserMessage("<queue_status>empty</queue_status>"),
 		openai.AssistantMessage("好的。"),
 	}
-	old, recent := splitCompressionWindow(history)
+	old, recent := splitCompressionWindow(history, voiceCompressThreshold, voiceCompressKeepRecent)
 	assert.Nil(t, old)
 	assert.Equal(t, len(history), len(recent))
 }
@@ -382,7 +444,7 @@ func TestSplitCompressionWindowKeepsPairs(t *testing.T) {
 	history[cut] = openai.UserMessage("<queue_status>empty</queue_status>")
 	history[cut+1] = openai.ToolMessage("发送成功", "voice-agent-tool")
 
-	old, recent := splitCompressionWindow(history)
+	old, recent := splitCompressionWindow(history, voiceCompressThreshold, voiceCompressKeepRecent)
 	require.NotNil(t, old)
 	assert.Equal(t, cut+2, len(old))
 	assert.Equal(t, len(history)-cut-2, len(recent))

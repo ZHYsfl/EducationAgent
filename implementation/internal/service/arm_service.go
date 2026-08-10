@@ -207,6 +207,11 @@ func (s *ArmService) runArmAgentLoop() {
 				return
 			}
 
+			// Compress older turns into the rolling summary if the history
+			// outgrew the threshold; between compression events the context
+			// prefix stays stable so server-side prefix caching can hit.
+			s.compressArmHistoryIfNeeded(ctx, s.state)
+
 			history := s.state.GetArmHistory()
 
 			s.runTurnMu.RLock()
