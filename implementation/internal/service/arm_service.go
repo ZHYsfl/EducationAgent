@@ -73,7 +73,7 @@ var armToolSchemas = []toolcalling.Tool{
 	},
 	{
 		Name:        "get_message_from_voice_agent",
-		Description: "一次性消费 Voice Agent 发来的全部消息，返回 all_messages_from_voice_agent:消息1;消息2 或 当前没有新消息。仅当状态栏为 <queue_status>not empty</queue_status> 时调用。",
+		Description: "一次性消费 Voice Agent 发来的全部消息，返回 all_messages_from_voice_agent:消息1;消息2 或 当前没有新消息。状态栏为 not empty 或任务消息主动要求查看时调用；状态栏为 empty 时不要主动调用。",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 	},
 }

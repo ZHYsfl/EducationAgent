@@ -64,7 +64,7 @@
 | --- | --- |
 | `user_transcript` | 完整格式化后的用户消息（含 `</interrupted>` 前缀）或独立的 `<queue_status>` 状态栏消息，前端据此先落历史；每轮先落用户消息、再落状态栏消息 |
 | `tts` | 口语文本片段，前端逐段送 TTS 播放 |
-| `action` | 一个完整 `<tool_call>` 的 payload（紧凑格式 `name:自由文本`，如 `send_to_arm_agent:抓取 red 物块…`），仅展示，不播放 |
+| `action` | 一个完整 `<tool_call>` 的 payload（Qwen3 原生 JSON 格式 `{"name": "...", "arguments": {...}}`，如 `{"name": "send_to_arm_agent", "arguments": {"content": "抓取 red 物块…"}}`），仅展示，不播放 |
 | `tool` | 工具执行结果字符串（如 `发送成功` / `all_messages_from_arm_agent:…`） |
 | `turn_end` | 本轮结束 |
 
@@ -72,7 +72,7 @@
 
 - 被打断的 assistant 消息以截断文本原样保留在历史中；新用户消息以 `</interrupted>` 开头，后接用户新文本。
 - 每条人类 user 消息之后紧跟一条独立的 role=user `<queue_status>empty|not empty</queue_status>` 状态栏消息（反映 `message_from_arm_agent_queue` 是否非空）；当 tool response、user input、状态栏三者同时存在时，顺序固定为 tool response → user input → 状态栏。
-- 工具结果以 **tool/user 双角色**写回历史（一条 role=tool + 一条同内容 role=user）。
+- 工具结果以**单条 role=tool 消息**写回历史；chat template 渲染时自动包进 user 块的 `<tool_response>` 段。
 
 ### 0.6 Voice Agent 两轮推理
 
@@ -114,7 +114,7 @@ Round 1 流式输出 TTS + `<tool_call>`；若工具调用为 `get_message_from_
 ## Module 2：Arm Agent 运行时（内部机制，非 HTTP 契约）
 
 - **生命周期**：`OnVoiceMessage` 只入队；运行时在空闲时启动（**空闲自动消费**：启动前排空队列，消息以一条 user 消息 `all_messages_from_voice_agent:…` 进入上下文，**不追加状态栏**——队列刚排空恒为 empty），运行中绝不因新消息重启。
-- **工具调用循环**：Arm LLM 以紧凑格式 `<tool_call>\nname:args\n</tool_call>` 输出工具调用；编排层解析执行后，结果以 tool/user 双角色写回，**每条工具结果之后追加一条 role=user 的 `<queue_status>empty|not empty</queue_status>`**；模型看到 `not empty` 应调用 `get_message_from_voice_agent` 主动消费。
+- **工具调用循环**：Arm LLM 以 Qwen3 原生格式 `<tool_call>\n{"name": "...", "arguments": {...}}\n</tool_call>` 输出工具调用；编排层解析执行后，结果以单条 role=tool 消息写回，**每条工具结果之后追加一条 role=user 的 `<queue_status>empty|not empty</queue_status>`**；模型看到 `not empty` 应调用 `get_message_from_voice_agent` 主动消费。
 - **工具路由**：4 个具身工具走 `ARM_GATEWAY_BASE_URL`（默认 `http://127.0.0.1:8000`）RESTful 网关；2 个通信工具（`send_to_voice_agent` / `get_message_from_voice_agent`）直接操作 `AppState` 队列，返回字符串与 `../api_of_embodied_tools.md` §2.5/§2.6 逐字一致。
 - **上下文耗尽保护**：单轮最多 32 次工具调用。
 
