@@ -1,14 +1,12 @@
 package agent_runtime
 
 import (
-	"context"
-
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 )
 
 type Agent struct {
-	client *openai.Client
+	client openai.Client
 	config *LLMConfig
 	tools []*Tool
 	debug bool
