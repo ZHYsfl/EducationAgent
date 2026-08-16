@@ -31,7 +31,7 @@ func TestUpdateRequirements(t *testing.T) {
 			"style": "modern",
 		},
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/update_requirements", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/update_requirements", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -52,7 +52,7 @@ func TestRequireConfirmIncomplete(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"requirements": map[string]any{},
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/require_confirm", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/require_confirm", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -67,7 +67,7 @@ func TestStartConversationValidation(t *testing.T) {
 		"from": "frontend",
 		"to":   "voice_agent",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/start_conversation", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/start_conversation", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -79,7 +79,7 @@ func TestStartConversationValidation(t *testing.T) {
 func TestSendToPPTAgent(t *testing.T) {
 	r := setupRouter()
 	body, _ := json.Marshal(map[string]any{"data": "feedback"})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/send_to_ppt_agent", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/send_to_ppt_agent", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -90,7 +90,7 @@ func TestSendToPPTAgent(t *testing.T) {
 
 func TestGetMessagesFromPPTAgent(t *testing.T) {
 	r := setupRouter()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/get_messages_from_ppt_agent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/get_messages_from_ppt_agent", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
