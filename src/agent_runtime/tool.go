@@ -18,6 +18,5 @@ type ToolResponse struct {
 	message openai.ChatCompletionMessageParamUnion
 	content string // the content of the response
 	status string // "success" or "error"
-	errorType *string // "parse_error", "not_found", "execution_error", "arg_error"
+	errorType *string // "parse_error", "not_found", "exec_error", "arg_error"
 }
-
