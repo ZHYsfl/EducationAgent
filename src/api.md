@@ -38,12 +38,12 @@ if no assistant turn is active, this is just a normal new turn: record the audio
 if an assistant turn is active, the interrupt falls into one of three scenarios, decided by the **stream state** (whether the opening `<` of the first `<tool_call>` has been emitted) and the **tts state** (whether tts has finished playing):
 
 - **scenario 1 (abort)**: the backend stream has not yet emitted the opening `<` of the first `<tool_call>`. the frontend stops tts playback immediately and aborts the stream; no tool call is generated. the assistant message kept in history is truncated at the **tts-played position** (what the user actually heard), not at the inference position — the tokens between the tts-played position and the inference position are discarded (a few tokens wasted, but few). the next user saying words message gets the `</interrupted>` prefix.
-- **scenario 2 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted but tts has not finished playing. the frontend lets tts finish playing the remaining spoken text, and lets the backend goroutine continue until the **full tool call sequence** is complete and the tool responses are executed. a single `<tool_call>...</tool_call>` may be fully closed, but if the goroutine is still running, there may be more `<tool_call>...</tool_call>` tags following. the tool calls themselves are silent, so the only sound the user hears is the remaining spoken text playing to completion. the next user message gets **no** `</interrupted>` prefix (see the history order note in 0.2).
+- **scenario 2 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted but tts has not finished playing. the frontend lets tts finish playing the remaining spoken text (signalling it with `tts_finished`, see 0.4), and lets the backend goroutine continue until the **full tool call sequence** is complete and the tool responses are executed. a single `<tool_call>...</tool_call>` may be fully closed, but if the goroutine is still running, there may be more `<tool_call>...</tool_call>` tags following. the tool calls themselves are silent, so the only sound the user hears is the remaining spoken text playing to completion. the next user message gets **no** `</interrupted>` prefix (see the history order note in 0.2).
 - **scenario 3 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted and tts has already finished playing. the tts line is done long ago; everything else is the same as scenario 2.
 
 in scenarios 2/3 the next inference starts only when **three lines all complete**:
 
-1. the tts line: tts playback of the previous turn finishes (in scenario 3 this line is already complete).
+1. the tts line: tts playback of the previous turn finishes (in scenario 3 this line is already complete). the frontend signals this line's completion by calling `POST /api/v1/voice/tts_finished` (0.4) the moment playback finishes — in scenario 3 it calls it right after the interrupt, since tts had already finished.
 2. the tool call line: the previous turn's tool call sequence finishes executing and every tool response result is obtained. the results are **not** consumed by a report pass (no post-tool-call tts, unlike the normal flow in 0.2) — they stay pending and go into the next turn's assembly below.
 3. the asr line: the audio from the interrupt start to the user's speech end (ring buffer prefix prepended) is transcribed. the user may immediately say another sentence while the other two lines are still running — the user may interrupt multiple times. each speech segment becomes its own user message in the final assembly (see below).
 
@@ -75,7 +75,7 @@ backend processing:
 
 1. run local asr(qwen3-asr-0.6b) on each speech segment as its vad_end arrives (ring buffer prefix + that segment's audio from its vad_start to its vad_end). with repeated interrupts, each segment is transcribed separately; the transcripts accumulate while the turn waits.
 2. scenario 1: the previous stream was already aborted, nothing is running. send the transcript directly to the voice agent llm and stream the response back to the frontend token by token. no interrupt-check llm.
-3. scenarios 2/3: the previous turn's tool call sequence must first finish executing and its tool responses be obtained (the tool call line). while it runs, the transcript of every speech segment that arrives is held (the asr line). when the tool call line is done, assemble the multiple user messages in the fixed order (tool responses → all held saying words segments → status bar, see the history order note below) and start the next llm inference. a vad_end that arrives before the inference actually starts backtracks the asr line (the waiting process in 0.1); one that arrives after it recurses into the three scenarios.
+3. scenarios 2/3: the previous turn's tool call sequence must first finish executing and its tool responses be obtained (the tool call line). while it runs, the transcript of every speech segment that arrives is held (the asr line), and the backend waits for the frontend's tts_finished signal (0.4) for the tts line. when the tool call line is done, the tts_finished signal has arrived, and the latest speech segment has been transcribed, assemble the multiple user messages in the fixed order (tool responses → all held saying words segments → status bar, see the history order note below) and start the next llm inference. a vad_end that arrives before the inference actually starts backtracks the asr line (the waiting process in 0.1); one that arrives after it recurses into the three scenarios.
 
 streamed response format (server-sent events):
 
@@ -131,6 +131,36 @@ request body:
 backend processing:
 
 same as 0.2 step 2, with `needs_interrupted_prefix: false` and empty `interrupted_assistant_text`. the streamed response format is identical to 0.2.
+
+### 0.4 Post api/v1/voice/tts_finished
+
+the frontend calls this the moment its tts playback finishes. it is the signal that completes the tts line in the interrupted scenarios 2/3 of 0.1 — tts playback is frontend-only state, so without this signal the backend would never know when the tts line is done. like vad_start, it is a lightweight sync hook: no audio, no inference.
+
+when to call:
+
+- scenario 2: the moment the remaining spoken text finishes playing.
+- scenario 3: right after vad_start returns — tts had already finished when the interrupt happened, so the tts line is done immediately.
+- scenario 1 / no active turn: not needed (there is no three-line wait); if called anyway, the backend ignores it.
+
+request body:
+
+```json
+{}
+```
+
+backend processing:
+
+mark the tts line of the current waiting episode as done. if there is no waiting episode, ignore the request. return immediately without any model inference.
+
+response body:
+
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": null
+}
+```
 
 ## module 1 : voice agent
 
