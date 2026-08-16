@@ -40,11 +40,11 @@ func getErrorSummary(results []ToolResponse) string {
 	return strings.Join(parts, "\n")
 }
 
-// assistantMsgToParam converts a response ChatCompletionMessage into a
+// AssistantMsgToParam converts a response ChatCompletionMessage into a
 // request ChatCompletionMessageParamUnion so it can be appended back to the
 // conversation history. This is the Go equivalent of Python's
 // response.choices[0].message.model_dump().
-func assistantMsgToParam(msg openai.ChatCompletionMessage) openai.ChatCompletionMessageParamUnion {
+func AssistantMsgToParam(msg openai.ChatCompletionMessage) openai.ChatCompletionMessageParamUnion {
 	var tcParams []openai.ChatCompletionMessageToolCallUnionParam
 	for _, tc := range msg.ToolCalls {
 		tcParams = append(tcParams, tc.ToParam())
@@ -224,32 +224,7 @@ func (a *Agent) Loop(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,
 ) ([]openai.ChatCompletionMessageParamUnion, error) {
-	params := openai.ChatCompletionNewParams{
-		Model:    openai.ChatModel(a.config.Model),
-		Messages: messages,
-		Tools:    a.GetTools(),
-		ToolChoice: openai.ChatCompletionToolChoiceOptionUnionParam{
-			OfAuto: openai.String("auto"),
-		},
-	}
-	if a.config.Temperature != nil {
-		params.Temperature = openai.Float(*a.config.Temperature)
-	}
-	if a.config.MaxTokens != nil {
-		params.MaxTokens = openai.Int(int64(*a.config.MaxTokens))
-	}
-	if a.config.TopP != nil {
-		params.TopP = openai.Float(*a.config.TopP)
-	}
-	if a.config.PresencePenalty != nil {
-		params.PresencePenalty = openai.Float(*a.config.PresencePenalty)
-	}
-	if a.config.FrequencyPenalty != nil {
-		params.FrequencyPenalty = openai.Float(*a.config.FrequencyPenalty)
-	}
-	if a.config.ExtraBody != nil {
-		params.SetExtraFields(a.config.ExtraBody)
-	}
+	params := a.BuildChatCompletionParams(messages, true)
 
 	resp, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
@@ -266,7 +241,7 @@ func (a *Agent) Loop(
 			return nil, ctx.Err()
 		}
 
-		next = append(next, assistantMsgToParam(resp.Choices[0].Message))
+		next = append(next, AssistantMsgToParam(resp.Choices[0].Message))
 
 		toolResults := a.getToolResponses(ctx, resp.Choices[0].Message.ToolCalls)
 		for _, tr := range toolResults {
@@ -299,6 +274,6 @@ func (a *Agent) Loop(
 		}
 	}
 
-	next = append(next, assistantMsgToParam(resp.Choices[0].Message))
+	next = append(next, AssistantMsgToParam(resp.Choices[0].Message))
 	return next, nil
 }
