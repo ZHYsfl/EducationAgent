@@ -1,4 +1,137 @@
 
+## module 0 : voice turn api
+
+the frontend handles vad_start and vad_end locally. no audio chunks are streamed before vad_end.the backend runs local asr with qwen3-asr-0.6b(https://www.modelscope.cn/models/Qwen/Qwen3-ASR-0.6B).we do not have a tts model;the frontend feeds the `tts` chunks to its own tts engine.
+
+### 0.1 Post api/v1/voice/vad_start
+
+this endpoint is kept as a lightweight hook for the frontend to sync the assistant turn state. there is no interrupt-check llm and no fast asr judgment: the frontend vad already filters out noise (min speech duration), so the backend always treats detected speech as an interrupt.
+
+request body:
+
+```json
+{}
+```
+
+empty json placeholder. the frontend does not upload any audio here, so no extra data transfer latency is added.
+
+backend processing:
+
+return immediately without any model inference.
+
+response body:
+
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "interrupt": true
+    }
+}
+```
+
+frontend behavior after response (always `interrupt: true`):
+
+if no assistant turn is active, this is just a normal new turn: record the audio and go to 0.2.
+
+if an assistant turn is active, the interrupt falls into one of three scenarios, decided by the **stream state** (whether the opening `<` of the first `<tool_call>` has been emitted) and the **tts state** (whether tts has finished playing):
+
+- **scenario 1 (abort)**: the backend stream has not yet emitted the opening `<` of the first `<tool_call>`. the frontend stops tts playback immediately and aborts the stream; no tool call is generated. the assistant message kept in history is truncated at the **tts-played position** (what the user actually heard), not at the inference position — the tokens between the tts-played position and the inference position are discarded (a few tokens wasted, but few). the next user saying words message gets the `</interrupted>` prefix.
+- **scenario 2 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted but tts has not finished playing. the frontend lets tts finish playing the remaining spoken text, and lets the backend goroutine continue until the **full tool call sequence** is complete and the tool responses are executed. a single `<tool_call>...</tool_call>` may be fully closed, but if the goroutine is still running, there may be more `<tool_call>...</tool_call>` tags following. the tool calls themselves are silent, so the only sound the user hears is the remaining spoken text playing to completion. the next user message gets **no** `</interrupted>` prefix (see the history order note in 0.2).
+- **scenario 3 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted and tts has already finished playing. the tts line is done long ago; everything else is the same as scenario 2.
+
+in scenarios 2/3 the next inference starts only when **three lines all complete**:
+
+1. the tts line: tts playback of the previous turn finishes (in scenario 3 this line is already complete).
+2. the tool call line: the previous turn's tool call sequence finishes executing and every tool response result is obtained. the results are **not** consumed by a report pass (no post-tool-call tts, unlike the normal flow in 0.2) — they stay pending and go into the next turn's assembly below.
+3. the asr line: the audio from the interrupt start to the user's speech end (ring buffer prefix prepended) is transcribed. the user may immediately say another sentence while the other two lines are still running — the user may interrupt multiple times. each speech segment becomes its own user message in the final assembly (see below).
+
+**line state (backtracking):** the waiting process has a single state: not complete / complete. while waiting, **every** new interrupt backtracks the **asr line** to its not-complete state and the audio is recollected (the asr line extends; the tts line and the tool call line are only waited on — they belong to the finished previous turn and never backtrack). the process becomes complete only when the **last** speech segment has ended and the other two lines are done; only then does the backend assemble `tool responses` + `user saying words` + `status bar` and start the next llm inference. in that assembly, the saying words part may be **multiple user messages** (one per speech segment, in speaking order), same as the tool response messages; the status bar is always exactly **one** user message and always last (see 0.2).
+
+even after all three lines are done, the process is still "waiting" until the llm actually starts the next inference: an interrupt before that moment backtracks the **asr line** to not-complete again (the tts line and the tool call line stay complete) — the same waiting process, no recursion. only an interrupt **after** the llm really started the next inference is an interrupt of the new turn, which re-enters scenarios 1/2/3 recursively.
+
+- in scenario 1, the assistant message that goes into the conversation history contains only the truncated spoken text. in scenarios 2/3 it contains the complete spoken text plus the complete tool call sequence. in **all** scenarios the assembled context also ends with the status bar user message (`<queue_status>empty|not empty</queue_status>`, the always-last user message, see 0.2).
+
+### 0.2 Post api/v1/voice/vad_end
+
+call this right after vad_end.
+
+request body:
+
+```json
+{
+    "audio": "base64-encoded audio: the ring buffer prefix (audio from just before the interrupt) + the audio from vad_start to vad_end",
+    "format": "pcm",
+    "needs_interrupted_prefix": true,
+    "interrupted_assistant_text": "new version ppt alre"
+}
+```
+
+- `needs_interrupted_prefix`: decided by the frontend, following the three scenarios in 0.1. `true` only in scenario 1 (the stream was aborted before the first `<tool_call>` was emitted); in scenarios 2/3 it is `false` even if tts was still playing when the interrupt happened, because the tool call sequence completed and the context shows no `</interrupted>`.
+- `interrupted_assistant_text`: the truncated assistant text that had already been spoken before the interrupt. the backend appends it to the conversation history before starting the new inference so the llm context stays consistent. empty string when there is no truncated text to sync.
+
+backend processing:
+
+1. run local asr(qwen3-asr-0.6b) on each speech segment as its vad_end arrives (ring buffer prefix + that segment's audio from its vad_start to its vad_end). with repeated interrupts, each segment is transcribed separately; the transcripts accumulate while the turn waits.
+2. scenario 1: the previous stream was already aborted, nothing is running. send the transcript directly to the voice agent llm and stream the response back to the frontend token by token. no interrupt-check llm.
+3. scenarios 2/3: the previous turn's tool call sequence must first finish executing and its tool responses be obtained (the tool call line). while it runs, the transcript of every speech segment that arrives is held (the asr line). when the tool call line is done, assemble the multiple user messages in the fixed order (tool responses → all held saying words segments → status bar, see the history order note below) and start the next llm inference. a vad_end that arrives before the inference actually starts backtracks the asr line (the waiting process in 0.1); one that arrives after it recurses into the three scenarios.
+
+streamed response format (server-sent events):
+
+the voice agent llm follows the qwen3 chat template. the backend provides the tools in the system prompt as qwen3 `<tools>...</tools>` xml, and the model emits tool calls as `<tool_call>{"name": "...", "arguments": {...}}</tool_call>`; tool results are fed back as `<tool_response>...</tool_response>`.
+
+| chunk type | example | meaning |
+|------------|---------|---------|
+| user_transcript | `{"type": "user_transcript", "text": "<\|im_start\|>user\n<tool_response>\nall fields are updated\n</tool_response>\n<\|im_end\|>\n<\|im_start\|>user\nxxxxx\n<\|im_end\|>\n<\|im_start\|>user\nyyyyy\n<\|im_end\|>\n<\|im_start\|>user\n<queue_status>not empty</queue_status>\n<\|im_end\|>"}` | the fully formatted **user messages** for this turn, emitted first so the frontend can append them to history as **multiple** user messages. the example shows the multi-interrupt case: `xxxxx` and `yyyyy` are two separate speech segments the user said while waiting (repeated interrupts), each one its own `user` message. |
+| tts token | `{"type": "tts", "text": "好的"}` | a piece of tts text. the frontend feeds these tokens to its own tts engine. |
+| tool call | `{"type": "tool_call", "payload": "{\"name\": \"update_requirements\", \"arguments\": {\"topic\": \"math\"}}"}` | a complete `<tool_call>` json object extracted from the llm stream. |
+| tool result | `{"type": "tool_result", "text": "all fields are updated"}` | the synchronous result of the tool call just emitted. fed back to the model as a `<tool_response>` block (see the history order note below). |
+| turn end | `{"type": "turn_end"}` | signals the end of this assistant turn |
+
+note: the backend executes every tool call synchronously. the stream order is `user_transcript` → `tts` (spoken text) → `tool_call` → `tool_result` → `tool_call` → `tool_result` → ... → **[optional] `tts`** → `turn_end`. **after all tool calls are emitted, the assistant may output additional tts text to report the tool results, but no further tool calls are allowed after that.** the report pass (the post-tool-call tts) only happens in the normal flow: in the interrupted scenarios 2/3 of 0.1, the tool results stay pending and go into the next turn's assembly instead.
+
+history order (status bar technology):
+
+when assembling the conversation for the next inference, the assistant message that goes into the history contains the text that had **already been spoken** (a complete sentence or a truncated half-sentence) plus the complete tool call sequence only if the stream had already entered the tool call phase. after it, **multiple user messages are assembled in this fixed order: `tool response message(s)` → `user's saying words message` → `status bar message`**. following the qwen3 chat template, each is rendered with `<|im_start|>user` / `<|im_end|>` markers:
+
+```text
+<|im_start|>user
+<tool_response>
+all fields are updated
+</tool_response>
+<|im_end|>
+<|im_start|>user
+xxxxx
+<|im_end|>
+<|im_start|>user
+<queue_status>not empty</queue_status>
+<|im_end|>
+```
+
+- the tool response message(s) only exist when there are pending tool results (scenarios 2/3). in the qwen3 chat template, tool results are rendered inside a `user` role message (consecutive `tool` messages are auto-batched by the template into one `user` message), so each batch of pending `<tool_response>` blocks forms its own `user` message placed first.
+- `xxxxx` is the user's saying words of this turn, plain text with no wrapper tag, in its own `user` message. if the user said several sentences while waiting (repeated interrupts), each speech segment becomes its **own** `user` message, in speaking order — the saying words part may be multiple messages.
+- `<queue_status>empty|not empty</queue_status>` is the status bar: it records in real time whether the ppt message queue is empty. it is a **separate `user` message and always the last message** in the user prompt.
+- `</interrupted>` only appears in scenario 1 (the previous stream was aborted before the tool call phase); it is the very first thing in the saying words message. in scenarios 2/3 the context shows no `</interrupted>` at all — the model sees its own completed tool call sequence and the pending tool results, so nothing was lost and nothing needs to be deferred.
+- if there are no pending tool results, the assembled messages start directly with the saying words message.
+- **if there is post-tool-call tts, it becomes a second, independent `assistant` message placed after the tool result message(s) and before the final user messages—not merged into the first assistant message.** in that case the tool results were already consumed by that report, so the assembled user messages only contain the saying words message + the status bar message.
+
+### 0.3 Post api/v1/voice/text_input
+
+text-only debug/testing path. skips asr and feeds the text directly into the voice agent stream.
+
+request body:
+
+```json
+{
+    "text": "string"
+}
+```
+
+backend processing:
+
+same as 0.2 step 2, with `needs_interrupted_prefix: false` and empty `interrupted_assistant_text`. the streamed response format is identical to 0.2.
+
 ## module 1 : voice agent
 
 ### 1.1 Post api/v1/voice/update_requirements
