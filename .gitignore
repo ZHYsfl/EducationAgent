@@ -251,8 +251,6 @@ node_modules/
 .vscode
 .claudeignore
 
-model/
-
 interrupt_detection_cot_lora/
 
 pic/
