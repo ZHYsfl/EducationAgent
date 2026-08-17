@@ -37,7 +37,7 @@ if no assistant turn is active, this is just a normal new turn: record the audio
 
 if an assistant turn is active, the interrupt falls into one of three scenarios, decided by the **stream state** (whether the opening `<` of the first `<tool_call>` has been emitted) and the **tts state** (whether tts has finished playing):
 
-- **scenario 1 (abort)**: the backend stream has not yet emitted the opening `<` of the first `<tool_call>`. the frontend stops tts playback immediately and aborts the stream; no tool call is generated. the assistant message kept in history is truncated at the **tts-played position** (what the user actually heard), not at the inference position — the tokens between the tts-played position and the inference position are discarded (a few tokens wasted, but few). the next user saying words message gets the `</interrupted>` prefix.
+- **scenario 1 (abort)**: the backend stream has not yet emitted the opening `<` of the first `<tool_call>`. the frontend stops tts playback immediately and aborts the stream; no tool call is generated. the assistant message kept in history is truncated at the **tts-played position** (what the user actually heard), not at the inference position — the tokens between the tts-played position and the inference position are discarded (a few tokens wasted, but few). the frontend must maintain the mapping from tts playback progress back to the assistant text so it can compute `interrupted_assistant_text` accurately. the first saying words message of the waiting episode gets the `</interrupted>` prefix.
 - **scenario 2 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted but tts has not finished playing. the frontend lets tts finish playing the remaining spoken text (signalling it with `tts_finished`, see 0.4), and lets the backend goroutine continue until the **full tool call sequence** is complete and the tool responses are executed. a single `<tool_call>...</tool_call>` may be fully closed, but if the goroutine is still running, there may be more `<tool_call>...</tool_call>` tags following. the tool calls themselves are silent, so the only sound the user hears is the remaining spoken text playing to completion. the next user message gets **no** `</interrupted>` prefix (see the history order note in 0.2).
 - **scenario 3 (continue)**: the opening `<` of the first `<tool_call>` has already been emitted and tts has already finished playing. the tts line is done long ago; everything else is the same as scenario 2.
 
@@ -61,15 +61,15 @@ request body:
 
 ```json
 {
-    "audio": "base64-encoded audio: the ring buffer prefix (audio from just before the interrupt) + the audio from vad_start to vad_end",
+    "audio": "base64-encoded audio: the ring buffer prefix (audio from just before this segment's interrupt) + the audio from this segment's vad_start to its vad_end",
     "format": "pcm",
     "needs_interrupted_prefix": true,
     "interrupted_assistant_text": "new version ppt alre"
 }
 ```
 
-- `needs_interrupted_prefix`: decided by the frontend, following the three scenarios in 0.1. `true` only in scenario 1 (the stream was aborted before the first `<tool_call>` was emitted); in scenarios 2/3 it is `false` even if tts was still playing when the interrupt happened, because the tool call sequence completed and the context shows no `</interrupted>`.
-- `interrupted_assistant_text`: the truncated assistant text that had already been spoken before the interrupt. the backend appends it to the conversation history before starting the new inference so the llm context stays consistent. empty string when there is no truncated text to sync.
+- `needs_interrupted_prefix` (bool): decided by the frontend, following the three scenarios in 0.1. `true` only in scenario 1 (the stream was aborted before the opening `<` of the first `<tool_call>` was emitted); in scenarios 2/3 it is `false` because the stream had already entered the tool call phase, the tool call sequence will be allowed to complete, and the context will show no `</interrupted>`.
+- `interrupted_assistant_text` (string, may be empty): the assistant text that had already been spoken before the interrupt. in scenario 1 it is the **truncated** text (only what the user actually heard); in scenarios 2/3 it is the **complete** spoken text of the previous turn. the backend appends it to the conversation history before starting the next inference so the llm context stays consistent. empty string when there is no text to sync.
 
 backend processing:
 
