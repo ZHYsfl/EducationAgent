@@ -11,6 +11,7 @@ type Agent struct {
 	tools []*Tool
 	debug bool
 	maxToolRetries int
+	memory MemoryManager
 }
 
 type AgentOption func(*Agent)
@@ -36,10 +37,15 @@ func NewAgent(config *LLMConfig, tools []*Tool, opts ...AgentOption) *Agent {
 		config: config,
 		debug:  false,
 		maxToolRetries: 3,
+		memory: &defaultMemory{},
 	}
 
 	for _, opt := range opts {
 		opt(agent)
+	}
+
+	if agent.memory == nil {
+		agent.memory = &defaultMemory{}
 	}
 
 	return agent

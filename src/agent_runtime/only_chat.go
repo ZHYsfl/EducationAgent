@@ -9,9 +9,10 @@ import (
 )
 
 func (a *Agent) BuildChatCompletionParams(messages []openai.ChatCompletionMessageParamUnion, withTool bool) openai.ChatCompletionNewParams {
+	prepared := a.memory.Prepare(messages)
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(a.config.Model),
-		Messages: messages,
+		Messages: prepared,
 	}
 
 	if withTool {

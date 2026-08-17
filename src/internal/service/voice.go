@@ -18,6 +18,11 @@ func NewVoiceService(store *state.AppState) *VoiceService {
 	return &VoiceService{store: store}
 }
 
+// Store returns the underlying application state.
+func (s *VoiceService) Store() *state.AppState {
+	return s.store
+}
+
 // UpdateRequirements merges fields and returns the missing fields.
 func (s *VoiceService) UpdateRequirements(req map[string]any) (*model.UpdateRequirementsData, error) {
 	missing, err := s.store.UpdateRequirements(req)
@@ -79,5 +84,6 @@ func (s *VoiceService) GetMessagesFromPPTAgent() (string, error) {
 // StartConversation resets state and marks the conversation as started.
 func (s *VoiceService) StartConversation() error {
 	s.store.ResetConversation()
+	s.store.SetConversationStarted()
 	return nil
 }

@@ -2,10 +2,14 @@ package handler
 
 import "github.com/gin-gonic/gin"
 
-// RegisterRoutes wires the Module 1 voice-agent endpoints.
+// RegisterRoutes wires the Module 0 and Module 1 voice-agent endpoints.
 func RegisterRoutes(r *gin.Engine, h *VoiceHandler) {
 	voice := r.Group("/api/v1/voice")
 	{
+		voice.POST("/vad_start", h.VadStart)
+		voice.POST("/vad_end", h.VadEnd)
+		voice.POST("/text_input", h.TextInput)
+		voice.POST("/tts_finished", h.TtsFinished)
 		voice.POST("/update_requirements", h.UpdateRequirements)
 		voice.POST("/require_confirm", h.RequireConfirm)
 		voice.POST("/send_to_ppt_agent", h.SendToPPTAgent)

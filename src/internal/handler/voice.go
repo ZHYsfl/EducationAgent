@@ -6,18 +6,31 @@ import (
 	"educationagent/internal/middleware"
 	"educationagent/internal/model"
 	"educationagent/internal/service"
+	"educationagent/internal/state"
 
 	"github.com/gin-gonic/gin"
 )
 
 // VoiceHandler exposes the Module 1 voice-agent endpoints.
 type VoiceHandler struct {
-	svc *service.VoiceService
+	svc           *service.VoiceService
+	voiceAgentSvc *service.VoiceAgentService
+	asrSvc        service.ASRService
+	store         *state.AppState
 }
 
 // NewVoiceHandler creates a new voice handler.
-func NewVoiceHandler(svc *service.VoiceService) *VoiceHandler {
-	return &VoiceHandler{svc: svc}
+func NewVoiceHandler(
+	svc *service.VoiceService,
+	voiceAgentSvc *service.VoiceAgentService,
+	asrSvc service.ASRService,
+) *VoiceHandler {
+	return &VoiceHandler{
+		svc:           svc,
+		voiceAgentSvc: voiceAgentSvc,
+		asrSvc:        asrSvc,
+		store:         svc.Store(),
+	}
 }
 
 // UpdateRequirements handles POST /api/v1/update_requirements.

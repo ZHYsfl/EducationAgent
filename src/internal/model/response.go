@@ -12,6 +12,18 @@ type UpdateRequirementsData struct {
 	MissingFields []string `json:"missing_fields"`
 }
 
+// SSEChunk is a server-sent event emitted by the voice turn endpoints.
+type SSEChunk struct {
+	Type    string `json:"type"`
+	Text    string `json:"text,omitempty"`
+	Payload string `json:"payload,omitempty"`
+}
+
+// VadStartData is returned by POST /api/v1/voice/vad_start.
+type VadStartData struct {
+	Interrupt bool `json:"interrupt"`
+}
+
 // Requirements holds the four fields collected in Phase 1.
 type Requirements struct {
 	Topic      *string `json:"topic"`

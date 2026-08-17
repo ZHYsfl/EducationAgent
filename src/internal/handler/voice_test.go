@@ -17,7 +17,7 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	store := state.NewAppState()
 	svc := service.NewVoiceService(store)
-	h := NewVoiceHandler(svc)
+	h := NewVoiceHandler(svc, nil, nil)
 	r := gin.New()
 	RegisterRoutes(r, h)
 	return r

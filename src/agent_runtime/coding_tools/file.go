@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-// EditFile edits a file by replacing old_string with new_string.
+const defaultMaxResponseLen = 10000
+
+// EditFile edits a file by replacing the first occurrence of old_string with
+// new_string.
 func EditFile(ctx context.Context, path string, oldString string, newString string) (string, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -24,74 +26,38 @@ func EditFile(ctx context.Context, path string, oldString string, newString stri
 	return "successfully edited file", nil
 }
 
-// WriteFile writes content to a file, creating or truncating it.
-func WriteFile(ctx context.Context, path string, content string) (string, error) {
-	dir := filepath.Dir(path)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Sprintf("failed to create directory: %v", err), fmt.Errorf("failed to create directory: %w", err)
-		}
-	}
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return fmt.Sprintf("failed to write file: %v", err), fmt.Errorf("failed to write file: %w", err)
-	}
-	return "successfully wrote file", nil
-}
-
-// AppendFile appends content to a file, creating it (and parent dirs) if needed.
-func AppendFile(ctx context.Context, path string, content string) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return fmt.Sprintf("context cancelled: %v", err), err
-	}
-	dir := filepath.Dir(path)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Sprintf("failed to create directory: %v", err), fmt.Errorf("failed to create directory: %w", err)
-		}
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Sprintf("failed to open file for append: %v", err), fmt.Errorf("failed to open file for append: %w", err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(content); err != nil {
-		return fmt.Sprintf("failed to append to file: %v", err), fmt.Errorf("failed to append to file: %w", err)
-	}
-	return "successfully appended to file", nil
-}
-
-// ReadFile reads the entire content of a file.
-func ReadFile(ctx context.Context, path string) (string, error) {
+// ReadFile reads a file, optionally restricted to a [start_line, end_line]
+// range (1-based, inclusive). If max_response_len is 0 or negative, a default
+// cap of 10000 runes is applied to avoid overflowing the LLM context.
+func ReadFile(ctx context.Context, path string, startLine int, endLine int, maxResponseLen int) (string, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
-	return string(content), nil
-}
 
-// ListDir lists the entries in a directory.
-func ListDir(ctx context.Context, path string) (string, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to read directory: %w", err)
-	}
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	return strings.Join(names, "\n"), nil
-}
-
-// MoveFile moves a file from src to dst.
-func MoveFile(ctx context.Context, src string, dst string) (string, error) {
-	dir := filepath.Dir(dst)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Sprintf("failed to create destination directory: %v", err), fmt.Errorf("failed to create destination directory: %w", err)
+	selected := string(content)
+	if startLine > 0 || endLine > 0 {
+		lines := strings.Split(selected, "\n")
+		if startLine <= 0 {
+			startLine = 1
 		}
+		if endLine <= 0 || endLine > len(lines) {
+			endLine = len(lines)
+		}
+		if startLine > endLine {
+			startLine = 1
+			endLine = len(lines)
+		}
+		selected = strings.Join(lines[startLine-1:endLine], "\n")
 	}
-	if err := os.Rename(src, dst); err != nil {
-		return fmt.Sprintf("failed to move file: %v", err), fmt.Errorf("failed to move file: %w", err)
+
+	if maxResponseLen <= 0 {
+		maxResponseLen = defaultMaxResponseLen
 	}
-	return "successfully moved file", nil
+	runes := []rune(selected)
+	if len(runes) > maxResponseLen {
+		selected = string(runes[:maxResponseLen]) + "\n[truncated by max_response_len]"
+	}
+
+	return selected, nil
 }

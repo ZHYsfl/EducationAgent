@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -141,6 +142,13 @@ func (s *AppState) DrainPPTToVoiceQueue() []string {
 	copy(out, s.pptToVoiceQueue)
 	s.pptToVoiceQueue = s.pptToVoiceQueue[:0]
 	return out
+}
+
+// PPTToVoiceQueueLen returns the number of pending ppt-agent-to-voice-agent messages.
+func (s *AppState) PPTToVoiceQueueLen() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.pptToVoiceQueue)
 }
 
 // ResetConversation clears all state for a fresh conversation.
