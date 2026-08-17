@@ -1,9 +1,14 @@
 package service
 
 import (
+	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"agent_runtime"
+	"educationagent/internal/model"
 	"educationagent/internal/state"
 	"educationagent/internal/voiceagent"
 
@@ -90,4 +95,88 @@ func containsContent(msg openai.ChatCompletionMessageParamUnion, substr string) 
 
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// concurrentVoiceSvc is a test double that sleeps during calls so we can
+// verify that multiple tool calls run in parallel.
+type concurrentVoiceSvc struct {
+	delay         time.Duration
+	current       int32
+	maxConcurrent int32
+}
+
+func (m *concurrentVoiceSvc) enter() {
+	c := atomic.AddInt32(&m.current, 1)
+	for {
+		max := atomic.LoadInt32(&m.maxConcurrent)
+		if c <= max || atomic.CompareAndSwapInt32(&m.maxConcurrent, max, c) {
+			break
+		}
+	}
+}
+
+func (m *concurrentVoiceSvc) leave() { atomic.AddInt32(&m.current, -1) }
+
+func (m *concurrentVoiceSvc) UpdateRequirements(req map[string]any) (*model.UpdateRequirementsData, error) {
+	m.enter()
+	time.Sleep(m.delay)
+	m.leave()
+	return &model.UpdateRequirementsData{MissingFields: []string{}}, nil
+}
+
+func (m *concurrentVoiceSvc) RequireConfirm(req model.Requirements) error { return nil }
+
+func (m *concurrentVoiceSvc) SendToPPTAgent(data string) error {
+	m.enter()
+	time.Sleep(m.delay)
+	m.leave()
+	return nil
+}
+
+func (m *concurrentVoiceSvc) GetMessagesFromPPTAgent() (string, error) { return "", nil }
+
+func TestExecuteToolCallsParallel(t *testing.T) {
+	svc := &concurrentVoiceSvc{delay: 100 * time.Millisecond}
+	exec := voiceagent.NewExecutor(svc)
+	vas := NewVoiceAgentService(agent_runtime.LLMConfig{}, exec)
+
+	out := make(chan model.SSEChunk, 10)
+	calls := []voiceagent.ToolCall{
+		{Name: "update_requirements", Arguments: map[string]any{"topic": "A"}},
+		{Name: "send_to_ppt_agent", Arguments: map[string]any{"data": "B"}},
+	}
+
+	start := time.Now()
+	results, err := vas.executeToolCalls(context.Background(), calls, out)
+	elapsed := time.Since(start)
+	close(out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Name != "update_requirements" || results[1].Name != "send_to_ppt_agent" {
+		t.Fatalf("unexpected result order: %v", results)
+	}
+	if elapsed > 150*time.Millisecond {
+		t.Fatalf("tool calls appear sequential, elapsed=%v", elapsed)
+	}
+	if atomic.LoadInt32(&svc.maxConcurrent) < 2 {
+		t.Fatalf("expected concurrent execution, maxConcurrent=%d", svc.maxConcurrent)
+	}
+
+	var toolCalls, toolResponses int
+	for chunk := range out {
+		if chunk.Type == "tool_call" {
+			toolCalls++
+		}
+		if chunk.Type == "tool_response" {
+			toolResponses++
+		}
+	}
+	if toolCalls != 2 || toolResponses != 2 {
+		t.Fatalf("expected 2 tool_call and 2 tool_response, got %d/%d", toolCalls, toolResponses)
+	}
 }
