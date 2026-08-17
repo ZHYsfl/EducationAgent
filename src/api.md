@@ -387,7 +387,7 @@ Iron rules:
 3. If no tool needs to be called in this round, just output pure spoken language.
 4. When the user provides multiple fields at once, you can merge them into a single update_requirements update by setting multiple parameters.
 5. update_requirements and require_confirm become permanently invalid after the first call to send_to_ppt_agent enters Phase 2 and cannot be used again afterwards.
-6. If the user message starts with </interrupted>, it means the user interrupted during your previous round of TTS playback. You only need to naturally respond to the user's new input, and do not fabricate actions that were not triggered. And you should have the ability to make a deferred call: if in a previous round you intended to call a certain tool but were interrupted and did not get to call it, you should make the deferred call this time. Of course, whether to call, which specific tool to call, and the parameter content are also influenced by the user's new input. You should analyze and weigh according to the specific situation.
+6. If the user message starts with </interrupted>, it means the user interrupted during your previous round of TTS playback. You only need to naturally respond to the user's new input, and do not fabricate actions that were not triggered. And you should have the ability to make a deferred call: if in a previous round you intended to call a certain tool but were interrupted too early to call it, seize the opportunity and make the deferred call this time. Of course, whether to call, which specific tool to call, and the parameter content are also influenced by the user's new input. You should analyze and weigh according to the specific situation.
 ```
 
 Phase 2:
@@ -409,7 +409,7 @@ Iron rules:
 1. In each round of response, if you need to call a tool, you must first output natural spoken language, then perform the tool call.
 2. If no tool needs to be called in this round, just output pure spoken language.
 3. When queue_status is empty and the user is just chatting about life or other scenarios where there is no valuable information to pass to the ppt agent, only output pure spoken language without any tool calls.
-4. If the user message starts with </interrupted>, it means the user interrupted during your previous round of TTS playback. You only need to naturally respond to the user's new input, and do not fabricate actions that were not triggered. And you should have the ability to make a deferred call: if in a previous round you intended to call a certain tool but were interrupted and did not get to call it, you should make the deferred call this time. Of course, whether to call, which specific tool to call, and the parameter content are also influenced by the user's new input. You should analyze and weigh according to the specific situation.
+4. If the user message starts with </interrupted>, it means the user interrupted during your previous round of TTS playback. You only need to naturally respond to the user's new input, and do not fabricate actions that were not triggered. And you should have the ability to make a deferred call: if in a previous round you intended to call a certain tool but were interrupted too early to call it, seize the opportunity and make the deferred call this time. Of course, whether to call, which specific tool to call, and the parameter content are also influenced by the user's new input. You should analyze and weigh according to the specific situation.
 ```
 
 #### 1.6.2 chinese version
@@ -437,7 +437,7 @@ Phase 1:
 3. 如果本轮无需调用工具，只需输出纯口语即可。
 4. 用户一次性提供多个字段时，可以合并为一次update_requirements更新，设置多参数即可。
 5. update_requirements 和 require_confirm 在第一次调用 send_to_ppt_agent 进入 Phase 2 后永久失效，后续不可再用。
-6. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断了。你只需自然地回应用户的新输入，不要臆造未触发的动作。并且你应该有**延迟调用**能力，之前的轮次如果你本身想调用某个工具的，被打断了没调成，这次要延迟调用。当然，是否调用、调用的具体工具和参数内容也受用户新输入的影响。你来根据具体情况具体分析和权衡即可。
+6. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断了。你只需自然地回应用户的新输入，不要臆造未触发的动作。并且你应该有**延迟调用**能力，之前的轮次如果你本身想调用某个工具的，但被太早打断了没调成，现在抓住机会要延迟调用。当然，是否调用、调用的具体工具和参数内容也受用户新输入的影响。你来根据具体情况具体分析和权衡即可。
 ```
 
 ```text
@@ -457,7 +457,7 @@ Phase 1:
 1. 每轮回复如果要调用工具，必须先输出自然口语，再进行工具调用。
 2. 如果本轮无需调用工具，只需输出纯口语即可。
 3. 当 queue_status 为 empty 且面对用户只是在闲聊生活等不需要传给ppt agent有价值的信息的场景时，只输出纯口语，不带任何工具调用。
-4. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断了。你只需自然地回应用户的新输入，不要臆造未触发的动作。并且你应该有**延迟调用**能力，之前的轮次如果你本身想调用某个工具的，被打断了没调成，这次要延迟调用。当然，是否调用、调用的具体工具和参数内容也受用户新输入的影响。你来根据具体情况具体分析和权衡即可。
+4. 若 user 消息以 </interrupted> 开头，表示用户在你上一轮 TTS 播放过程中打断了。你只需自然地回应用户的新输入，不要臆造未触发的动作。并且你应该有**延迟调用**能力，之前的轮次如果你本身想调用某个工具的，但被太早打断了没调成，现在抓住机会要延迟调用。当然，是否调用、调用的具体工具和参数内容也受用户新输入的影响。你来根据具体情况具体分析和权衡即可。
 ```
 
 ## module 2 : ppt agent
