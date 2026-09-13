@@ -152,7 +152,9 @@ func TestBargeInToolPhaseImmune(t *testing.T) {
 			Name:        "get_time",
 			Description: "获取当前时间",
 			Func: func(ctx context.Context, args map[string]any) (string, error) {
-				toolCtxErr.Store(ctx.Err())
+				if err := ctx.Err(); err != nil {
+					toolCtxErr.Store(err)
+				}
 				time.Sleep(3 * time.Second)
 				toolRan <- struct{}{}
 				return "现在是2026年9月14日下午3点04分", nil
