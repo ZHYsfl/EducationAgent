@@ -1,0 +1,16 @@
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","system_fingerprint":"fp_test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"杭州"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"，"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"是"},"finish_reason":null}]}
+
+: keep-alive
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","choices":[{"index":0,"delta":{"content":"浙江"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1757800000,"model":"deepseek-chat","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

@@ -262,6 +262,10 @@ meeting/
 
 go.sum
 go.mod
+!src/go.mod
+!src/go.sum
+!src/agent_runtime/go.mod
+!src/agent_runtime/go.sum
 
 implementation/docs/
 
@@ -272,3 +276,5 @@ voxflow-transcription-202604282256.txt
 go/
 
 Qwen3-ASR-0.6B/
+
+kimi-export-session_*.md

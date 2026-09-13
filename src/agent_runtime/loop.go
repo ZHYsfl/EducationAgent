@@ -81,10 +81,16 @@ func (a *Agent) executeToolCall(
 		}
 	}
 
-	toolCallID := functionTC.ID
-	funcName := functionTC.Function.Name
-	rawArgs := functionTC.Function.Arguments
+	return a.executeToolCallFunc(ctx, functionTC.ID, functionTC.Function.Name, functionTC.Function.Arguments, availableTools)
+}
 
+func (a *Agent) executeToolCallFunc(
+	ctx context.Context,
+	toolCallID string,
+	funcName string,
+	rawArgs string,
+	availableTools map[string]*Tool,
+) ToolResponse {
 	var args map[string]any
 	if rawArgs != "" && strings.TrimSpace(rawArgs) != "" && rawArgs != "{}" {
 		if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {

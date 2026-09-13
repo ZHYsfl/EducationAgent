@@ -1,6 +1,7 @@
 package agent_runtime
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -110,7 +111,7 @@ func TestChatWithoutToolCallStreamReturnsChannel(t *testing.T) {
 		openai.UserMessage("hello"),
 	}
 
-	ch := agent.ChatWithoutToolCallStream(nil, messages)
+	ch := agent.ChatWithoutToolCallStream(context.Background(), messages)
 	if ch == nil {
 		t.Fatal("Expected non-nil channel")
 	}
