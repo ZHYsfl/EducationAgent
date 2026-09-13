@@ -92,7 +92,7 @@ func userTexts(msgs []openai.ChatCompletionMessageParamUnion) []string {
 func TestBargeInTTSPhase(t *testing.T) {
 	cfg := loadE2E(t)
 	history := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage("你是语音助手。回答必须分成至少八句口语化短句，每句以中文句号结尾，只输出这些句子本身，不要分点不要列表。"),
+		openai.SystemMessage("你是语音助手。回答必须分成至少二十句口语化短句，每句以中文句号结尾，只输出这些句子本身，不要分点不要列表。"),
 	}
 	app := startApp(t, cfg, history, nil)
 	audio := wavPCM(t, "testdata/asr_test_16k.wav")
