@@ -12,6 +12,7 @@ type Config struct {
 	DeepSeekBaseURL string
 	DeepSeekModel   string
 	ASRBaseURL      string
+	ASRModel        string
 	TTSBaseURL      string
 	ServerAddr      string
 }
@@ -24,6 +25,7 @@ func Load() Config {
 		DeepSeekBaseURL: getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
 		DeepSeekModel:   getEnv("DEEPSEEK_MODEL", "deepseek-flash"),
 		ASRBaseURL:      getEnv("ASR_BASE_URL", "http://127.0.0.1:8000"),
+		ASRModel:        getEnv("ASR_MODEL", "/home/zane/sound/EducationAgent/Qwen3-ASR-0.6B"),
 		TTSBaseURL:      getEnv("TTS_BASE_URL", "http://127.0.0.1:8001"),
 		ServerAddr:      getEnv("SERVER_ADDR", ":8080"),
 	}

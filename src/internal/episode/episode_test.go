@@ -90,7 +90,7 @@ func TestTryCompleteBacktracksWhenVadArrivesDuringWait(t *testing.T) {
 	runner1 := &fakeRunner{behave: func(ctx context.Context) { time.Sleep(450 * time.Millisecond) }}
 	runner2 := &fakeRunner{}
 	asr := &fakeASR{scripts: []asrScript{
-		{text: "第一句"},                           // fast, fires turn 1
+		{text: "第一句"}, // fast, fires turn 1
 		{text: "第二句", delay: 250 * time.Millisecond}, // completes while turn 1 alive
 		{text: "第三句", delay: 150 * time.Millisecond}, // lands inside the prevDone wait
 	}}

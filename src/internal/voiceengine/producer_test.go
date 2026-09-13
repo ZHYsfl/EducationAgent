@@ -258,6 +258,7 @@ func TestProducerToolPhaseImmuneToCancel(t *testing.T) {
 				<-release
 				ch <- llm.Event{Kind: llm.EventFinish, FinishReason: "tool_calls"}
 			} else {
+				<-release // hold round 2 open so the latch stays observable
 				ch <- llm.Event{Kind: llm.EventContent, Text: "记住了。"}
 				ch <- llm.Event{Kind: llm.EventFinish, FinishReason: "stop"}
 			}
@@ -267,7 +268,7 @@ func TestProducerToolPhaseImmuneToCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go NewProducer(e, source, agent).Run(ctx, []openai.ChatCompletionMessageParamUnion{openai.UserMessage("记住这个")}, done)
+	go NewProducer(e, source, agent).Run(ctx, []openai.ChatCompletionMessageParamUnion{openai.UserMessage("记住这个，然后再见")}, done)
 
 	// The first tool delta latches llmState into the tool phase.
 	waitFor(t, "tool phase latch", 2*time.Second, func() bool {
@@ -473,4 +474,70 @@ func TestProducerReportsTurnMessages(t *testing.T) {
 	if len(toolCalls) != 1 {
 		t.Fatalf("tool called %d times, want 1", len(toolCalls))
 	}
+}
+
+func TestProducerToolPhaseImmuneWithLeadingContent(t *testing.T) {
+	e := NewEngine(context.Background())
+
+	toolRan := make(chan struct{}, 1)
+	agent := agent_runtime.NewAgent(&agent_runtime.LLMConfig{}, []*agent_runtime.Tool{
+		{
+			Name: "remember",
+			Func: func(ctx context.Context, args map[string]any) (string, error) {
+				toolRan <- struct{}{}
+				return "ok", nil
+			},
+			Parameters: map[string]any{"type": "object"},
+		},
+	})
+
+	release := make(chan struct{})
+	source := &fakeStreamSource{}
+	source.fn = func(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) <-chan llm.Event {
+		ch := make(chan llm.Event, 8)
+		go func() {
+			defer close(ch)
+			hasToolResult := false
+			for _, m := range messages {
+				if m.OfTool != nil {
+					hasToolResult = true
+				}
+			}
+			if !hasToolResult {
+				// Content BEFORE the tool call: the round-bottom flush must not
+				// die on the cancelled turn ctx once the tool phase latched.
+				ch <- llm.Event{Kind: llm.EventContent, Text: "我先记下来。"}
+				ch <- llm.Event{Kind: llm.EventToolCall, ToolCall: llm.ToolCallPart{Index: 0, ID: "call_1", Name: "remember", Arguments: `{"k":"v"}`}}
+				ch <- llm.Event{Kind: llm.EventFinish, FinishReason: "tool_calls"}
+			} else {
+				<-release // hold round 2 open so the latch stays observable
+				ch <- llm.Event{Kind: llm.EventContent, Text: "记住了。"}
+				ch <- llm.Event{Kind: llm.EventFinish, FinishReason: "stop"}
+			}
+		}()
+		return ch
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go NewProducer(e, source, agent).Run(ctx, []openai.ChatCompletionMessageParamUnion{openai.UserMessage("记住这个，然后再见")}, done)
+
+	waitFor(t, "tool phase latch", 2*time.Second, func() bool {
+		return e.LLMState() == LLMStateTool
+	})
+	cancel()
+
+	select {
+	case <-done:
+		t.Fatal("producer exited despite tool-phase immunity (leading content flush)")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-toolRan:
+	case <-time.After(time.Second):
+		t.Fatal("tool never executed")
+	}
+	waitDone(t, done, 2*time.Second)
 }

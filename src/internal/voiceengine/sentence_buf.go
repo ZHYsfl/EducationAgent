@@ -21,6 +21,13 @@ func (b *sentenceBuf) Reset() {
 	b.gen = -1
 }
 
+// Snapshot returns the buffered half-sentence without clearing it.
+func (b *sentenceBuf) Snapshot() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.text.String()
+}
+
 // HandleToken applies, in order: (1) a token from a stale generation is
 // dropped; (2) an empty buffer claims the token's generation; (3) a token
 // from a newer generation clears the half-sentence the old one left behind;
