@@ -67,3 +67,17 @@ func TestPlayerEndedWithoutCurrentSentenceIgnored(t *testing.T) {
 		t.Fatalf("DoneCount = %d, want 0", got)
 	}
 }
+
+func TestResumeClearsStopped(t *testing.T) {
+	p := New()
+	p.OnSentenceStart("半句")
+	p.OnProgress(1)
+	p.StopAndSnapshot()
+	if !p.Stopped() {
+		t.Fatal("stopped must be set after StopAndSnapshot")
+	}
+	p.Resume()
+	if p.Stopped() {
+		t.Fatal("Resume must clear stopped")
+	}
+}

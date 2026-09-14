@@ -92,10 +92,24 @@ func userTexts(msgs []openai.ChatCompletionMessageParamUnion) []string {
 func TestBargeInTTSPhase(t *testing.T) {
 	cfg := loadE2E(t)
 	history := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage("你是语音助手。回答必须分成至少二十句口语化短句，每句以中文句号结尾，只输出这些句子本身，不要分点不要列表。"),
+		// 五十句 ≈ 5-6s 的流式轮次：第一句 TTS（~3s）落账时推理仍在进行，
+		// "state==TTS 且已有落账"的黄金打断窗才真实存在。
+		openai.SystemMessage("你是语音助手。回答必须分成至少五十句口语化短句，每句以中文句号结尾，只输出这些句子本身，不要分点不要列表。"),
 	}
 	app := startApp(t, cfg, history, nil)
 	audio := wavPCM(t, "testdata/asr_test_16k.wav")
+
+	// Pre-warm the local TTS: the first synthesis after a service start is
+	// slow (model warmup), and if it overlaps the LLM round the interrupt
+	// window (state==TTS with a spoken sentence) never opens.
+	if err := app.Engine.Queue().Push(context.Background(), []voiceengine.Token{
+		{Content: "预热句子。", State: voiceengine.StateTTSTokens, Gen: app.Engine.Generation()},
+		{Content: "", State: voiceengine.StateIdle, Gen: app.Engine.Generation()},
+	}); err != nil {
+		t.Fatalf("warm push: %v", err)
+	}
+	waitCond(t, "tts warmup", 90*time.Second, func() bool { return len(app.Consumer.Records()) >= 1 })
+	baseRecords := len(app.Consumer.Records()) // warm-up only; turn sentences count from here
 
 	app.Manager.OnVadStart()
 	app.Manager.OnVadEnd(audio)
@@ -103,9 +117,30 @@ func TestBargeInTTSPhase(t *testing.T) {
 	// Interrupt only while the LLM is still streaming AND a full sentence has
 	// been spoken (guarantees said_words non-empty and firstState=TTS). ASR of
 	// the 10s fixture plus TTS of the first sentence can take a while.
-	waitCond(t, "streaming with one spoken sentence", 150*time.Second, func() bool {
-		return app.Engine.LLMState() == voiceengine.LLMStateTTS && len(app.Consumer.Records()) >= 1
-	})
+	deadline := time.Now().Add(150 * time.Second)
+	lastRecords := -1
+	lastState := int32(-1)
+	started := time.Now()
+	for {
+		state := app.Engine.LLMState()
+		records := len(app.Consumer.Records())
+		if state != lastState {
+			t.Logf("[t=%.1fs] state %d -> %d, records=%d", time.Since(started).Seconds(), lastState, state, records)
+			lastState = state
+		}
+		if records != lastRecords {
+			t.Logf("[t=%.1fs] record #%d at state=%d", time.Since(started).Seconds(), records, state)
+			lastRecords = records
+		}
+		if state == voiceengine.LLMStateTTS && records > baseRecords {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out: llmState=%d records=%d prevDoneClosed=%v historyMsgs=%d",
+				state, records, doneClosed(app.Manager.PrevDone()), len(app.Manager.History()))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	preRecords := len(app.Consumer.Records())
 	oldDone := app.Manager.PrevDone()
 

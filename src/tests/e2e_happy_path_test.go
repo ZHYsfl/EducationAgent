@@ -36,7 +36,12 @@ func TestHappyPath(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go app.Consumer.Run(ctx)
+
+	// The consumer lives on its own lifecycle, never on the turn ctx: a turn
+	// ending (or being knifed) must not cancel in-flight TTS reads.
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	defer consumerCancel()
+	go app.Consumer.Run(consumerCtx)
 
 	const prompt = "你是语音助手，回答要口语化、简短。请用三句话介绍西湖，每句以中文句号结尾，不要分点，不要列表。"
 

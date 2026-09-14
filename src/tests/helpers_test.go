@@ -18,3 +18,12 @@ func startWSServer(t *testing.T, app *engineserver.App) *httptest.Server {
 func wsURLOf(srv *httptest.Server) string {
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + engineserver.TTSPath
 }
+
+func doneClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}

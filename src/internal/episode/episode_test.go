@@ -286,3 +286,89 @@ func TestMergeTurnMessagesAppendsToHistory(t *testing.T) {
 		t.Fatal("caller's seed slice mutated")
 	}
 }
+
+type fakeStatusQueue struct{ empty bool }
+
+func (f *fakeStatusQueue) Empty() bool { return f.empty }
+
+func TestComposeQueueStatusFromRealQueue(t *testing.T) {
+	engine := voiceengine.NewEngine(context.Background())
+	p := player.New()
+	runner := &fakeRunner{}
+	sq := &fakeStatusQueue{empty: false}
+	m := NewManager(context.Background(), engine, p, NewRing(DefaultRingCapacity),
+		&fakeASR{scripts: []asrScript{{text: "消息来了"}}},
+		func() Runner { return runner }, nil, WithStatusQueue(sq))
+
+	m.OnVadStart()
+	m.OnVadEnd([]byte{0x01})
+
+	waitForCond(t, "turn fired", 2*time.Second, func() bool { return runner.callCount() == 1 })
+	msgs := runner.call(0)
+	var user string
+	for _, msg := range msgs {
+		if msg.OfUser != nil && msg.OfUser.Content.OfString.Valid() {
+			user = msg.OfUser.Content.OfString.Value
+		}
+	}
+	if !strings.Contains(user, "<queue_status>not empty</queue_status>") {
+		t.Fatalf("user = %q, want not empty status", user)
+	}
+
+	sq.empty = true
+	engine2 := voiceengine.NewEngine(context.Background())
+	runner2 := &fakeRunner{}
+	m2 := NewManager(context.Background(), engine2, player.New(), NewRing(DefaultRingCapacity),
+		&fakeASR{scripts: []asrScript{{text: "又来了"}}},
+		func() Runner { return runner2 }, nil, WithStatusQueue(sq))
+	m2.OnVadStart()
+	m2.OnVadEnd([]byte{0x01})
+	waitForCond(t, "turn 2 fired", 2*time.Second, func() bool { return runner2.callCount() == 1 })
+	for _, msg := range runner2.call(0) {
+		if msg.OfUser != nil && msg.OfUser.Content.OfString.Valid() {
+			if !strings.Contains(msg.OfUser.Content.OfString.Value, "<queue_status>empty</queue_status>") {
+				t.Fatalf("user = %q, want empty status", msg.OfUser.Content.OfString.Value)
+			}
+		}
+	}
+}
+
+func TestOnUserTextFreshAndMerge(t *testing.T) {
+	engine := voiceengine.NewEngine(context.Background())
+	runner := &fakeRunner{}
+	m := NewManager(context.Background(), engine, player.New(), NewRing(DefaultRingCapacity),
+		&fakeASR{}, func() Runner { return runner }, nil)
+
+	// Fresh text (no episode anywhere): lights a turn directly.
+	m.OnUserText("我想做个课件")
+	waitForCond(t, "turn from text", 2*time.Second, func() bool { return runner.callCount() == 1 })
+	msgs := runner.call(0)
+	var user string
+	for _, msg := range msgs {
+		if msg.OfUser != nil && msg.OfUser.Content.OfString.Valid() {
+			user = msg.OfUser.Content.OfString.Value
+		}
+	}
+	if !strings.HasPrefix(user, "我想做个课件") {
+		t.Fatalf("user = %q", user)
+	}
+
+	// Merge branch: an episode opened by vad_start (its ASR still pending)
+	// absorbs text injections and closes when the vad's ASR lands.
+	m.OnVadStart()
+	m.OnUserText("补充一句")
+	m.OnUserText("再补一句")
+	m.OnAsrResponse("vad语音")
+	waitForCond(t, "merged turn", 2*time.Second, func() bool { return runner.callCount() == 2 })
+	users := []string{}
+	for _, msg := range runner.call(1) {
+		if msg.OfUser != nil && msg.OfUser.Content.OfString.Valid() {
+			users = append(users, msg.OfUser.Content.OfString.Value)
+		}
+	}
+	// 输入是全量历史：首轮 user 在前，本 episode 的段按完成序缀后
+	if len(users) != 4 || users[1] != "补充一句" || users[2] != "再补一句" ||
+		users[3] != "vad语音<queue_status>empty</queue_status>" {
+		t.Fatalf("merged users = %v", users)
+	}
+}

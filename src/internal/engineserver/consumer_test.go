@@ -188,3 +188,180 @@ func TestConsumerIgnoresStaleIdleFlush(t *testing.T) {
 		t.Fatalf("stale flush spoke %d sentences", got)
 	}
 }
+
+// stalledTTSUpstream sends headers then holds the body for a bounded time
+// (a permanent block would deadlock httptest.Close at teardown).
+func stalledTTSUpstream(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("X-Sample-Rate", "22050")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+}
+
+func TestConsumerSurvivesStalledTTS(t *testing.T) {
+	stall := stalledTTSUpstream(t)
+	defer stall.Close()
+	chunk := bytes.Repeat([]byte{0x09}, 600)
+	healthy := fakeTTSUpstream(t, http.StatusOK, chunk)
+	defer healthy.Close()
+
+	engine := voiceengine.NewEngine(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(NewServer(stall.URL).HandleTTSInfer))
+	defer srv.Close()
+	healthySrv := httptest.NewServer(http.HandlerFunc(NewServer(healthy.URL).HandleTTSInfer))
+	defer healthySrv.Close()
+
+	outDir := t.TempDir()
+	p := player.New()
+	c := NewSentenceConsumer(engine, p, "ws"+srv.URL[len("http"):]+TTSPath, outDir)
+	c.FrameTimeout = 200 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	if err := engine.Queue().Push(ctx, []voiceengine.Token{
+		{Content: "会被卡死的句子。", State: voiceengine.StateTTSTokens, Gen: 0},
+	}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	// The stalled sentence must fail fast and free the consumer.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if p.DoneCount() == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if p.DoneCount() != 1 {
+		t.Fatalf("stalled sentence did not resolve, DoneCount = %d", p.DoneCount())
+	}
+
+	// Repoint at a healthy upstream: the consumer must speak again.
+	c.SetEndpoint("ws" + healthySrv.URL[len("http"):] + TTSPath)
+	if err := engine.Queue().Push(ctx, []voiceengine.Token{
+		{Content: "正常的句子。", State: voiceengine.StateTTSTokens, Gen: 0},
+		{Content: "", State: voiceengine.StateIdle, Gen: 0},
+	}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(c.Records()) == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("consumer never recovered, records = %+v", c.Records())
+}
+
+func TestConsumerDropsWhenPlayerStopped(t *testing.T) {
+	chunk := bytes.Repeat([]byte{0x0A}, 500)
+	fake := fakeTTSUpstream(t, http.StatusOK, chunk)
+	defer fake.Close()
+
+	engine := voiceengine.NewEngine(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(NewServer(fake.URL).HandleTTSInfer))
+	defer srv.Close()
+
+	p := player.New()
+	c := NewSentenceConsumer(engine, p, "ws"+srv.URL[len("http"):]+TTSPath, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	// 落闸后：世代再新的句子也不许开口、不许进账本。
+	p.StopAndSnapshot()
+	if err := engine.Queue().Push(ctx, []voiceengine.Token{
+		{Content: "停播后到达的句子。", State: voiceengine.StateTTSTokens, Gen: 0},
+	}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := len(c.Records()); got != 0 {
+		t.Fatalf("stopped player still recorded %d sentences", got)
+	}
+	if got := p.DoneCount(); got != 0 {
+		t.Fatalf("player ledger polluted while stopped: %d", got)
+	}
+
+	// 新 turn 点火（Resume）后恢复正常。
+	p.Resume()
+	if err := engine.Queue().Push(ctx, []voiceengine.Token{
+		{Content: "恢复后的句子。", State: voiceengine.StateTTSTokens, Gen: 0},
+	}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(c.Records()) == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("sentence after Resume was not spoken")
+}
+
+func TestConsumerAbortsMidStreamOnStop(t *testing.T) {
+	chunk1 := bytes.Repeat([]byte{0x0B}, 400)
+	chunk2 := bytes.Repeat([]byte{0x0C}, 400)
+	firstFrameSent := make(chan struct{})
+	release := make(chan struct{})
+	// 上游吐完第一帧后卡住，直到测试放行第二帧：speak 必然已经开始，
+	// stop 必然落在流的正中间（不靠 sleep 赌时序）。
+	dribble := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("X-Sample-Rate", "22050")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		_, _ = w.Write(chunk1)
+		w.(http.Flusher).Flush()
+		close(firstFrameSent)
+		select {
+		case <-r.Context().Done():
+			return
+		case <-release:
+		}
+		_, _ = w.Write(chunk2)
+	}))
+	defer dribble.Close()
+
+	engine := voiceengine.NewEngine(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(NewServer(dribble.URL).HandleTTSInfer))
+	defer srv.Close()
+
+	p := player.New()
+	c := NewSentenceConsumer(engine, p, "ws"+srv.URL[len("http"):]+TTSPath, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	if err := engine.Queue().Push(ctx, []voiceengine.Token{
+		{Content: "播到一半被打断的句子。", State: voiceengine.StateTTSTokens, Gen: 0},
+	}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	<-firstFrameSent
+	p.StopAndSnapshot() // 落闸：此后到达的帧一律丢弃不记账
+	close(release)
+
+	// 给第二帧充足的到达时间后断言：不进 records、不进账本。
+	time.Sleep(500 * time.Millisecond)
+	if got := len(c.Records()); got != 0 {
+		t.Fatalf("interrupted sentence was recorded: %+v", c.Records())
+	}
+	if got := p.DoneCount(); got != 0 {
+		t.Fatalf("interrupted sentence entered ledger: %d", got)
+	}
+}

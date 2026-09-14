@@ -2,6 +2,7 @@ package voiceengine
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 )
 
@@ -82,4 +83,48 @@ func (e *Engine) ToolInfo() *ToolInfo {
 // the current generation. ok is true when this token completed a sentence.
 func (e *Engine) HandleToken(t Token) (string, int64, bool) {
 	return e.buf.HandleToken(t, e.generation.Load())
+}
+
+// ResetBuf clears the half-sentence left in the buffer (barge-in A-knife).
+func (e *Engine) ResetBuf() {
+	e.buf.Reset()
+}
+
+// FlushSentence takes the buffered half-sentence, if any, and clears the
+// buffer. Used when the idle token ends a turn whose last sentence had no
+// closing punctuation.
+func (e *Engine) FlushSentence() (string, bool) {
+	s := e.buf.Snapshot()
+	if s == "" {
+		return "", false
+	}
+	e.buf.Reset()
+	return s, true
+}
+
+// DrainLeftUnsaid returns the half-sentence plus every batch still queued,
+// then clears both. Diagnostic only; after BumpGeneration the content is
+// sealed anyway.
+func (e *Engine) DrainLeftUnsaid() string {
+	var sb strings.Builder
+	sb.WriteString(e.buf.Snapshot())
+	for _, batch := range e.queue.Drain() {
+		for _, t := range batch {
+			sb.WriteString(t.Content)
+		}
+	}
+	e.buf.Reset()
+	return sb.String()
+}
+
+// LLMStateString maps the internal phase to the API wire string (1.1/4.1).
+func LLMStateString(s int32) string {
+	switch s {
+	case LLMStateTTS:
+		return string(StateTTSTokens)
+	case LLMStateTool:
+		return string(StateToolCallTokens)
+	default:
+		return string(StateIdle)
+	}
 }

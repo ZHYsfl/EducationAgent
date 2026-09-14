@@ -29,3 +29,16 @@ func (q *TokenQueue) Push(ctx context.Context, batch []Token) error {
 func (q *TokenQueue) Chan() <-chan []Token {
 	return q.ch
 }
+
+// Drain removes and returns every pending batch without blocking.
+func (q *TokenQueue) Drain() [][]Token {
+	var out [][]Token
+	for {
+		select {
+		case b := <-q.ch:
+			out = append(out, b)
+		default:
+			return out
+		}
+	}
+}
