@@ -76,3 +76,8 @@ func (a *Agent) GetTools() []openai.ChatCompletionToolUnionParam {
 	}
 	return out
 }
+// Prepare applies the configured memory manager (e.g. slide window) to a
+// message list; used by streaming paths that bypass BuildChatCompletionParams.
+func (a *Agent) Prepare(messages []openai.ChatCompletionMessageParamUnion) []openai.ChatCompletionMessageParamUnion {
+	return a.memory.Prepare(messages)
+}

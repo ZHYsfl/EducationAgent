@@ -278,3 +278,7 @@ go/
 Qwen3-ASR-0.6B/
 
 kimi-export-session_*.md
+# deploy logs & generated audio dumps
+deploy/logs/
+workspace/tts_out/
+src/workspace/ppt/ppt.pdf
